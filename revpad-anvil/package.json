@@ -1,0 +1,29 @@
+{
+  "name": "revpad-anvil-kit",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsx src/01-check.ts",
+    "launch": "tsx src/02-launch.ts",
+    "trade": "tsx src/03-trade.ts",
+    "fees": "tsx src/04-fees.ts",
+    "vesting": "tsx src/05-vesting.ts",
+    "facilitator": "tsx src/06-facilitator.ts",
+    "pay": "tsx src/07-pay.ts",
+    "gas-real": "tsx src/real-01-gas.ts",
+    "pay-real": "tsx src/real-02-pay.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@whetstone-research/doppler-sdk": "1.0.43",
+    "@x402/core": "2.26.0",
+    "@x402/evm": "2.26.0",
+    "dotenv": "^16.4.5",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

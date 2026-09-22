@@ -1,0 +1,6 @@
+{
+  "files.associations": { ".env.anvil*": "dotenv" },
+  "files.exclude": { "node_modules": true },
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "task.allowAutomaticTasks": "off"
+}
