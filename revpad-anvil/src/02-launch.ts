@@ -31,12 +31,16 @@ async function main() {
   const sdk = new DopplerSDK({ publicClient, walletClient: creatorWallet, chainId: 143 });
 
   const airlockOwner = (await getAirlockOwner(publicClient)) as Address;
+  // Allow overriding stub addresses with real deployed contracts via env vars
+  const escrowAddr   = (process.env.ESCROW_ADDRESS   ?? account('escrowStub').address)  as Address;
+  const buybackAddr  = (process.env.BUYBACK_ADDRESS  ?? account('buybackStub').address) as Address;
+  const treasuryAddr = (process.env.TREASURY_ADDRESS ?? account('treasury').address)    as Address;
   const beneficiaries = sortBeneficiaries([
     { beneficiary: airlockOwner, shares: SHARES.doppler },
     { beneficiary: creator, shares: SHARES.creator },
-    { beneficiary: account('escrowStub').address, shares: SHARES.escrow },
-    { beneficiary: account('buybackStub').address, shares: SHARES.buyback },
-    { beneficiary: account('treasury').address, shares: SHARES.treasury },
+    { beneficiary: escrowAddr, shares: SHARES.escrow },
+    { beneficiary: buybackAddr, shares: SHARES.buyback },
+    { beneficiary: treasuryAddr, shares: SHARES.treasury },
   ]);
   const shareSum = beneficiaries.reduce((s, b) => s + b.shares, 0n);
   pass(shareSum === 10n ** 18n, 'beneficiary shares sum to 1e18');
@@ -81,7 +85,7 @@ async function main() {
     .withGovernance({ type: 'noOp' })
     .withMigration({ type: 'noOp' })
     .withUserAddress(creator)
-    .withIntegrator(account('treasury').address)
+    .withIntegrator(treasuryAddr)
     .build();
 
   console.log('Simulating create...');
