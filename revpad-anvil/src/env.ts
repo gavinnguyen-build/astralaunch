@@ -84,9 +84,10 @@ export function withBuffer(gas: bigint): bigint {
   return (gas * GAS_BUFFER_BPS) / 10_000n;
 }
 
-// ---- tiny state store shared between scripts ----
-const STATE_DIR = '.anvil-state';
-const STATE_FILE = `${STATE_DIR}/state.json`;
+// ---- tiny state stores shared between scripts ----
+const STATE_DIR       = '.anvil-state';
+const STATE_FILE      = `${STATE_DIR}/state.json`;
+const CONTRACTS_FILE  = `${STATE_DIR}/contracts.json`;
 
 export type KitState = {
   token?: Address;
@@ -101,6 +102,22 @@ export type KitState = {
 export function loadState(): KitState {
   if (!existsSync(STATE_FILE)) return {};
   return JSON.parse(readFileSync(STATE_FILE, 'utf8'));
+}
+
+export type ContractsState = {
+  deployer?: Address;
+  deployerStartNonce?: number;
+  escrow?: Address;
+  vault?: Address;
+  routerImpl?: Address;
+  registry?: Address;
+  treasury?: Address;
+  admin?: Address;
+};
+
+export function loadContracts(): ContractsState {
+  if (!existsSync(CONTRACTS_FILE)) return {};
+  return JSON.parse(readFileSync(CONTRACTS_FILE, 'utf8'));
 }
 
 export function saveState(patch: Partial<KitState>) {

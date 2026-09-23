@@ -11,6 +11,10 @@ remappings       = [
     "solady/=lib/solady/src/",
 ]
 network = "monad"   # Foundry >=1.8: Monad execution model (opcode pricing, gas-limit billing)
+# Deploy.s.sol writes contracts.json; fork tests and launch script read it.
+fs_permissions = [
+    { access = "read-write", path = "../../revpad-anvil/.anvil-state/" },
+]
 
 [profile.default.fuzz]
 runs = 10_000

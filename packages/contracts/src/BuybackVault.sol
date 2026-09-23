@@ -56,6 +56,7 @@ contract BuybackVault is ReentrancyGuard, IUnlockCallback {
     error AssetNotRegistered();
     error AlreadyRegistered();
     error CooldownActive();
+    error CapWindowActive();
     error ExceedsMaxPerCall();
     error SlippageTooHigh();
     error SwapFailed();
@@ -144,6 +145,11 @@ contract BuybackVault is ReentrancyGuard, IUnlockCallback {
     {
         AssetData storage d = _assets[asset];
         if (!d.registered) revert AssetNotRegistered();
+        // Refuse during the DopplerERC20V1 per-wallet balance-cap window.
+        // At launch price (~$0.00001/token), even 0.1 USDC buys ≥1% of supply,
+        // which exceeds the vault's own balance limit and reverts inside the swap.
+        // Guard here gives a clear error instead of a cryptic ERC-20 revert.
+        if (block.timestamp < uint256(IDopplerERC20V1(asset).balanceLimitEnd())) revert CapWindowActive();
         if (block.timestamp < uint256(d.lastExecuteTime) + C.BUYBACK_MIN_INTERVAL) revert CooldownActive();
         if (usdcIn > C.BUYBACK_MAX_PER_CALL) revert ExceedsMaxPerCall();
         if (usdcIn > uint256(d.balanceUSDC)) revert InsufficientBalance();

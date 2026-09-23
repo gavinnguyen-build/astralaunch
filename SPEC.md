@@ -1,6 +1,6 @@
 # Revpad — SPEC
 
-> Status: draft v0.2 (updated 2026-09-22 after Anvil-fork and real-Monad verification) · Target: Monad mainnet (chainId 143) · Hackathon deadline: 2026-10-13
+> Status: draft v0.3 (updated 2026-09-23: Fix 1-3 implemented, integrator check, SPEC catches up with code) · Target: Monad mainnet (chainId 143) · Hackathon deadline: 2026-10-13
 > Source of truth for product + economics. `CLAUDE.md` holds working rules for the coding agent.
 > `docs/BANKR_REFERENCE.md` is functional context only. Evidence for v0.2 changes: `docs/VERIFICATION-anvil.md`, `docs/VERIFICATION-real.md`.
 
@@ -26,6 +26,9 @@
 | D13 | **x402 facilitator = Monad official** `https://x402-facilitator.molandak.org` (x402 v2 only). Always call it through the SDK `HTTPFacilitatorClient`. Self-hosted facilitator (SDK `registerExactEvmScheme`) is the fallback. |
 | D14 | **Contracts swap through `PoolManager.unlock()` directly** (IUnlockCallback), not Universal Router/Permit2. Universal Router is for user wallets only. |
 | D15 | Each fee beneficiary contract (FeeEscrow, BuybackVault) must call `collectFees` on the initializer itself; Doppler releases a beneficiary's share only to the caller (verified). |
+| D16 | **`DOPPLER_HOOK` is constant across launches.** The V4ScheduledMulticurveInitializer's hook address (`0x580ca49389d83b019d07E17e99454f2F218e2dc0`) is the same for every token launched through it on Monad mainnet. Confirmed across 4+ distinct token launches in testing. `RevpadRegistry.register` now takes `(address asset, address creator)` — `poolId` is computed on-chain from `INITIALIZER.getState(asset).poolKey`. The registry adds `WrongPool` error when the pool's hook ≠ `DOPPLER_HOOK`. |
+| D17 | **Integrator must equal the Revpad treasury.** `Airlock.getAssetData(asset).integrator` is recorded at launch time by the Doppler SDK. For every Revpad token, the integrator is the treasury address. `RevpadRegistry.register` now checks this and reverts with `WrongIntegrator` on mismatch. |
+| D18 | **Balance cap window upper bound not enforced on-chain.** `DopplerERC20V1` does not expose `startTime()`, so `balanceLimitEnd − vestingStart` cannot be tightly bounded (fork value ≈ 7200 s because `vestingStart` uses wall-clock time while `balanceLimitEnd` is set from the historical block timestamp at launch). Registry enforces only the lower bound: `balanceLimitEnd − vestingStart ≥ 600 s`. The upper bound will be added if Doppler adds a `startTime()` getter. |
 
 ### Open
 | # | Question | Current default |
@@ -206,19 +209,40 @@ Why: re-implementing the Doppler multicurve encoding in Solidity is long and err
 
 Flow:
 1. Frontend launches with the Doppler SDK using the fixed Revpad config (§4): scheduled multicurve, fee 20000, tick spacing 200, beneficiaries [Airlock owner 5%, creator 35%, FeeEscrow 20%, BuybackVault 10%, treasury 30%], supply 1e9 with 85/15, vesting 30d/365d, balance cap 1% for 10 min, noOp governance and migration, numeraire USDC, integrator = treasury.
-2. Anyone calls `register(asset)`.
+2. Anyone calls `register(asset, creator)`. No `poolId` parameter — it is derived on-chain (D16).
 
 ```solidity
-function register(address asset) external returns (address router);
+function register(address asset, address creator) external returns (address router);
 function isRegistered(address asset) external view returns (bool);
 ```
 
-`register` must verify on-chain, reverting with a specific custom error on each mismatch:
-- asset was created by the Doppler Airlock with the scheduled multicurve initializer, NoOp migrator, NoOp governance
-- pool: numeraire = USDC, fee = 20000, tickSpacing = 200, status active
-- beneficiaries and shares exactly match §4.1 (the 35% beneficiary is the creator)
-- token: total supply 1e9; vesting 15% to creator with 30-day cliff and 365-day duration; balance cap parameters
-- not already registered
+`register` verifies on-chain, reverting with a specific custom error on each mismatch:
+
+| Check | Error |
+|---|---|
+| Airlock.getAssetData: poolInitializer == INITIALIZER | `WrongInitializer` |
+| Airlock.getAssetData: liquidityMigrator == NOMIG | `WrongMigrator` |
+| Airlock.getAssetData: governance == 0x…dEaD | `WrongGovernance` |
+| Airlock.getAssetData: numeraire == USDC | `WrongNumeraire` |
+| Airlock.getAssetData: totalSupply == 1e9×1e18 | `WrongTotalSupply` |
+| Airlock.getAssetData: numTokensToSell == 850M×1e18 | `WrongNumTokensToSell` |
+| Airlock.getAssetData: integrator == treasury (D17) | `WrongIntegrator` |
+| getState(asset).poolKey.hooks == DOPPLER_HOOK (D16) | `WrongPool` |
+| poolKey.fee == 20000 | `WrongFee` |
+| poolKey.tickSpacing == 200 | `WrongTickSpacing` |
+| poolKey currencies are {asset, USDC} | `WrongPoolCurrencies` |
+| getShares(poolId, Airlock owner) == 0.05e18 | `WrongDopplerShare` |
+| getShares(poolId, creator) == 0.35e18 | `WrongCreatorShare` |
+| getShares(poolId, FeeEscrow) == 0.20e18 | `WrongEscrowShare` |
+| getShares(poolId, BuybackVault) == 0.10e18 | `WrongBuybackShare` |
+| getShares(poolId, treasury) == 0.30e18 | `WrongTreasuryShare` |
+| vestingSchedules(0).cliff == 30 days | `WrongVestingCliff` |
+| vestingSchedules(0).duration == 365 days | `WrongVestingDuration` |
+| totalAllocatedOf(creator) == 150M×1e18 (Fix 2) | `WrongVestingAmount` |
+| vestedTotalAmount() == 150M×1e18 (Fix 2) | `WrongVestingAmount` |
+| maxBalanceLimit() == 10M×1e18 (1%) (Fix 3) | `WrongBalanceCap` |
+| balanceLimitEnd − vestingStart ≥ 600 s (Fix 3, D18) | `WrongBalanceCap` |
+| asset not already registered | `AlreadyRegistered` |
 
 Then: deploy `RevenueRouter` clone, register asset in FeeEscrow and BuybackVault (pool key, creator, launch time, router), emit `Registered(asset, creator, router, poolId, timestamp)`.
 
@@ -471,8 +495,9 @@ Explicit gas limits on every tx. Keeper wallet funded with MON; alert when low. 
 | x402 on real Monad (official facilitator) | verify + settle OK, replay rejected |
 | Launch gas on real Monad | 4,589,375 (~0.52 MON); fork within 0.9% |
 
+| RevpadRegistry reads all §6.1 fields from chain | ✅ Verified on fork (15/15 fork tests pass). DOPPLER_HOOK constant confirmed. Integrator == treasury confirmed. totalAllocatedOf + vestedTotalAmount confirmed 150M each. balanceLimitEnd − vestingStart confirmed ≥ 600 s. |
+
 ### Still to verify
-- [ ] `RevpadRegistry` can read every field it must check (§6.1) from chain.
 - [ ] DopplerERC20V1 `burn` semantics (caller's own balance).
 - [ ] Contract-driven collect + buyback via `PoolManager.unlock` + burn on the fork.
 - [ ] EIP-7702-delegated payer through the official facilitator (O9).
@@ -483,8 +508,8 @@ Explicit gas limits on every tx. Keeper wallet funded with MON; alert when low. 
 
 | Window | Deliverables |
 |---|---|
-| 22–23 Sep | ✅ Anvil-fork + real-Monad verification; SPEC v0.2 |
-| 24–30 Sep | Contracts: RevenueRouter → FeeEscrow → BuybackVault → RevpadRegistry, with unit/fuzz/invariant + fork tests (§6.6) |
+| 22–23 Sep | ✅ Anvil-fork + real-Monad verification; SPEC v0.2; all contracts done with 93 tests (78 unit + 15 fork); Fix 1-3 + integrator check; SPEC v0.3 |
+| 24–30 Sep | Gateway (HTTPFacilitatorClient, settle-after-success), logs, probes; Envio indexer; keeper |
 | 1–5 Oct | Gateway (HTTPFacilitatorClient, settle-after-success), logs, probes; Envio indexer; keeper; deploy to mainnet with a fresh admin key and small amounts; one full real flow |
 | 6–12 Oct | Web app (new UI), hosted Prompt template, wash scoring + UCR, 2–3 demo services, demo agent, video |
 | 13 Oct | Submission |
@@ -545,6 +570,7 @@ Copy into `packages/shared/src/addresses.ts` with these sources.
 | Airlock owner (Doppler 5% beneficiary) | `0x21E2ce70511e4FE542a97708e89520471DAa7A66` | `getAirlockOwner`, fork |
 | DopplerERC20V1 factory | `0xf1542Dd2D46394C16372FB00f2c339b53CeF2cE5` | SDK, fork |
 | V4ScheduledMulticurveInitializer | `0xCe3099B2F07029b086E5e92a1573C5f5A3071783` | SDK, fork |
+| Doppler multicurve hook (DOPPLER_HOOK) | `0x580ca49389d83b019d07E17e99454f2F218e2dc0` | fork: INITIALIZER.getState(asset).poolKey.hooks, constant across all launches (D16) |
 | NoOpMigrator | `0x5F3bA43D44375286296Cb85F1EA2EBfa25dde731` | SDK, fork |
 | NoOpGovernanceFactory | `0xb4deE32EB70A5E55f3D2d861F49Fb3D79f7a14d9` | SDK, fork |
 | Uniswap v4 PoolManager | `0x188d586ddcf52439676ca21a244753fa19f9ea8e` | SDK, fork |

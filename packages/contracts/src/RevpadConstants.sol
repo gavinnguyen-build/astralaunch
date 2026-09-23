@@ -28,7 +28,8 @@ library RevpadConstants {
     uint256 constant POOL_TOKENS_NUM    = 850_000_000  * 1e18;     // 85 %
     uint256 constant VESTED_TOKENS_NUM  = 150_000_000  * 1e18;     // 15 %
     uint256 constant BALANCE_CAP_NUM    = 10_000_000   * 1e18;     // 1 % (= TOTAL_SUPPLY / 100)
-    uint256 constant BALANCE_CAP_WINDOW = 10 minutes;
+    uint256 constant BALANCE_CAP_WINDOW     = 10 minutes; // lower bound (600 s)
+    uint256 constant BALANCE_CAP_WINDOW_MAX = 15 minutes; // upper bound (900 s) — enforced after launch-script fix (decisions.md D18)
 
     // ── Vesting ───────────────────────────────────────────────────────────────
     uint256 constant VESTING_DURATION  = 365 days;

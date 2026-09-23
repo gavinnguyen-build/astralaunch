@@ -32,4 +32,22 @@ interface IInitializer {
     ///         Spike-confirmed: takes bytes32 poolId, NOT asset address.
     ///         See docs/decisions.md Decision D2.
     function getPoolKey(bytes32 poolId) external view returns (PoolKey memory key);
+
+    /// @notice Returns full pool state for a launched asset.
+    ///         Fix 1: preferred over getPoolKey(poolId) because it takes the asset address directly.
+    ///         See docs/decisions.md Decision D16.
+    /// @param asset  The DopplerERC20V1 token address.
+    /// @return numeraire  Quote token (USDC on Revpad).
+    /// @return status     Doppler pool status enum value (uint8).
+    /// @return poolKey    The Uniswap v4 PoolKey for this asset's pool.
+    /// @return farTick    Far tick used by the multicurve.
+    function getState(address asset)
+        external
+        view
+        returns (
+            address numeraire,
+            uint8 status,
+            PoolKey memory poolKey,
+            int24 farTick
+        );
 }

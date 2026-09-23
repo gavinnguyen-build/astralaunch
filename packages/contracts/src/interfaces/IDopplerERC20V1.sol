@@ -33,4 +33,16 @@ interface IDopplerERC20V1 {
         external
         view
         returns (uint64 cliff, uint64 duration);
+
+    // ── Vesting amounts (Fix 2) ────────────────────────────────────────────────
+    /// @notice Total vesting allocation for a given beneficiary across all schedules.
+    ///         For Revpad: creator should have exactly 150,000,000 × 1e18.
+    function totalAllocatedOf(address beneficiary) external view returns (uint256);
+
+    /// @notice Sum of all vesting schedule total amounts across all beneficiaries.
+    ///         For Revpad: must equal 150,000,000 × 1e18 (VESTED_TOKENS_NUM).
+    function vestedTotalAmount() external view returns (uint256);
+
+    /// @notice Number of distinct vesting schedules (must be 1 for Revpad).
+    function vestingScheduleCount() external view returns (uint256);
 }

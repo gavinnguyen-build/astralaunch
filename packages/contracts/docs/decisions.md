@@ -130,3 +130,119 @@ BuybackVault swaps USDC (currency1) → token (currency0).
 | `register(asset, creator, poolId)` | No on-chain asset→poolId lookup |
 | `INITIALIZER.getPoolKey(poolId)` | Correct function signature (bytes32 not address) |
 | Verify asset/USDC are pool currencies | Anti-spoofing: poolId must correspond to this asset |
+
+---
+
+## F. Fix 1 — DOPPLER_HOOK constant and getState(asset) (Decision D16)
+
+**Finding**: `V4ScheduledMulticurveInitializer` exposes `getState(address asset)` which returns `(numeraire, status, PoolKey, farTick)`. The hook address embedded in every poolKey is identical across all launches.
+
+Confirmed hook across 4+ distinct token launches:
+- spike token `0x0E45dD894…` poolKey.hooks = `0x580ca49389d83b019d07E17e99454f2F218e2dc0`
+- session tokens `0xad50518E…`, `0xCbd7…`, and others — all identical hook
+
+**Decision D16**: Add `address constant DOPPLER_HOOK = 0x580ca49389d83b019d07E17e99454f2F218e2dc0`. Use `INITIALIZER.getState(asset)` to retrieve the poolKey directly (no poolId parameter needed from the caller). Compute `poolId = keccak256(abi.encode(poolKey))` on-chain. Change register signature to `register(address asset, address creator)`. Add `WrongPool()` error when `poolKey.hooks != DOPPLER_HOOK`.
+
+Updated signature:
+```solidity
+function register(address asset, address creator) external returns (address router);
+```
+
+---
+
+## G. Fix 2 — Vesting recipient and amount
+
+**Finding**: `DopplerERC20V1` exposes:
+- `totalAllocatedOf(address beneficiary) → uint256` — total vesting allocation for an address
+- `vestedTotalAmount() → uint256` — sum of all vesting schedule totals
+- `vestingScheduleCount() → uint256` — number of schedules (1 for Revpad tokens)
+
+On-chain values confirmed for test token `0xad50518E…`:
+- `totalAllocatedOf(creator)` = 150,000,000 × 10^18 ✓
+- `vestedTotalAmount()` = 150,000,000 × 10^18 ✓
+- `vestingScheduleCount()` = 1 ✓
+
+Registry now checks both `totalAllocatedOf(creator) == VESTED_TOKENS_NUM` and `vestedTotalAmount() == VESTED_TOKENS_NUM`. Reverts with `WrongVestingAmount(got, expected)`.
+
+---
+
+## H. Fix 3 — Balance cap window (Decision D18, updated v0.4)
+
+**Finding (v0.3)**: `balanceLimitEnd - vestingStart = 7199 s` on the Anvil fork of Monad mainnet block 107059290.
+
+**Root cause**: `DopplerERC20V1` sets `vestingStart = block.timestamp` at deploy time (= the Anvil fork block timestamp, a historical Monad value). The launch script (`revpad-anvil/src/02-launch.ts`) previously set `startTime = Math.max(blockTimestamp, Date.now()/1000) + 2`, so on a historical fork where `Date.now() >> blockTimestamp`, `balanceLimitEnd = Date.now()/1000 + 602` (wall-clock time). The gap `balanceLimitEnd - vestingStart = (Date.now()/1000 + 602) - forkBlockTimestamp ≈ 7199 s`.
+
+**Fix (v0.4)**: The launch script now syncs Anvil's block timestamp to real time (`testClient.setNextBlockTimestamp({ timestamp: BigInt(realNow) })`) before deploying, so `block.timestamp_at_deploy ≈ Date.now()/1000` and `balanceLimitEnd - vestingStart ≈ 602 s ≤ 900 s`.
+
+**Decision D18 (updated)**: With the launch script fix, both bounds are now enforceable on-chain:
+- Lower bound: `balanceLimitEnd - vestingStart >= BALANCE_CAP_WINDOW (600 s)`
+- Upper bound: `balanceLimitEnd - vestingStart <= BALANCE_CAP_WINDOW_MAX (900 s)`
+
+Fork tests verify both bounds via `vm.mockCall`.
+
+---
+
+## I. Integrator check (Decision D17)
+
+`Airlock.getAssetData(asset).integrator` returns the integrator address recorded at launch. For all Revpad tokens, this equals the treasury address (confirmed in spike section A). Registry now checks `integrator == treasury` and reverts with `WrongIntegrator(got, expected)`.
+
+---
+
+## J. Fix 4 — BuybackVault.execute() disabled during balance-cap window (Decision D19)
+
+**Finding**: At launch price (~$0.00001/token, START_MCAP_USD = 10,000), a single USDC spent in
+`execute()` buys roughly 100,000 tokens. The vault's own accumulated balance would exceed
+`maxBalanceLimit` (1% = 10M tokens) after about 100 USDC of buybacks, causing a cryptic
+ERC-20 transfer revert inside `unlockCallback` rather than a clear error at the call site.
+More importantly, the DopplerERC20V1 balance cap applies to **any single wallet** holding
+more than 1% of supply during the window. Since the vault is a single address, even the first
+execute() call risks a transfer failure at low prices.
+
+**Decision D19**: `BuybackVault.execute()` reverts with `CapWindowActive()` if
+`block.timestamp < IDopplerERC20V1(asset).balanceLimitEnd()`. This is the safest option
+(clear error, easily testable) and has no economic impact: the 600–900 s window is a tiny
+fraction of the buyback lifecycle. Callers simply wait until the cap window expires.
+
+Added error: `CapWindowActive()` (`BuybackVault.sol:58`).
+Added guard: `BuybackVault.sol:147-149`.
+Unit test: `test_execute_revertsIfCapWindow` (BuybackVault.t.sol).
+Fork test: `test_buyback_revertsInCapWindow` (RegistryFork.t.sol, test S).
+SPEC §6.4 updated to document this restriction.
+
+---
+
+## K. Fix 5 — Deploy.s.sol passed address(0) as FeeEscrow.buybackVault
+
+**Finding**: The original `Deploy.s.sol` deployed `FeeEscrow` at nonce N with `buybackVault = address(0)`.
+`buybackVault` is `immutable`; a mainnet deploy would make `forfeit()` permanently send USDC
+to the zero address (silent loss, not a revert).
+
+**Decision**: Pre-compute `futureVault = vm.computeCreateAddress(msg.sender, nonce + 1)` and
+pass it to the FeeEscrow constructor. Add post-deploy assertions that revert if any immutable
+is mismatched. Write deployed addresses and deployer nonce to
+`../../revpad-anvil/.anvil-state/contracts.json` so fork tests and the launch script no longer
+hardcode the nonce "633".
+
+Fork test `test_deploy_immutablesWiredCorrectly` verifies the wiring on every setUp.
+
+---
+
+## Summary of Implemented Changes (v0.5)
+
+| Change | Decision | Error |
+|--------|----------|-------|
+| `register(asset, creator)` — poolId computed on-chain | D16 | — |
+| `DOPPLER_HOOK` constant; check poolKey.hooks | D16 | `WrongPool` |
+| `getState(asset)` replaces `getPoolKey(poolId)` | D16 | — |
+| `integrator == treasury` check | D17 | `WrongIntegrator` |
+| `totalAllocatedOf(creator) == 150M×1e18` | Fix 2 | `WrongVestingAmount` |
+| `vestedTotalAmount() == 150M×1e18` | Fix 2 | `WrongVestingAmount` |
+| `balanceLimitEnd − vestingStart ≥ 600 s` (lower) | D18 | `WrongBalanceCap` |
+| `balanceLimitEnd − vestingStart ≤ 900 s` (upper) | D18 | `WrongBalanceCap` |
+| Launch script syncs Anvil time before deploy | D18 | — |
+| Fork setUp: fresh deploy instead of vm.etch | — | — |
+| `execute()` reverts during balance-cap window | D19 | `CapWindowActive` |
+| Deploy.s.sol: pre-compute futureVault; pass to FeeEscrow | Fix 5 | — |
+| Deploy.s.sol: post-deploy assertions + write contracts.json | Fix 5 | — |
+| Fork setUp reads nonce from contracts.json (not hardcoded) | Fix 5 | — |
+| ForkTrader + test V: real collect() with exact 20%:10% ratio | — | — |

@@ -16,6 +16,7 @@ import {
   assertFork,
   balanceOf,
   erc20Abi,
+  loadContracts,
   pass,
   publicClient,
   saveState,
@@ -31,10 +32,28 @@ async function main() {
   const sdk = new DopplerSDK({ publicClient, walletClient: creatorWallet, chainId: 143 });
 
   const airlockOwner = (await getAirlockOwner(publicClient)) as Address;
-  // Allow overriding stub addresses with real deployed contracts via env vars
-  const escrowAddr   = (process.env.ESCROW_ADDRESS   ?? account('escrowStub').address)  as Address;
-  const buybackAddr  = (process.env.BUYBACK_ADDRESS  ?? account('buybackStub').address) as Address;
-  const treasuryAddr = (process.env.TREASURY_ADDRESS ?? account('treasury').address)    as Address;
+
+  // Require addresses from contracts.json (written by Deploy.s.sol).
+  // Never silently fall back to stub addresses — a wrong beneficiary means trading fees
+  // go to an uncontrolled wallet and can never be recovered.
+  const contracts = loadContracts();
+  if (!contracts.escrow || !contracts.vault) {
+    throw new Error(
+      `contracts.json is missing escrow and/or vault addresses.\n` +
+      `Run: forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --private-key $PRIVATE_KEY\n` +
+      `Expected file: .anvil-state/contracts.json`
+    );
+  }
+  const escrowAddr   = contracts.escrow   as Address;
+  const buybackAddr  = contracts.vault    as Address;
+  const treasuryAddr = (contracts.treasury ?? process.env.TREASURY_ADDRESS ?? account('treasury').address) as Address;
+
+  console.log('Beneficiary addresses (from contracts.json):');
+  console.log(`  escrow   (FeeEscrow)    : ${escrowAddr}`);
+  console.log(`  vault    (BuybackVault) : ${buybackAddr}`);
+  console.log(`  treasury                : ${treasuryAddr}`);
+  pass(escrowAddr  === contracts.escrow,   'escrow  matches contracts.json', escrowAddr);
+  pass(buybackAddr === contracts.vault,    'vault   matches contracts.json', buybackAddr);
   const beneficiaries = sortBeneficiaries([
     { beneficiary: airlockOwner, shares: SHARES.doppler },
     { beneficiary: creator, shares: SHARES.creator },
@@ -46,10 +65,17 @@ async function main() {
   pass(shareSum === 10n ** 18n, 'beneficiary shares sum to 1e18');
   pass(POOL_TOKENS + VESTED_TOKENS === SUPPLY, 'pool + vested == supply (nothing leaks to timelock)');
 
-  // Use wall clock for startTime: the SDK validates balanceLimitEnd > Date.now()/1000.
-  // On a reverted fork the block timestamp can lag real time by minutes, causing the
-  // SDK's client-side guard to throw even when startTime is future relative to the block.
-  const now = Math.max(Number((await publicClient.getBlock()).timestamp), Math.floor(Date.now() / 1000));
+  // Sync Anvil's block timestamp to real time before deploying so that
+  // vestingStart (= block.timestamp at deploy) ≈ startTime.  Without this,
+  // a historical fork block causes balanceLimitEnd - vestingStart to be
+  // hours wide instead of the intended 600 s (see docs/decisions.md D18).
+  const realNow = Math.floor(Date.now() / 1000);
+  const currentBlock = await publicClient.getBlock();
+  if (Number(currentBlock.timestamp) < realNow) {
+    await testClient.setNextBlockTimestamp({ timestamp: BigInt(realNow) });
+    await testClient.mine({ blocks: 1 });
+  }
+  const now = Number((await publicClient.getBlock()).timestamp);
   const startTime = now + 2;
 
   const params = sdk

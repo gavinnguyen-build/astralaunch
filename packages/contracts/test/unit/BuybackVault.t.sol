@@ -87,6 +87,8 @@ contract BuybackVaultHarness is BuybackVault {
 contract MockAssetToken {
     mapping(address => uint256) public balanceOf;
     uint256 public burnedTotal;
+    // Returns 0 so block.timestamp >= 0 == balanceLimitEnd, cap window is always past.
+    function balanceLimitEnd() external pure returns (uint48) { return 0; }
     function mint(address to, uint256 amt) external { balanceOf[to] += amt; }
     function burn(uint256 amt) external {
         require(balanceOf[msg.sender] >= amt);
@@ -194,6 +196,22 @@ contract BuybackVaultTest is Test {
     }
 
     // ── execute ───────────────────────────────────────────────────────────────
+    function test_execute_revertsIfCapWindow() public {
+        // Etch a version of the token that reports balanceLimitEnd in the future
+        // (setUp already warped to BUYBACK_MIN_INTERVAL + 100, so block.timestamp > 0).
+        // We patch balanceLimitEnd to return a future timestamp.
+        vm.mockCall(
+            asset,
+            abi.encodeWithSelector(MockAssetToken.balanceLimitEnd.selector),
+            abi.encode(uint48(block.timestamp + 1000))
+        );
+        usdc.mint(address(vault), 1e6);
+        vm.prank(router1);
+        vault.creditUSDC(asset, 1e6, 0);
+        vm.expectRevert(BuybackVault.CapWindowActive.selector);
+        vault.execute(asset, 1e6, 0);
+    }
+
     function test_execute_revertsIfCooldown() public {
         usdc.mint(address(vault), 10e6);
         vm.prank(router1);

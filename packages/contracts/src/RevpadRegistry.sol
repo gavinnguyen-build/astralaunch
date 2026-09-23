@@ -16,24 +16,27 @@ import {RevenueRouter} from "./RevenueRouter.sol";
 ///
 ///         Launch flow (SPEC §6.1 / D11):
 ///         1. Creator launches with Doppler SDK (fixed Revpad config).
-///         2. Anyone calls register(asset, creator, poolId).
+///         2. Anyone calls register(asset, creator).
 ///         3. Registry reads on-chain state and reverts on any mismatch.
 ///         4. On success: clone deployed, escrow/vault notified, Registered emitted.
 ///
 ///         Spike findings (docs/decisions.md):
 ///         - NOGOV = 0x...dEaD — actual governance address for noOp launches.
-///         - getPoolKey takes bytes32 poolId, not asset address.
-///         - No on-chain asset→poolId lookup → poolId is a caller parameter.
+///         - DOPPLER_HOOK is constant across all Revpad launches (D16).
+///         - getState(asset) returns poolKey directly; poolId computed on-chain (D16).
 contract RevpadRegistry {
     // ── Verified Monad mainnet addresses (SPEC §23) ───────────────────────────
-    IAirlock     constant AIRLOCK     = IAirlock(0x660eAaEdEBc968f8f3694354FA8EC0b4c5Ba8D12);
-    IInitializer constant INITIALIZER = IInitializer(0xCe3099B2F07029b086E5e92a1573C5f5A3071783);
-    address      constant NOMIG       = 0x5F3bA43D44375286296Cb85F1EA2EBfa25dde731;
+    IAirlock     constant AIRLOCK      = IAirlock(0x660eAaEdEBc968f8f3694354FA8EC0b4c5Ba8D12);
+    IInitializer constant INITIALIZER  = IInitializer(0xCe3099B2F07029b086E5e92a1573C5f5A3071783);
+    address      constant NOMIG        = 0x5F3bA43D44375286296Cb85F1EA2EBfa25dde731;
     // NOGOV = 0x...dEaD: the dead address is the noOp governance instance stored by Airlock
     // (0xb4deE32... is the NoOpGovernanceFactory, not the governance address — see decisions.md D1)
-    address      constant NOGOV       = 0x000000000000000000000000000000000000dEaD;
-    address      constant USDC        = 0x754704Bc059F8C67012fEd69BC8A327a5aafb603;
+    address      constant NOGOV        = 0x000000000000000000000000000000000000dEaD;
+    address      constant USDC         = 0x754704Bc059F8C67012fEd69BC8A327a5aafb603;
     address      constant AIRLOCK_OWNER = 0x21E2ce70511e4FE542a97708e89520471DAa7A66;
+    // DOPPLER_HOOK is constant across all V4ScheduledMulticurveInitializer launches (D16).
+    // Confirmed identical for every token launched in testing (4+ distinct tokens).
+    address      constant DOPPLER_HOOK = 0x580ca49389d83b019d07E17e99454f2F218e2dc0;
 
     // ── Mutable singletons ────────────────────────────────────────────────────
     address       public treasury;
@@ -56,8 +59,10 @@ contract RevpadRegistry {
     error WrongMigrator(address got, address expected);
     error WrongGovernance(address got, address expected);
     error WrongNumeraire(address got, address expected);
+    error WrongIntegrator(address got, address expected);
 
     // Pool config mismatch errors
+    error WrongPool();  // hook address != DOPPLER_HOOK
     error WrongFee(uint24 got, uint24 expected);
     error WrongTickSpacing(int24 got, int24 expected);
     error WrongPoolCurrencies(); // pool must pair asset ↔ USDC
@@ -74,6 +79,7 @@ contract RevpadRegistry {
     error WrongNumTokensToSell(uint256 got, uint256 expected);
     error WrongVestingCliff(uint64 got, uint64 expected);
     error WrongVestingDuration(uint64 got, uint64 expected);
+    error WrongVestingAmount(uint256 got, uint256 expected);
     error WrongBalanceCap(uint256 got, uint256 expected);
 
     // ── Events ────────────────────────────────────────────────────────────────
@@ -105,14 +111,11 @@ contract RevpadRegistry {
     // ── Register ──────────────────────────────────────────────────────────────
     /// @notice Verify `asset`'s on-chain config and register it on Revpad.
     /// @param asset   The DopplerERC20V1 token address.
-    /// @param creator The address that owns the 35 % Doppler fee share and the vesting allocation.
-    ///                Verified by checking getShares(poolId, creator) == CREATOR_SHARE_WAD.
-    /// @param poolId  The Uniswap v4 poolId for asset's pool.
-    ///                There is no on-chain asset→poolId lookup; caller supplies it and the registry
-    ///                verifies it by calling getPoolKey(poolId) and checking currencies include asset
-    ///                and USDC. (See docs/decisions.md D2.)
+    /// @param creator The address that owns the 35 % Doppler fee share and the 150 M vesting.
+    ///                Verified by checking getShares(poolId, creator) == CREATOR_SHARE_WAD
+    ///                and totalAllocatedOf(creator) == VESTED_TOKENS_NUM.
     /// @return router Address of the newly deployed RevenueRouter clone.
-    function register(address asset, address creator, bytes32 poolId)
+    function register(address asset, address creator)
         external
         returns (address router)
     {
@@ -130,6 +133,7 @@ contract RevpadRegistry {
             ,                     // migrationPool
             uint256 numTokensToSell,
             uint256 totalSupply,
+            address integrator
         ) = AIRLOCK.getAssetData(asset);
 
         if (poolInitializer != address(INITIALIZER)) revert WrongInitializer(poolInitializer, address(INITIALIZER));
@@ -138,11 +142,13 @@ contract RevpadRegistry {
         if (numeraire       != USDC)                 revert WrongNumeraire(numeraire, USDC);
         if (totalSupply     != C.TOTAL_SUPPLY)       revert WrongTotalSupply(totalSupply, C.TOTAL_SUPPLY);
         if (numTokensToSell != C.POOL_TOKENS_NUM)    revert WrongNumTokensToSell(numTokensToSell, C.POOL_TOKENS_NUM);
+        if (integrator      != treasury)             revert WrongIntegrator(integrator, treasury);
 
-        // ── 2. Pool key from poolId (spike-confirmed: getPoolKey takes bytes32) ──
-        // Anti-spoofing: verify the pool contains asset and USDC as its currencies.
-        // See docs/decisions.md Decision D2.
-        PoolKey memory poolKey = INITIALIZER.getPoolKey(poolId);
+        // ── 2. Pool key from getState (Fix 1: getState takes asset, not poolId) ─
+        // This eliminates the poolId caller parameter — poolId is now derived on-chain.
+        // DOPPLER_HOOK is constant across all V4ScheduledMulticurveInitializer launches (D16).
+        (, , PoolKey memory poolKey,) = INITIALIZER.getState(asset);
+        if (poolKey.hooks       != DOPPLER_HOOK)   revert WrongPool();
         if (poolKey.fee         != C.POOL_FEE)     revert WrongFee(poolKey.fee, C.POOL_FEE);
         if (poolKey.tickSpacing != C.TICK_SPACING) revert WrongTickSpacing(poolKey.tickSpacing, C.TICK_SPACING);
 
@@ -150,6 +156,9 @@ contract RevpadRegistry {
         bool c0isUsdc = poolKey.currency0 == USDC && poolKey.currency1 == asset;
         bool c1isUsdc = poolKey.currency1 == USDC && poolKey.currency0 == asset;
         if (!c0isUsdc && !c1isUsdc) revert WrongPoolCurrencies();
+
+        // Compute poolId on-chain from the verified poolKey
+        bytes32 poolId = keccak256(abi.encode(poolKey));
 
         // ── 3. Beneficiary shares ─────────────────────────────────────────────
         _checkShare(poolId, AIRLOCK_OWNER,        C.DOPPLER_SHARE_WAD,  0);
@@ -163,8 +172,28 @@ contract RevpadRegistry {
         (uint64 cliff, uint64 duration) = tok.vestingSchedules(0);
         if (cliff    != uint64(C.VESTING_CLIFF))    revert WrongVestingCliff(cliff, uint64(C.VESTING_CLIFF));
         if (duration != uint64(C.VESTING_DURATION)) revert WrongVestingDuration(duration, uint64(C.VESTING_DURATION));
-        if (tok.maxBalanceLimit() != C.BALANCE_CAP_NUM)
-            revert WrongBalanceCap(tok.maxBalanceLimit(), C.BALANCE_CAP_NUM);
+
+        // Verify creator is the sole vesting beneficiary with exactly 150 M tokens (Fix 2)
+        uint256 allocatedToCreator = tok.totalAllocatedOf(creator);
+        if (allocatedToCreator != C.VESTED_TOKENS_NUM)
+            revert WrongVestingAmount(allocatedToCreator, C.VESTED_TOKENS_NUM);
+        uint256 totalVested = tok.vestedTotalAmount();
+        if (totalVested != C.VESTED_TOKENS_NUM)
+            revert WrongVestingAmount(totalVested, C.VESTED_TOKENS_NUM);
+
+        // Balance cap: absolute value and window [BALANCE_CAP_WINDOW, BALANCE_CAP_WINDOW_MAX].
+        // Both bounds are enforceable after the launch script was fixed to sync Anvil block
+        // time before launch so that vestingStart ≈ startTime (see docs/decisions.md D18).
+        uint256 cap = tok.maxBalanceLimit();
+        if (cap != C.BALANCE_CAP_NUM)
+            revert WrongBalanceCap(cap, C.BALANCE_CAP_NUM);
+        uint256 capEnd    = uint256(tok.balanceLimitEnd());
+        uint256 vestStart = tok.vestingStart();
+        uint256 capWindow = capEnd > vestStart ? capEnd - vestStart : 0;
+        if (capWindow < C.BALANCE_CAP_WINDOW)
+            revert WrongBalanceCap(capWindow, C.BALANCE_CAP_WINDOW);
+        if (capWindow > C.BALANCE_CAP_WINDOW_MAX)
+            revert WrongBalanceCap(capWindow, C.BALANCE_CAP_WINDOW_MAX);
 
         // ── 5. Deploy router clone ────────────────────────────────────────────
         router = LibClone.clone(routerImplementation);
