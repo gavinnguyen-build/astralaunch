@@ -41,7 +41,8 @@
 | O7 | Can the creator change the provider payout address? | Yes, creator-only, emits event |
 | O8 | Facilitator submitter addresses (clean-revenue signal) | Observed: `0x7f6a2850669202519f0FE8aa912451238820Db86`. Maintain a list; never assume a single address (§13) |
 | O9 | Payers with EIP-7702-delegated wallets (ERC-1271 path in the facilitator) | Not yet tested on real Monad; add one payment test before mainnet |
-| O10 | Keeper and server availability SLA | ✅ Resolved: single-instance confirmed acceptable for hackathon (23 Sep — keeper runs on a funded Anvil-dev wallet, verified collect/distribute/buyback in one tick). Mainnet requires dual-region or decentralised keeper; deferred to §21. |
+| O10 | Multi-asset quote pairs (forex stablecoins such as EURC, then tokenised stocks) | EURC is not natively deployed on Monad as of 2026-09; no liquid USDC pool exists. Deferred until Revpad v1 ships and a liquid quote token appears on Monad. See §21 for scope. |
+| O11 | Keeper and server availability SLA | Single-instance confirmed acceptable for hackathon (23 Sep — keeper verified collect/distribute/buyback in one tick). Mainnet requires dual-region or decentralised keeper; deferred to §21. |
 
 When an open item is decided, move it to "Locked" and update the relevant section.
 
@@ -547,7 +548,7 @@ Explicit gas limits on every tx. Keeper wallet funded with MON; alert when low. 
 - Launch from X via existing Chrome extension.
 - Custom v4 hook: route anti-snipe tax fully to buyback; exempt BuybackVault from pool fee.
 - Anchoring gateway log hashes on-chain.
-- **Multi-asset quote pairs**: allow tokens to trade against MON (wrapped) or other stablecoins in addition to USDC, with the same fee split. Requires verifying the numeraire check in RevpadRegistry handles non-USDC pairs and updating the USDC-denominated escrow accounting to support FX conversion.
+- **Multi-asset quote pairs** (O10): allow tokens to trade against forex stablecoins (EURC, then tokenised stocks) as the quote currency, with the same fee split. Prerequisites: (1) quote-token allowlist in RevpadRegistry (admin-curated, verified liquid USDC pool); (2) two-hop buyback USDC → quote → token via PoolManager; (3) escrow conversion: collect token-denominated fees in quote currency, convert to USDC for escrow accounting; (4) USD price source at launch time for displaying start-price in USD regardless of quote; (5) quote-pool oracle for UCR denominator. Estimated 7–12 working days once a liquid quote token exists on Monad. Not blocked on any contract change to the USDC path.
 
 ---
 
@@ -555,7 +556,8 @@ Explicit gas limits on every tx. Keeper wallet funded with MON; alert when low. 
 
 | # | Question | Current default |
 |---|---|---|
-| O10 | Keeper and server availability SLA | Single-instance, no HA. Acceptable for hackathon; mainnet requires dual-region deployment or a decentralised keeper network. Evaluate before mainnet launch. |
+| O10 | Multi-asset quote pairs | EURC not yet on Monad (2026-09). Deferred to post-v1. See §21 for full scope. |
+| O11 | Keeper and server availability SLA | Single-instance, no HA. Acceptable for hackathon; mainnet requires dual-region deployment or a decentralised keeper network. Evaluate before mainnet launch. |
 
 ---
 
