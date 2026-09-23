@@ -84,9 +84,14 @@ async function main() {
       name: 'Revpad Test',
       symbol: 'RVPT',
       tokenURI: 'ipfs://revpad-test',
-      // Per-wallet cap during the first 10 minutes (open decision O3): 1% of supply.
+      // Per-wallet cap window: 1% of supply, 15 min (900 s = spec max).
+      // Use 900 s — not 600 s — so that block-mining lag between reading `now`
+      // and the createMulticurve tx landing (~10-30 s on Anvil) does not push
+      // vestingStart above balanceLimitEnd - 600, which would fail the registry
+      // WrongBalanceCap check.  The registry allows [600, 900] s windows.
+      // (decisions.md D20)
       maxBalanceLimit: SUPPLY / 100n,
-      balanceLimitEnd: startTime + 600,
+      balanceLimitEnd: startTime + 900,
     })
     .saleConfig({ initialSupply: SUPPLY, numTokensToSell: POOL_TOKENS, numeraire: USDC })
     .withCurves({

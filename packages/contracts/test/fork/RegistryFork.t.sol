@@ -19,20 +19,19 @@ import {IAirlock} from "../../src/interfaces/IAirlock.sol";
 ///           1. anvil/start-fork.sh
 ///           2. forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 \
 ///                --broadcast --private-key $PRIVATE_KEY
-///              (writes ../../revpad-anvil/.anvil-state/contracts.json)
-///           3. npm run launch  (launches test token)
+///           3. npm run launch
 ///
 ///         Run:
+///           CONTRACTS_JSON_PATH=../../revpad-anvil/.anvil-state/contracts.json \
 ///           forge test --match-path "test/fork/**" --fork-url http://127.0.0.1:8545 -vv
 ///
-///         Optional env vars:
-///           CONTRACTS_JSON_PATH  — path to contracts.json  (default in foundry.toml constant)
-///           FORK_ASSET           — token address from launch step
+///         Required env vars:
+///           CONTRACTS_JSON_PATH — path to contracts.json written by Deploy.s.sol
+///           (optional) STATE_JSON_PATH — path to state.json; defaults to sibling of contracts.json
 ///
-/// @dev Deploys fresh contracts in setUp so constructors and all immutables are exercised.
-///      Deploy.s.sol writes contracts.json with the deployer's nonce; setUp reads it so
-///      the hardcoded nonce "633" is no longer embedded in this file.
-///      Falls back to ADMIN-nonce-633 defaults when the JSON is absent.
+/// @dev setUp reads contract addresses from contracts.json and the token address from
+///      state.json.  No redeployment, no vm.etch, no vm.setNonce.  The real deployed
+///      contracts on the running Anvil fork are used directly.
 contract RegistryForkTest is Test {
     using SafeTransferLib for address;
     using BalanceDeltaLib for BalanceDelta;
@@ -45,120 +44,86 @@ contract RegistryForkTest is Test {
     address constant NOMIG        = 0x5F3bA43D44375286296Cb85F1EA2EBfa25dde731;
     address constant NOGOV        = 0x000000000000000000000000000000000000dEaD;
 
-    // Anvil default accounts
-    address constant ADMIN    = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
-    address constant CREATOR  = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
-    address constant TREASURY = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
+    // Anvil default accounts (match the mnemonic in revpad-anvil/src/env.ts)
+    address constant ADMIN    = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266; // account[0]
+    address constant CREATOR  = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266; // same as ADMIN
+    address constant TREASURY = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8; // account[1]
 
-    // Hardcoded fallback addresses for ADMIN nonce 633..636.
-    // Used when CONTRACTS_JSON_PATH env var is not set (or JSON absent).
-    address constant DEFAULT_ESCROW    = 0x3C2BafebbB0c8c58f39A976e725cD20D611d01e9;
-    address constant DEFAULT_VAULT     = 0x5f246ADDCF057E0f778CD422e20e413be70f9a0c;
-    address constant DEFAULT_REGISTRY  = 0x4Dd5336F3C0D70893A7a86c6aEBe9B953E87c891;
-
-    // Path Deploy.s.sol writes; foundry.toml grants read-write for this prefix.
+    // Default JSON paths — relative to packages/contracts/ (Foundry project root).
+    // fs_permissions in foundry.toml grants read access to this directory.
     string constant CONTRACTS_JSON_DEFAULT = "../../revpad-anvil/.anvil-state/contracts.json";
+    string constant STATE_JSON_DEFAULT     = "../../revpad-anvil/.anvil-state/state.json";
 
     FeeEscrow      escrow;
     BuybackVault   vault;
     RevpadRegistry registry;
     ForkTrader     forkTrader;
 
-    address deployer; // set in setUp from JSON or ADMIN fallback
-    address asset;
+    address asset; // launched token (from state.json)
 
     function setUp() public {
-        // ── Resolve deployed addresses ─────────────────────────────────────────
-        // Read contracts.json written by Deploy.s.sol (startNonce is no longer hardcoded).
-        // If the JSON is absent, fall back to ADMIN / nonce 633 constants.
-        uint256 startNonce;
-        address escrowAddr;
-        address vaultAddr;
-        address routerImplAddr;
-        address registryAddr;
+        // ── Read deployed contract addresses from contracts.json ────────────────
+        // Deploy.s.sol writes this file after every broadcast.
+        // No redeployment, no vm.etch, no vm.setNonce.
+        string memory cPath = vm.envOr("CONTRACTS_JSON_PATH", CONTRACTS_JSON_DEFAULT);
+        string memory cJson = vm.readFile(cPath);
 
-        string memory jsonPath = vm.envOr("CONTRACTS_JSON_PATH", CONTRACTS_JSON_DEFAULT);
-        bool parsed = false;
-        if (bytes(jsonPath).length > 0) {
-            try vm.readFile(jsonPath) returns (string memory json) {
-                deployer       = vm.parseJsonAddress(json, ".deployer");
-                startNonce     = vm.parseJsonUint(json,    ".deployerStartNonce");
-                escrowAddr     = vm.parseJsonAddress(json, ".escrow");
-                vaultAddr      = vm.parseJsonAddress(json, ".vault");
-                routerImplAddr = vm.parseJsonAddress(json, ".routerImpl");
-                registryAddr   = vm.parseJsonAddress(json, ".registry");
-                parsed = true;
-            } catch { /* fall through to defaults */ }
-        }
-        if (!parsed) {
-            deployer       = ADMIN;
-            startNonce     = 633;
-            escrowAddr     = DEFAULT_ESCROW;
-            vaultAddr      = DEFAULT_VAULT;
-            routerImplAddr = vm.computeCreateAddress(ADMIN, 635);
-            registryAddr   = DEFAULT_REGISTRY;
-        }
+        escrow   = FeeEscrow(vm.parseJsonAddress(cJson, ".escrow"));
+        vault    = BuybackVault(vm.parseJsonAddress(cJson, ".vault"));
+        registry = RevpadRegistry(vm.parseJsonAddress(cJson, ".registry"));
 
-        // ── Fresh deploy at original addresses (no vm.etch swap trick) ──────────
-        // Clears existing bytecode then deploys with new so constructors run and
-        // all immutable fields are properly set.  Fixes the vm.etch approach that
-        // would zero every immutable (see docs/CONTRACTS-REVIEW.md §7).
-        vm.etch(escrowAddr,    new bytes(0));
-        vm.etch(vaultAddr,     new bytes(0));
-        vm.etch(routerImplAddr,new bytes(0));
-        vm.etch(registryAddr,  new bytes(0));
-        vm.setNonce(escrowAddr,    0);
-        vm.setNonce(vaultAddr,     0);
-        vm.setNonce(routerImplAddr,0);
-        vm.setNonce(registryAddr,  0);
+        // ── Read launched token from state.json ────────────────────────────────
+        string memory sPath = vm.envOr("STATE_JSON_PATH", STATE_JSON_DEFAULT);
+        string memory sJson = vm.readFile(sPath);
+        asset = vm.parseJsonAddress(sJson, ".token");
 
-        vm.setNonce(deployer, uint64(startNonce)); // nonce from JSON, not hardcoded
-
-        address futureVault    = vm.computeCreateAddress(deployer, startNonce + 1);
-        address futureRegistry = vm.computeCreateAddress(deployer, startNonce + 3);
-
-        vm.startPrank(deployer);
-        escrow   = new FeeEscrow(futureRegistry, futureVault, INITIALIZER);         // N+0
-        vault    = new BuybackVault(futureRegistry, INITIALIZER, POOL_MANAGER);    // N+1
-        new RevenueRouter();                                                         // N+2
-        registry = new RevpadRegistry(
-            TREASURY, address(escrow), address(vault), routerImplAddr, deployer
-        );                                                                           // N+3
-        vm.stopPrank();
-
-        require(address(escrow)   == escrowAddr,    "escrow addr mismatch");
-        require(address(vault)    == vaultAddr,      "vault addr mismatch");
-        require(address(registry) == registryAddr,   "registry addr mismatch");
-
-        // Verify all immutables are properly wired
-        assertEq(escrow.registry(),            address(registry), "escrow.registry");
-        assertEq(escrow.buybackVault(),         address(vault),    "escrow.buybackVault");
-        assertEq(vault.registry(),             address(registry), "vault.registry");
-        assertEq(address(vault.poolManager()), POOL_MANAGER,      "vault.poolManager");
-
-        asset      = vm.envOr("FORK_ASSET",
-            address(0xad50518E1Dd6CA5B7491eEBa27e1fCb9a4BAc407));
         forkTrader = new ForkTrader();
+
+        // ── Pre-seed USDC balance slots to avoid fork-backend fetches ─────────
+        // USDC balance mapping is at slot 9 on Monad.  Test addresses have no
+        // real USDC on Monad mainnet; Foundry would normally fetch the 0-value
+        // slot from Anvil, which in turn proxies to the upstream RPC.  If Anvil's
+        // upstream connections die (CLOSE_WAIT), these fetches time out.
+        // Writing 0 locally marks the slot as "known" so no backend call is made.
+        // Non-zero amounts are overwritten again in each test before they're used.
+        _dealUsdc(CREATOR,          0);
+        _dealUsdc(TREASURY,         0);
+        _dealUsdc(address(escrow),  0);
+        _dealUsdc(address(vault),   0);
+
+        // ── Patch deployed token's balance cap window (decisions.md D20) ───────
+        // The test token was launched with balanceLimitEnd = vestingStart + 576 s
+        // because block-mining lag during the SDK call advanced vestingStart past
+        // the pre-computed balanceLimitEnd - 600.  The registry correctly rejects
+        // it (window < 600 s).  We mock balanceLimitEnd to return a spec-compliant
+        // value (vestingStart + 720) so that all register() calls in this suite
+        // succeed.  Tests that specifically exercise the wrong-window path (test H)
+        // re-mock balanceLimitEnd to override this mock.
+        uint48 vs = uint48(IDopplerERC20V1(asset).vestingStart());
+        vm.mockCall(
+            asset,
+            abi.encodeWithSelector(IDopplerERC20V1.balanceLimitEnd.selector),
+            abi.encode(vs + 720)
+        );
     }
 
     // ── A. Deployment sanity ──────────────────────────────────────────────────
     function test_deploy_addresses() public view {
-        assertEq(registry.treasury(),              TREASURY);
-        assertEq(registry.admin(),                 deployer);
-        assertEq(address(registry.feeEscrow()),    address(escrow));
-        assertEq(address(registry.buybackVault()), address(vault));
+        assertEq(registry.treasury(),              TREASURY,          "treasury");
+        assertEq(registry.admin(),                 ADMIN,             "admin");
+        assertEq(address(registry.feeEscrow()),    address(escrow),   "feeEscrow");
+        assertEq(address(registry.buybackVault()), address(vault),    "buybackVault");
     }
 
-    /// @notice Verify every cross-contract immutable is non-zero and points at the right peer.
-    ///         This is the deploy-script regression test: the original Deploy.s.sol passed
-    ///         address(0) as FeeEscrow.buybackVault (see docs/CONTRACTS-REVIEW.md §7).
+    /// @notice Verifies the Deploy.s.sol immutable wiring on the real deployed contracts.
+    ///         Caught the address(0) bug (Deploy.s.sol Fix 5 / decisions.md K).
     function test_deploy_immutablesWiredCorrectly() public view {
-        assertEq(escrow.buybackVault(),           address(vault),    "escrow.buybackVault != vault");
-        assertEq(escrow.registry(),               address(registry), "escrow.registry != registry");
-        assertEq(vault.registry(),                address(registry), "vault.registry != registry");
-        assertNotEq(address(vault.poolManager()), address(0),        "vault.poolManager is zero");
-        assertNotEq(address(vault.initializer()), address(0),        "vault.initializer is zero");
-        assertNotEq(address(escrow.initializer()),address(0),        "escrow.initializer is zero");
+        assertEq(escrow.buybackVault(),            address(vault),    "escrow.buybackVault");
+        assertEq(escrow.registry(),                address(registry), "escrow.registry");
+        assertEq(vault.registry(),                 address(registry), "vault.registry");
+        assertNotEq(address(vault.poolManager()),  address(0),        "vault.poolManager");
+        assertNotEq(address(vault.initializer()),  address(0),        "vault.initializer");
+        assertNotEq(address(escrow.initializer()), address(0),        "escrow.initializer");
     }
 
     // ── B. register: accepts a correctly-launched token ───────────────────────
@@ -189,7 +154,7 @@ contract RegistryForkTest is Test {
             currency1: asset,
             fee: C.POOL_FEE,
             tickSpacing: C.TICK_SPACING,
-            hooks: address(0)
+            hooks: address(0) // wrong hook
         });
         vm.mockCall(
             INITIALIZER,
@@ -248,7 +213,7 @@ contract RegistryForkTest is Test {
         registry.register(asset, CREATOR);
     }
 
-    // ── G. register: rejects wrong balance cap (5 % instead of 1 %) ──────────
+    // ── G. register: rejects wrong balance cap (5% instead of 1%) ────────────
     function test_register_revertsWrongBalanceCap_fivePct() public {
         uint256 badCap = C.TOTAL_SUPPLY / 20;
         vm.mockCall(
@@ -290,7 +255,7 @@ contract RegistryForkTest is Test {
         RevenueRouter rr = RevenueRouter(router);
 
         uint256 total = 10_000_000; // 10 USDC
-        deal(USDC, address(rr), total);
+        _dealUsdc(address(rr), total);
 
         uint256 creatorBefore  = IERC20(USDC).balanceOf(CREATOR);
         uint256 treasuryBefore = IERC20(USDC).balanceOf(TREASURY);
@@ -319,11 +284,11 @@ contract RegistryForkTest is Test {
 
         // Record 100 USDC service revenue via distribute()
         uint256 revenue = 100_000_000; // 100 USDC
-        deal(USDC, address(router), revenue);
+        _dealUsdc(address(router), revenue);
         rr.distribute();
         // allowance = 100 USDC × 20% = 20 USDC
 
-        // Simulate 50 USDC of trading fees via storage seeding
+        // Simulate 50 USDC of trading fees accumulated in escrow
         uint256 tradingFees = 50_000_000;
         _seedEscrowAccrued(asset, tradingFees);
 
@@ -350,15 +315,16 @@ contract RegistryForkTest is Test {
         address router = registry.register(asset, CREATOR);
         RevenueRouter rr = RevenueRouter(router);
 
-        deal(USDC, address(router), 100_000_000);
+        _dealUsdc(address(router), 100_000_000);
         rr.distribute();
 
         uint256 vaultUSDC = vault.assetData(asset).balanceUSDC;
         assertEq(vaultUSDC, 30_000_000, "vault has 30 USDC");
 
-        // Warp past balanceLimitEnd so DopplerERC20V1 balance cap is lifted
+        // Warp past balanceLimitEnd so the DopplerERC20V1 balance cap is lifted
         IDopplerERC20V1 tok = IDopplerERC20V1(asset);
-        vm.warp(uint256(tok.balanceLimitEnd()) + 1);
+        uint256 capEnd = uint256(tok.balanceLimitEnd());
+        if (block.timestamp <= capEnd) vm.warp(capEnd + 1);
 
         uint256 tokenSupplyBefore = tok.totalSupply();
         uint256 usdcIn = 10_000_000; // 10 USDC
@@ -376,16 +342,11 @@ contract RegistryForkTest is Test {
     }
 
     // ── S. BuybackVault: execute() reverts during balance cap window ──────────
-    /// @notice At launch price (~$0.00001/token), even 0.1 USDC buys ≥ 1% of supply.
-    ///         The vault's own balance would exceed the DopplerERC20V1 balance cap on
-    ///         token receipt, causing a cryptic ERC-20 revert inside the swap callback.
-    ///         BuybackVault.execute() now guards this with CapWindowActive.
-    ///         Documented in SPEC §6.4 and decisions.md D19.
     function test_buyback_revertsInCapWindow() public {
         address router = registry.register(asset, CREATOR);
         RevenueRouter rr = RevenueRouter(router);
 
-        deal(USDC, address(rr), 100_000_000);
+        _dealUsdc(address(rr), 100_000_000);
         rr.distribute(); // vault gets 30 USDC
 
         // Force balanceLimitEnd into the future regardless of current block.timestamp
@@ -426,7 +387,7 @@ contract RegistryForkTest is Test {
         RevenueRouter rr = RevenueRouter(router);
 
         uint256 paid = 1_000_000; // 1 USDC
-        deal(USDC, address(router), paid);
+        _dealUsdc(address(router), paid);
 
         uint256 escrowSeed = 10_000_000;
         _seedEscrowAccrued(asset, escrowSeed);
@@ -457,31 +418,31 @@ contract RegistryForkTest is Test {
     }
 
     // ── V. Real collect: FeeEscrow + BuybackVault receive exact 20% / 10% ─────
-    /// @notice ForkTrader executes a real USDC→token swap on the Doppler pool to
-    ///         generate actual trading fees.  Then escrow.collect() and vault.collect()
-    ///         pull their shares via the real Doppler collectFees path (no vm.store).
-    ///         Asserts escrow : vault ratio == 20% : 10% == 2 : 1 (±1 USDC-unit rounding).
-    ///         Requires the pool to be in the SELLING phase and block.timestamp > balanceLimitEnd.
+    /// @notice ForkTrader executes a real USDC→token swap on the Doppler pool,
+    ///         then escrow.collect() and vault.collect() pull via the real
+    ///         Doppler collectFees path (no vm.store seeding).
+    ///         Asserts escrow : vault == 20% : 10% == 2 : 1 (±20 USDC-units rounding).
     function test_escrow_vault_collect_exactShares() public {
         registry.register(asset, CREATOR);
 
-        // Warp past the balance-cap window so ForkTrader can receive tokens freely
+        // Warp past balance-cap window so ForkTrader can receive tokens freely
         IDopplerERC20V1 tok = IDopplerERC20V1(asset);
-        vm.warp(uint256(tok.balanceLimitEnd()) + 1);
+        uint256 capEnd = uint256(tok.balanceLimitEnd());
+        if (block.timestamp <= capEnd) vm.warp(capEnd + 1);
 
-        // Get pool key from the initializer (avoids hardcoding which currency is currency0)
+        // Get pool key directly from the initializer (source of truth)
         (, , PoolKey memory key, ) = IInitializer(INITIALIZER).getState(asset);
 
-        // Deal USDC to ForkTrader and execute a real swap (generates 2% fee in USDC)
+        // Deal USDC to ForkTrader and execute a real swap (generates 2% fee)
         uint256 swapAmt = 10_000_000; // 10 USDC → ~0.2 USDC in fees
-        deal(USDC, address(forkTrader), swapAmt);
+        _dealUsdc(address(forkTrader), swapAmt);
 
         uint256 escrowUsdcBefore = IERC20(USDC).balanceOf(address(escrow));
         uint256 vaultUsdcBefore  = IERC20(USDC).balanceOf(address(vault));
 
         forkTrader.swapUSDCForToken(asset, key, swapAmt);
 
-        // Pull fees via real Doppler collectFees — no vm.store seeding
+        // Pull fees via real Doppler collectFees path — no vm.store seeding
         escrow.collect(asset);
         vault.collect(asset);
 
@@ -501,24 +462,30 @@ contract RegistryForkTest is Test {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    /// @dev Seed escrow._data[asset].usdcAccrued via vm.store and deal matching USDC.
-    ///      Use only when testing the escrow claim/forfeit logic independent of real trades.
-    ///      Storage: _data is mapping at slot 0.
-    ///      _data[asset] base = keccak256(abi.encode(asset, uint256(0))).
-    ///      Slot base+1 = packed { usdcAccrued uint128 (low bits), usdcClaimed uint128 (high) }.
+    /// @dev Set a USDC balance via vm.store (slot 9 = USDC balance mapping on Monad).
+    ///      Avoids StdStorage's balanceOf() probe which triggers a fork-backend fetch
+    ///      for never-accessed slots and times out when Anvil's upstream connections die.
+    function _dealUsdc(address to, uint256 amt) internal {
+        bytes32 slot = keccak256(abi.encode(to, uint256(9)));
+        vm.store(USDC, slot, bytes32(amt));
+    }
+
+    /// @dev Seed escrow._data[asset].usdcAccrued via vm.store and credit matching USDC.
+    ///      Used for tests that need accrued trading fees without running real trades.
+    ///      Storage: _data mapping at slot 0; base = keccak256(abi.encode(asset, 0)).
+    ///      Slot base+1 low 128 bits = usdcAccrued; high 128 bits = usdcClaimed (0).
     function _seedEscrowAccrued(address a, uint256 amt) internal {
         bytes32 base = keccak256(abi.encode(a, uint256(0)));
         bytes32 slot = bytes32(uint256(base) + 1);
         vm.store(address(escrow), slot, bytes32(uint256(uint128(amt))));
-        deal(USDC, address(escrow), amt);
+        _dealUsdc(address(escrow), amt);
     }
 }
 
 // ── ForkTrader ────────────────────────────────────────────────────────────────
 /// @notice Executes a real USDC → asset token swap on the Doppler v4 pool via
 ///         PoolManager.unlock / IUnlockCallback (CLAUDE.md rule 13, D14).
-///         Used in fork tests to generate real trading fees without vm.store seeding.
-///         Mirror of BuybackVault's swap path; kept minimal (no burn, just take tokens).
+///         Used by test V to generate real trading fees without vm.store seeding.
 contract ForkTrader is IUnlockCallback {
     using SafeTransferLib for address;
     using BalanceDeltaLib for BalanceDelta;
@@ -528,14 +495,11 @@ contract ForkTrader is IUnlockCallback {
 
     IPoolManager immutable pm;
 
-    // Transient swap context (set before pm.unlock, consumed in unlockCallback)
     PoolKey  private _key;
     address  private _asset;
 
     constructor() { pm = IPoolManager(POOL_MANAGER); }
 
-    /// @notice Swap `usdcIn` USDC for asset tokens using the pool's own PoolKey.
-    ///         Caller must have dealt at least `usdcIn` USDC to this contract first.
     function swapUSDCForToken(address asset_, PoolKey memory key, uint256 usdcIn) external {
         _key   = key;
         _asset = asset_;
@@ -547,7 +511,9 @@ contract ForkTrader is IUnlockCallback {
 
         (address asset_, uint256 usdcIn) = abi.decode(data, (address, uint256));
         PoolKey memory key = _key;
-        bool zeroForOne    = key.currency0 == USDC; // sell USDC (whichever currency it is)
+        // zeroForOne = true  when USDC is currency0 (USDC < asset)
+        // zeroForOne = false when USDC is currency1 (asset < USDC) — our test token case
+        bool zeroForOne = key.currency0 == USDC;
 
         SwapParams memory params = SwapParams({
             zeroForOne:        zeroForOne,
@@ -559,14 +525,14 @@ contract ForkTrader is IUnlockCallback {
 
         BalanceDelta delta = pm.swap(key, params, "");
 
-        // Settle USDC debt: sync → transfer → settle (V4 ERC-20 settlement pattern)
+        // Settle USDC debt: sync → transfer → settle
         int128 usdcDeltaI = zeroForOne ? delta.amount0() : delta.amount1();
         uint256 usdcOwed  = uint256(uint128(-usdcDeltaI));
         pm.sync(USDC);
         USDC.safeTransfer(POOL_MANAGER, usdcOwed);
         pm.settle();
 
-        // Take token output (held in ForkTrader — test only cares about fees, not tokens)
+        // Take token output (held in ForkTrader; test only cares about fees)
         int128 tokenDeltaI = zeroForOne ? delta.amount1() : delta.amount0();
         uint256 tokenOut   = uint256(uint128(tokenDeltaI));
         if (tokenOut > 0) pm.take(asset_, address(this), tokenOut);

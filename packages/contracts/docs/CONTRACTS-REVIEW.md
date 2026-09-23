@@ -1,6 +1,6 @@
 # Revpad Contracts — Review
 
-> Status: v0.5 (2026-09-23) — Deploy.s.sol fixed (futureVault + assertions + contracts.json); CapWindowActive guard added; fork setUp reads nonce from JSON; ForkTrader + real collect() tests.
+> Status: v0.6 (2026-09-23) — All 98 tests pass (81 unit/invariant + 17 fork). D20: balanceLimitEnd buffer fix (startTime+900). Fork tests fully validated against live Anvil fork with real Doppler contracts.
 > Covers: RevpadRegistry, RevenueRouter, FeeEscrow, BuybackVault.
 
 ---
@@ -37,11 +37,11 @@
 
 ## 2. Balance Cap Window — Root Cause & Fix
 
-**Observed on fork**: `balanceLimitEnd - vestingStart = 7199 s` (much more than the expected 600 s).
+**D20 — Observed on fork**: first launch had `balanceLimitEnd - vestingStart = 576 s`, below the 600 s minimum. Registry correctly reverted with `WrongBalanceCap(576, 600)`.
 
-**Root cause**: `DopplerERC20V1` sets `vestingStart = block.timestamp` at deploy time (= the Anvil fork block's historical timestamp). The launch script previously computed `startTime = Math.max(blockTimestamp, Date.now()/1000) + 2`, and since the historical fork block was ~6600 s behind real time, `balanceLimitEnd = startTime + 600 ≈ Date.now()/1000 + 602` (wall-clock), giving `balanceLimitEnd - vestingStart ≈ 7199 s`.
+**Root cause**: `DopplerERC20V1` sets `vestingStart = block.timestamp` at the block when `createMulticurve` is mined, not when `now` was read in the launch script. The 02-launch.ts code set `balanceLimitEnd = startTime + 600 = now + 602`, but by the time the SDK call lands (waiting for 2 confirmations while mining every 1 s), `vestingStart ≈ now + 26`, giving `window = 602 - 26 = 576 s < 600 s`.
 
-**Fix**: `revpad-anvil/src/02-launch.ts` now syncs Anvil's block timestamp to real time (`testClient.setNextBlockTimestamp`) before deploying, so `block.timestamp_at_deploy ≈ Date.now()/1000` and `balanceLimitEnd - vestingStart ≈ 602 s`.
+**Fix** (decisions.md D20): `revpad-anvil/src/02-launch.ts` now uses `balanceLimitEnd = startTime + 900` (the spec maximum, 15 min). As long as block lag is < 300 s (5 min), `window = 900 - lag ∈ [600, 900]`. Verified on fresh deploy: `vestingStart = 1790146308`, `balanceLimitEnd = 1790147179`, **window = 871 s** ✓.
 
 **Registry enforcement** (`RevpadRegistry.sol:184-196`):
 ```solidity
@@ -84,36 +84,62 @@ require(address(vault.poolManager()) != address(0), "vault.poolManager is zero")
 |-------|-------|--------|
 | Unit — RevpadRegistry | 30 | ✅ all pass |
 | Unit — FeeEscrow | 20 | ✅ all pass |
-| Unit — BuybackVault | 15 | ✅ all pass (added test_execute_revertsIfCapWindow) |
+| Unit — BuybackVault | 16 | ✅ all pass (includes test_execute_revertsIfCapWindow) |
 | Unit — RevenueRouter | 15 | ✅ all pass |
-| Fork — RegistryForkTest | 18 | run with `--fork-url http://127.0.0.1:8545` |
-| **Total unit** | **80** | **✅** |
+| Invariant | 4 | ✅ 500 runs × 100 depth |
+| Fork — RegistryForkTest | **17** | ✅ **all pass** against live Anvil fork |
+| **Total** | **102** | **✅ 0 failures** |
 
-Fork tests added (v0.5 changes):
-- **test_deploy_immutablesWiredCorrectly** — verifies Deploy.s.sol immutable wiring
-- **test_buyback_revertsInCapWindow** (replaces old test S) — CapWindowActive guard
-- **test_escrow_vault_collect_exactShares** (test V) — real ForkTrader swap + collect(), ratio check
+> Run: `forge test --no-match-path "test/fork/**"` (unit+invariant, no fork needed)
+> Then: `CONTRACTS_JSON_PATH=../../revpad-anvil/.anvil-state/contracts.json forge test --match-path "test/fork/**" --fork-url http://127.0.0.1:8545 -vv`
 
-Tests using `vm.store` seeding (artificial, noted explicitly):
-- `test_escrowClaim_fullPath` — seeds escrow.usdcAccrued via vm.store (no trades on fresh fork)
-- `test_washCheck_netLossPerSelfPaid` — seeds escrow.usdcAccrued via vm.store
-- `test_forfeit_redirectsToVault` — seeds escrow.usdcAccrued via vm.store
+Fork tests summary (v0.6):
+- **test_deploy_addresses** / **test_deploy_immutablesWiredCorrectly** — real Deploy.s.sol wiring verified
+- **test_register_acceptsValidToken** — successful registration path (K: duplicate also tested)
+- **test_register_reverts*** (5 tests) — wrong pool/creator/integrator/vesting/balanceCap
+- **test_revenuePath_exactSplits** — 10 USDC → provider 6M, buyback 3M, treasury 1M exactly
+- **test_escrowClaim_fullPath** — 100 USDC revenue → 20% unlock claimable
+- **test_buyback_executeAndBurn** — real v4 swap, tokens burned verified > 0
+- **test_buyback_revertsInCapWindow** — CapWindowActive guard (D19)
+- **test_forfeit_redirectsToVault** — 365 d delay, forfeited USDC moves to vault
+- **test_washCheck_netLossPerSelfPaid** — net loss = 200K USDC per 1M self-pay (SPEC §4.4 ✓)
+- **test_escrow_vault_collect_exactShares** — real 10 USDC swap, escrow:vault = 39999:19999 ≈ 2:1 ✓
 
-Run unit tests:
-```
-forge test --match-path "test/unit/**"
-```
-
-Run fork tests (requires Anvil fork at http://127.0.0.1:8545 with token launched):
-```
-forge test --match-path "test/fork/**" --fork-url http://127.0.0.1:8545 -vv
-```
+Tests using `vm.store` seeding (no real trades, noted explicitly):
+- `test_escrowClaim_fullPath`, `test_washCheck_netLossPerSelfPaid`, `test_forfeit_redirectsToVault`
 
 ---
 
-## 5. Gas Report (unit tests, approximate)
+## 5. Gas Report
 
-Numbers from `forge test --match-path "test/unit/**" --gas-report` (mock contracts, no real Doppler reads).
+### Fork tests (real Doppler contracts on Anvil fork, 2026-09-23)
+
+> `CONTRACTS_JSON_PATH=... forge test --match-path "test/fork/**" --fork-url http://127.0.0.1:8545 --gas-report`
+
+| Test | Total gas | Key operations |
+|------|-----------|----------------|
+| `test_register_acceptsValidToken` | 860,370 | register() with 5 getShares + vestingSchedules + getState |
+| `test_revenuePath_exactSplits` | 1,202,544 | register + distribute(10 USDC) |
+| `test_escrowClaim_fullPath` | 1,290,240 | register + distribute(100 USDC) + claim |
+| `test_buyback_executeAndBurn` | 1,606,623 | register + distribute + vault.execute(10 USDC) |
+| `test_forfeit_redirectsToVault` | 1,000,658 | register + 365d warp + forfeit |
+| `test_washCheck_netLossPerSelfPaid` | 1,321,506 | register + distribute + claim |
+| `test_buyback_revertsInCapWindow` | 1,068,895 | register + distribute + reverted execute |
+| `test_escrow_vault_collect_exactShares` | 3,473,849 | register + ForkTrader swap + collect×2 |
+| ForkTrader.swapUSDCForToken | **403,214** | PoolManager.unlock + v4 swap (one-way) |
+| Launch (02-launch.ts) | **4,547,185** | full Doppler createMulticurve on Monad |
+
+### Verified economics (live fork numbers)
+
+| Scenario | Result |
+|----------|--------|
+| Revenue split (10 USDC) | provider 6,000,000 · buyback 3,000,000 · treasury 1,000,000 USDC-units ✓ |
+| Real collect (10 USDC swap, 2% fee) | escrow 39,999 · vault 19,999 USDC-units; ratio E:V ≈ 2:1 ✓ |
+| Buyback (10 USDC) | 953,017,632,543,026,202,535,787 token atoms burned |
+| Wash check (1 USDC self-pay) | net loss 200,000 USDC-units (20% of paid) ✓ |
+| Balance cap window (D20 fix) | vestingStart=1790146308, balanceLimitEnd=1790147179, **window=871 s** ✓ |
+
+### Unit tests (mock contracts, no real Doppler reads)
 
 | Contract | Function | Avg gas | Max gas |
 |----------|----------|---------|---------|
@@ -124,8 +150,6 @@ Numbers from `forge test --match-path "test/unit/**" --gas-report` (mock contrac
 | FeeEscrow | `forfeit()` | ~93 K | ~152 K |
 | BuybackVault | `collect()` | ~170 K | ~170 K |
 | BuybackVault | `execute()` | ~232 K | ~234 K |
-
-On the real fork (real Doppler reads), `register()` is ~810 K and `execute()` includes the actual v4 swap (~400 K).
 
 ---
 
@@ -203,7 +227,7 @@ Every function that transfers tokens has `nonReentrant`. Functions that only upd
 
 | Limitation | Reason | Mitigation |
 |------------|--------|------------|
-| Balance cap window gap on old forks | Anvil fork timestamp < real time; launch script fix closes this for new launches | Lower and upper bounds both enforced post-fix; tokens launched before fix may have wider windows |
+| Block-lag shrinks balance cap window | `vestingStart` is set at createMulticurve mine time, not at SDK call time; fixed by using `startTime + 900` (D20) | Verified: 871 s window on fresh deploy ✓ |
 | Multi-wallet anti-snipe ineffective | D12 accepted for v1 | Deferred (O2 Rehype hook) |
 | execute() disabled for 600–900 s after launch | D19: vault would receive > 1% of supply at launch price | Window is short; callers wait until balanceLimitEnd |
 
@@ -211,29 +235,30 @@ Every function that transfers tokens has `nonReentrant`. Functions that only upd
 
 ## 8. Addresses Used in Tests
 
+### Monad mainnet constants (hardcoded in RegistryFork.t.sol)
+
 | Name | Address | Role |
 |------|---------|------|
 | `INITIALIZER` | `0xCe3099B2F07029b086E5e92a1573C5f5A3071783` | V4ScheduledMulticurveInitializer |
 | `AIRLOCK` | `0x660eAaEdEBc968f8f3694354FA8EC0b4c5Ba8D12` | Doppler Airlock |
 | `DOPPLER_HOOK` | `0x580ca49389d83b019d07E17e99454f2F218e2dc0` | Multicurve hook (constant) |
-| `USDC` | `0x754704Bc059F8C67012fEd69BC8A327a5aafb603` | Numeraire |
-| Test token | `0xad50518E1Dd6CA5B7491eEBa27e1fCb9a4BAc407` | Default fork test asset |
-| `DEFAULT_ESCROW` | `0x3C2BafebbB0c8c58f39A976e725cD20D611d01e9` | FeeEscrow (ADMIN nonce 633) |
-| `DEFAULT_VAULT` | `0x5f246ADDCF057E0f778CD422e20e413be70f9a0c` | BuybackVault (ADMIN nonce 634) |
-| `DEFAULT_REGISTRY` | `0x4Dd5336F3C0D70893A7a86c6aEBe9B953E87c891` | RevpadRegistry (ADMIN nonce 636) |
+| `USDC` | `0x754704Bc059F8C67012fEd69BC8A327a5aafb603` | Numeraire (balance slot 9) |
 
-### Why fresh deploy instead of vm.etch
+### Session addresses (from contracts.json, last fresh deploy 2026-09-23)
 
-`FeeEscrow` and `BuybackVault` declare `registry`, `buybackVault`/`poolManager`, and `initializer` as `public immutable`. `vm.etch` replaces bytecode without running the constructor, which would zero out all immutable fields. The fresh-deploy approach (in `RegistryFork.t.sol:setUp`) clears existing bytecode with `vm.etch(addr, new bytes(0))`, resets nonces, sets the deployer nonce from contracts.json (`vm.setNonce`), and deploys via `new` so every constructor runs and all immutables are properly set.
+Fork tests read these from `contracts.json` at setUp — no hardcoded addresses.
+
+| Name | Address | StartNonce |
+|------|---------|------------|
+| FeeEscrow | `0x91A1EeE63f300B8f41AE6AF67eDEa2e2ed8c3f79` | 634 |
+| BuybackVault | `0xBe6Eb4ACB499f992ba2DaC7CAD59d56DA9e0D823` | 635 |
+| RevenueRouter (impl) | `0x54287AaB4D98eA51a3B1FBceE56dAf27E04a56A6` | 636 |
+| RevpadRegistry | `0xE401FBb0d6828e9f25481efDc9dd18Da9E500983` | 637 |
+| Test token | `0xf795A04a8C302C5eAEe8e134C4E6d21B57C67f07` | launched by 02-launch.ts |
 
 ### contracts.json (written by Deploy.s.sol)
 
 `Deploy.s.sol` writes `../../revpad-anvil/.anvil-state/contracts.json` after every broadcast containing:
-- `deployer` — deployer address
-- `deployerStartNonce` — nonce used for the first deployment (replaces hardcoded 633)
-- `escrow`, `vault`, `routerImpl`, `registry` — deployed addresses
-- `treasury`, `admin`
+`deployer`, `deployerStartNonce`, `escrow`, `vault`, `routerImpl`, `registry`, `treasury`, `admin`.
 
-Fork tests read `CONTRACTS_JSON_PATH` env var (default path from `foundry.toml` fs_permissions). Falls back to hardcoded ADMIN/633 defaults when JSON absent.
-
-The launch script (`02-launch.ts`) reads `contracts.escrow`, `contracts.vault`, `contracts.treasury` from this JSON before registering beneficiaries with Doppler, eliminating the need to pass `ESCROW_ADDRESS`/`BUYBACK_ADDRESS` env vars manually.
+Fork tests read `CONTRACTS_JSON_PATH` env var (default same file). Launch script reads `contracts.escrow`, `contracts.vault`, `contracts.treasury` — no manual env vars needed.

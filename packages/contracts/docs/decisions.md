@@ -227,7 +227,19 @@ Fork test `test_deploy_immutablesWiredCorrectly` verifies the wiring on every se
 
 ---
 
-## Summary of Implemented Changes (v0.5)
+## L. Fix 6 — balanceLimitEnd block-lag buffer (Decision D20)
+
+**Observed**: first fork launch produced `balanceLimitEnd − vestingStart = 576 s` (below the 600 s minimum). Registry reverted `WrongBalanceCap(576, 600)`.
+
+**Root cause**: `02-launch.ts` computed `balanceLimitEnd = startTime + 600 = now + 602`. But `vestingStart` is the block.timestamp when `createMulticurve` is mined — not `now`. By the time the SDK call lands (2-confirmation wait with 1-second interval blocks + actual RPC round-trips), `vestingStart ≈ now + 26`, giving `window = 576 s`.
+
+**Decision D20**: Set `balanceLimitEnd = startTime + 900` (the spec-maximum 15 min). Registry allows [600, 900] s. As long as SDK mining lag is < 300 s (5 min), the window will be in range. Verified on fresh deploy: window = 871 s.
+
+**Fork test fix**: setUp mocks `balanceLimitEnd` to return `vestingStart + 720` for the deployed test token (which was launched with the old code). Tests that verify wrong-window behavior (test H) re-mock to override. `deal(USDC,...)` replaced with `vm.store(USDC, keccak256(addr‖9), amt)` to avoid fork-backend fetches for never-accessed USDC balance slots.
+
+---
+
+## Summary of Implemented Changes (v0.6)
 
 | Change | Decision | Error |
 |--------|----------|-------|
@@ -240,9 +252,11 @@ Fork test `test_deploy_immutablesWiredCorrectly` verifies the wiring on every se
 | `balanceLimitEnd − vestingStart ≥ 600 s` (lower) | D18 | `WrongBalanceCap` |
 | `balanceLimitEnd − vestingStart ≤ 900 s` (upper) | D18 | `WrongBalanceCap` |
 | Launch script syncs Anvil time before deploy | D18 | — |
-| Fork setUp: fresh deploy instead of vm.etch | — | — |
+| Fork setUp: reads from contracts.json + state.json (no redeploy) | Fix 5 | — |
 | `execute()` reverts during balance-cap window | D19 | `CapWindowActive` |
 | Deploy.s.sol: pre-compute futureVault; pass to FeeEscrow | Fix 5 | — |
 | Deploy.s.sol: post-deploy assertions + write contracts.json | Fix 5 | — |
-| Fork setUp reads nonce from contracts.json (not hardcoded) | Fix 5 | — |
+| `balanceLimitEnd = startTime + 900` in launch script | D20 | — |
+| Fork tests: `vm.store` for USDC balances (no `deal()`) | D20 | — |
+| Fork tests: setUp mock for deployed token's balanceLimitEnd | D20 | — |
 | ForkTrader + test V: real collect() with exact 20%:10% ratio | — | — |
