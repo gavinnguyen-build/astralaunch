@@ -7,7 +7,7 @@ import { createServiceSchema, updateServiceSchema } from '@revpad/shared';
 import { MONAD_NETWORK, USDC } from '@revpad/shared';
 import { assertSafeUpstream, SsrfError } from '../lib/ssrf.js';
 import { generateSecret } from '../lib/hmac.js';
-import { REGISTRY_ADDR, RPC_URL, CHAIN_ID, USDC_ADDR } from '../env.js';
+import { REGISTRY_ADDR, RPC_URL, CHAIN_ID, USDC_ADDR, PAYMENT_TIMEOUT_S } from '../env.js';
 import { createPublicClient, http, type Address } from 'viem';
 import { defineChain } from 'viem';
 
@@ -116,8 +116,8 @@ app.get('/:slug/manifest', async (c) => {
       asset:             USDC_ADDR,
       amount:            svc.priceUsdc,
       payTo:             svc.router,
-      maxTimeoutSeconds: 60,
-      extra: { name: 'USD Coin', version: '2' },
+      maxTimeoutSeconds: PAYMENT_TIMEOUT_S,
+      extra: { name: 'USDC', version: '2' },
     },
     endpoint: `/s/${svc.slug}`,
   });

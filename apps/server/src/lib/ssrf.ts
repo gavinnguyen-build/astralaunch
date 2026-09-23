@@ -45,7 +45,15 @@ function blockIpLiteral(hostname: string): void {
  *
  * @throws SsrfError if the URL is unsafe.
  */
+/**
+ * ALLOW_LOCAL_UPSTREAMS=true bypasses SSRF for loopback/private IPs.
+ * Only for testing against Anvil forks. Never set on mainnet/staging.
+ */
+const ALLOW_LOCAL = process.env.ALLOW_LOCAL_UPSTREAMS === 'true';
+
 export async function assertSafeUpstream(rawUrl: string): Promise<void> {
+  if (ALLOW_LOCAL) return; // bypass for local testing
+
   let parsed: URL;
   try {
     parsed = new URL(rawUrl);

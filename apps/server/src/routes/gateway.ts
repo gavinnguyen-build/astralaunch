@@ -28,7 +28,7 @@ import { db } from '../db/client.js';
 import { services, gatewayRequests } from '../db/schema.js';
 import type { Service } from '../db/schema.js';
 import { signRequest } from '../lib/hmac.js';
-import { FACILITATOR_URL, USDC_ADDR, CHAIN_ID } from '../env.js';
+import { FACILITATOR_URL, USDC_ADDR, CHAIN_ID, PAYMENT_TIMEOUT_S } from '../env.js';
 import { MONAD_NETWORK } from '@revpad/shared';
 
 const PAYMENT_HEADER         = 'X-PAYMENT';
@@ -56,8 +56,8 @@ app.all('/:slug/*', async (c) => {
     asset:             USDC_ADDR,
     amount:            svc.priceUsdc,
     payTo:             svc.router as `0x${string}`,
-    maxTimeoutSeconds: 60,
-    extra: { name: 'USD Coin', version: '2' },
+    maxTimeoutSeconds: PAYMENT_TIMEOUT_S,
+    extra: { name: 'USDC', version: '2' },
   };
 
   const paymentRequired: PaymentRequired = {

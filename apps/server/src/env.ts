@@ -24,3 +24,6 @@ export const HMAC_MASTER_KEY    = need('GATEWAY_HMAC_MASTER_KEY');
 /** Comma-separated list of known facilitator submitters (clean-revenue signal). */
 export const SUBMITTERS         = (process.env.FACILITATOR_SUBMITTER_ADDRESSES ?? '')
   .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+/** Payment authorization window in seconds. Default 60; set higher on a test fork when
+ *  block time may have been advanced past wall-clock time (e.g. after keeper cooldown warp). */
+export const PAYMENT_TIMEOUT_S  = Number(process.env.PAYMENT_TIMEOUT_SECONDS ?? 60);
