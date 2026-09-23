@@ -91,20 +91,6 @@ contract RegistryForkTest is Test {
         _dealUsdc(address(escrow),  0);
         _dealUsdc(address(vault),   0);
 
-        // ── Patch deployed token's balance cap window (decisions.md D20) ───────
-        // The test token was launched with balanceLimitEnd = vestingStart + 576 s
-        // because block-mining lag during the SDK call advanced vestingStart past
-        // the pre-computed balanceLimitEnd - 600.  The registry correctly rejects
-        // it (window < 600 s).  We mock balanceLimitEnd to return a spec-compliant
-        // value (vestingStart + 720) so that all register() calls in this suite
-        // succeed.  Tests that specifically exercise the wrong-window path (test H)
-        // re-mock balanceLimitEnd to override this mock.
-        uint48 vs = uint48(IDopplerERC20V1(asset).vestingStart());
-        vm.mockCall(
-            asset,
-            abi.encodeWithSelector(IDopplerERC20V1.balanceLimitEnd.selector),
-            abi.encode(vs + 720)
-        );
     }
 
     // ── A. Deployment sanity ──────────────────────────────────────────────────

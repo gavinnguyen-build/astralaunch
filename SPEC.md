@@ -22,13 +22,13 @@
 | D9 | Doppler multicurve (Uniswap v4), lockable beneficiaries, no migration, pool paired with USDC. |
 | D10 | **Initializer: `V4ScheduledMulticurveInitializer`.** Monad has no standard or decay multicurve initializer (SDK 1.0.43, confirmed on fork). Tick spacing 200. |
 | D11 | **Launch via Doppler SDK, then register on-chain.** The frontend creates the token with the SDK; `RevpadRegistry.register(asset)` verifies the on-chain config and only then deploys the router and lists the token (§6.1). Replaces "factory calls Airlock". |
-| D12 | **Anti-snipe v1 = DopplerERC20V1 per-wallet balance cap: 1% of supply for the first 10 minutes** (verified: over-cap buy reverts, succeeds after the window). Weak against multi-wallet bots; accepted for v1. |
+| D12 | **Anti-snipe v1 = DopplerERC20V1 per-wallet balance cap: 1% of supply for the first 12 minutes** (`balanceLimitEnd = startTime + 720 s`; registry accepts [600, 900] s). Verified: over-cap buy reverts, succeeds after the window. Weak against multi-wallet bots; accepted for v1. |
 | D13 | **x402 facilitator = Monad official** `https://x402-facilitator.molandak.org` (x402 v2 only). Always call it through the SDK `HTTPFacilitatorClient`. Self-hosted facilitator (SDK `registerExactEvmScheme`) is the fallback. |
 | D14 | **Contracts swap through `PoolManager.unlock()` directly** (IUnlockCallback), not Universal Router/Permit2. Universal Router is for user wallets only. |
 | D15 | Each fee beneficiary contract (FeeEscrow, BuybackVault) must call `collectFees` on the initializer itself; Doppler releases a beneficiary's share only to the caller (verified). |
 | D16 | **`DOPPLER_HOOK` is constant across launches.** The V4ScheduledMulticurveInitializer's hook address (`0x580ca49389d83b019d07E17e99454f2F218e2dc0`) is the same for every token launched through it on Monad mainnet. Confirmed across 4+ distinct token launches in testing. `RevpadRegistry.register` now takes `(address asset, address creator)` — `poolId` is computed on-chain from `INITIALIZER.getState(asset).poolKey`. The registry adds `WrongPool` error when the pool's hook ≠ `DOPPLER_HOOK`. |
 | D17 | **Integrator must equal the Revpad treasury.** `Airlock.getAssetData(asset).integrator` is recorded at launch time by the Doppler SDK. For every Revpad token, the integrator is the treasury address. `RevpadRegistry.register` now checks this and reverts with `WrongIntegrator` on mismatch. |
-| D18 | **Balance cap window upper bound not enforced on-chain.** `DopplerERC20V1` does not expose `startTime()`, so `balanceLimitEnd − vestingStart` cannot be tightly bounded (fork value ≈ 7200 s because `vestingStart` uses wall-clock time while `balanceLimitEnd` is set from the historical block timestamp at launch). Registry enforces only the lower bound: `balanceLimitEnd − vestingStart ≥ 600 s`. The upper bound will be added if Doppler adds a `startTime()` getter. |
+| D18 | **Balance cap window: registry enforces [600, 900] s; launch script targets 720 s.** `DopplerERC20V1.vestingStart` = `block.timestamp` at deploy. On Monad (0.4 s blocks) the tx lands ~1 s after `startTime`, giving `window ≈ 721 s`. On Anvil (1 s blocks + SDK lag ~26 s) `window ≈ 696 s`. Both inside [600, 900]. Using 900 caused `WrongBalanceCap` on Monad because the window was 901 s (decisions.md D20). |
 
 ### Open
 | # | Question | Current default |
@@ -208,7 +208,7 @@ Solidity ^0.8.24, Foundry. Custom errors, events on every state change, NatSpec 
 Why: re-implementing the Doppler multicurve encoding in Solidity is long and error-prone. The SDK launch path is already verified on the fork. The registry enforces the same guarantees by **checking** the result on-chain instead of **building** it.
 
 Flow:
-1. Frontend launches with the Doppler SDK using the fixed Revpad config (§4): scheduled multicurve, fee 20000, tick spacing 200, beneficiaries [Airlock owner 5%, creator 35%, FeeEscrow 20%, BuybackVault 10%, treasury 30%], supply 1e9 with 85/15, vesting 30d/365d, balance cap 1% for 10 min, noOp governance and migration, numeraire USDC, integrator = treasury.
+1. Frontend launches with the Doppler SDK using the fixed Revpad config (§4): scheduled multicurve, fee 20000, tick spacing 200, beneficiaries [Airlock owner 5%, creator 35%, FeeEscrow 20%, BuybackVault 10%, treasury 30%], supply 1e9 with 85/15, vesting 30d/365d, balance cap 1% for 12 min (720 s target; registry accepts 10–15 min), noOp governance and migration, numeraire USDC, integrator = treasury.
 2. Anyone calls `register(asset, creator)`. No `poolId` parameter — it is derived on-chain (D16).
 
 ```solidity
@@ -241,7 +241,7 @@ function isRegistered(address asset) external view returns (bool);
 | totalAllocatedOf(creator) == 150M×1e18 (Fix 2) | `WrongVestingAmount` |
 | vestedTotalAmount() == 150M×1e18 (Fix 2) | `WrongVestingAmount` |
 | maxBalanceLimit() == 10M×1e18 (1%) (Fix 3) | `WrongBalanceCap` |
-| balanceLimitEnd − vestingStart ≥ 600 s (Fix 3, D18) | `WrongBalanceCap` |
+| 600 s ≤ balanceLimitEnd − vestingStart ≤ 900 s (Fix 3, D18) | `WrongBalanceCap` |
 | asset not already registered | `AlreadyRegistered` |
 
 Then: deploy `RevenueRouter` clone, register asset in FeeEscrow and BuybackVault (pool key, creator, launch time, router), emit `Registered(asset, creator, router, poolId, timestamp)`.
@@ -301,7 +301,7 @@ Rules in `execute`:
 - Require `minTokenOut`; burn all received tokens with DopplerERC20V1 `burn` (exists; confirm it burns the caller's own balance) or transfer to `0x…dEaD` as fallback.
 - Track `buybackFromRevenue` vs `buybackFromTrading` per asset and emit `BuybackExecuted(asset, usdcIn, tokensBurned, sourceTag)`.
 - Known cost: the swap pays the 2% pool fee (≈1.75% net leakage after the vault's own share returns). Accept for v1.
-- During the first 10 minutes the balance cap applies; tokens are burned in the same call, but verify the vault's transient balance does not exceed the cap on large buybacks (or skip buyback during the window).
+- During the balance cap window (first ~12 minutes; `balanceLimitEnd − vestingStart ∈ [600, 900] s`) `execute()` reverts with `CapWindowActive` (D19). Keeper waits until after `balanceLimitEnd`.
 
 ### 6.5 `CreatorVesting`
 
@@ -321,7 +321,7 @@ Removed in v0.2. DopplerERC20V1 provides vesting with a cliff natively (§4.5).
 3. Frontend shows fixed economics (fee split, supply, vesting, cliff claim date, balance cap) — not editable.
 4. Frontend builds the SDK params (§6.1), simulates, shows the MON gas estimate (~0.5 MON), sends with gasLimit = estimate × 1.1. The SDK waits for 2 confirmations.
 5. Frontend (or server) calls `RevpadRegistry.register(asset)`. On `Registered`: server creates the token record; if a service was configured, it becomes active with `payTo = router`.
-6. Trading opens at the scheduled start time with the 1%/10-minute balance cap.
+6. Trading opens at the scheduled start time with the 1%-per-wallet balance cap active for ~12 minutes.
 
 ## 8. Service attach flow
 
@@ -495,7 +495,7 @@ Explicit gas limits on every tx. Keeper wallet funded with MON; alert when low. 
 | x402 on real Monad (official facilitator) | verify + settle OK, replay rejected |
 | Launch gas on real Monad | 4,589,375 (~0.52 MON); fork within 0.9% |
 
-| RevpadRegistry reads all §6.1 fields from chain | ✅ Verified on fork (15/15 fork tests pass). DOPPLER_HOOK constant confirmed. Integrator == treasury confirmed. totalAllocatedOf + vestedTotalAmount confirmed 150M each. balanceLimitEnd − vestingStart confirmed ≥ 600 s. |
+| RevpadRegistry reads all §6.1 fields from chain | ✅ 17/17 fork tests pass. DOPPLER_HOOK constant confirmed. Integrator == treasury confirmed. totalAllocatedOf + vestedTotalAmount confirmed 150M each. balanceLimitEnd − vestingStart window 696 s on Anvil fork (within [600, 900]). |
 
 ### Still to verify
 - [ ] DopplerERC20V1 `burn` semantics (caller's own balance).

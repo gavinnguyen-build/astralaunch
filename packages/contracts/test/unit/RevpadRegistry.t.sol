@@ -440,6 +440,34 @@ contract RevpadRegistryTest is Test {
         registry.register(asset, creator);
     }
 
+    // Boundary: window = 599 s → revert (one below lower bound)
+    function test_register_revertsWrongBalanceCap_window599() public {
+        token.setBalanceLimitEnd(uint48(block.timestamp + 599));
+        vm.expectRevert(abi.encodeWithSelector(RevpadRegistry.WrongBalanceCap.selector, uint256(599), C.BALANCE_CAP_WINDOW));
+        registry.register(asset, creator);
+    }
+
+    // Boundary: window = 600 s → pass (exact lower bound)
+    function test_register_acceptsWindow600() public {
+        token.setBalanceLimitEnd(uint48(block.timestamp + 600));
+        address router = registry.register(asset, creator);
+        assertTrue(router != address(0));
+    }
+
+    // Boundary: window = 900 s → pass (exact upper bound)
+    function test_register_acceptsWindow900() public {
+        token.setBalanceLimitEnd(uint48(block.timestamp + 900));
+        address router = registry.register(asset, creator);
+        assertTrue(router != address(0));
+    }
+
+    // Boundary: window = 901 s → revert (one above upper bound)
+    function test_register_revertsWrongBalanceCap_window901() public {
+        token.setBalanceLimitEnd(uint48(block.timestamp + 901));
+        vm.expectRevert(abi.encodeWithSelector(RevpadRegistry.WrongBalanceCap.selector, uint256(901), C.BALANCE_CAP_WINDOW_MAX));
+        registry.register(asset, creator);
+    }
+
     // ── admin ─────────────────────────────────────────────────────────────────
     function test_setTreasury_byAdmin() public {
         address newT = address(0xBEEF);
