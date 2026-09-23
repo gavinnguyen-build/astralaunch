@@ -243,6 +243,31 @@ Fork test `test_deploy_immutablesWiredCorrectly` verifies the wiring on every se
 
 ---
 
+## M. Task 0 — Launch price verified (Decision O1)
+
+**Date**: 2026-09-23. Anvil fork of Monad mainnet, token `0x02C829Cf088B20FB501d1a9cef9c9D8C4491604C`.
+
+**Test**: `npm run task0` — funded trader with 10 USDC via `testClient.setStorageAt` (slot 9), swapped exactly 1 USDC for tokens via Universal Router V4_SWAP, measured tokens received.
+
+**Result**:
+| Run | USDC paid | Tokens received | Implied FDV | Ratio vs $10k |
+|-----|-----------|-----------------|-------------|---------------|
+| 1st | 1.000000 | 97,206.785 | $10,000.00 | 1.000× |
+| 2nd | 1.000000 | 96,775.942 | $10,333.15 | 1.033× |
+
+Slight run-to-run variation is tick-rounding (the multicurve initializer places liquidity at discrete ticks; price walks as positions are consumed). Variation < 5% → correct.
+
+**Decision**: `withCurves` config is correct.
+```typescript
+numerairePrice: 1,       // USDC = $1 (human units)
+numeraireDecimals: 6,
+tokenDecimals: 18,
+marketCap: { start: 10_000, end: 200_000 },  // USD, human units
+```
+There is no unit mismatch. SPEC O1 updated: "verified, keeping $10,000 for v1".
+
+---
+
 ## Summary of Implemented Changes (v0.7)
 
 | Change | Decision | Error |

@@ -1,0 +1,33 @@
+{
+  "name": "@revpad/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node --experimental-transform-types src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.0",
+    "@hono/zod-validator": "^0.4.1",
+    "@revpad/shared": "workspace:*",
+    "@x402/core": "2.26.0",
+    "@x402/evm": "2.26.0",
+    "drizzle-orm": "^0.38.0",
+    "hono": "^4.6.0",
+    "postgres": "^3.4.5",
+    "viem": "^2.21.0",
+    "zod": "^3.23.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "drizzle-kit": "^0.30.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

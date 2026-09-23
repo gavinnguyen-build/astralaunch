@@ -91,6 +91,20 @@ contract RegistryForkTest is Test {
         _dealUsdc(address(escrow),  0);
         _dealUsdc(address(vault),   0);
 
+        // ── Clear pre-registration from npm run launch ─────────────────────────
+        // npm run launch now calls registry.register() as the final step so that
+        // the asset/router are available immediately.  Fork tests each call
+        // registry.register() themselves (to test the validation path or to set
+        // up a fresh router), so we reset the registration state here.
+        //
+        // Slots cleared:
+        //   registry.routers[asset]           → RevpadRegistry slot 5
+        //   escrow._data[asset] (base+0)       → creator+launchTime+forfeited (clears launchTime)
+        //   vault._assets[asset] (base+4)      → registered+balanceUSDC (clears registered flag)
+        //
+        // All revenue/accrual fields are already 0 (no trading has occurred since launch).
+        _clearRegistration(asset);
+
     }
 
     // ── A. Deployment sanity ──────────────────────────────────────────────────
@@ -447,6 +461,37 @@ contract RegistryForkTest is Test {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// @dev Clear all registration state for `a` so that register() can be called
+    ///      again in tests even if npm run launch pre-registered the token.
+    ///
+    ///      Storage layout (verified against source + Solady ReentrancyGuard namespaced slot):
+    ///
+    ///      RevpadRegistry:
+    ///        treasury (slot0), feeEscrow (slot1), buybackVault (slot2),
+    ///        routerImplementation (slot3), admin+paused (slot4, packed),
+    ///        routers mapping (slot5)
+    ///
+    ///      FeeEscrow (immutables not in storage):
+    ///        _data mapping (slot0); base = keccak256(abi.encode(asset, 0))
+    ///        base+0: creator(addr20)+launchTime(uint48)+forfeited(bool) — zeroing clears launchTime
+    ///
+    ///      BuybackVault (ReentrancyGuard uses non-sequential namespaced slot, not slot0):
+    ///        _assets mapping (slot0); base = keccak256(abi.encode(asset, 0))
+    ///        PoolKey fields: currency0 (base+0), currency1+fee+tickSpacing (base+1), hooks (base+2)
+    ///        poolId (base+3), registered+balanceUSDC packed (base+4)
+    function _clearRegistration(address a) internal {
+        // 1. RevpadRegistry.routers[a]
+        vm.store(address(registry), keccak256(abi.encode(a, uint256(5))), bytes32(0));
+
+        // 2. FeeEscrow._data[a] base+0 (clears launchTime, passing AlreadyRegistered guard)
+        bytes32 eBase = keccak256(abi.encode(a, uint256(0)));
+        vm.store(address(escrow), eBase, bytes32(0));
+
+        // 3. BuybackVault._assets[a] base+4 (clears registered flag and balanceUSDC)
+        bytes32 vBase = keccak256(abi.encode(a, uint256(0)));
+        vm.store(address(vault), bytes32(uint256(vBase) + 4), bytes32(0));
+    }
 
     /// @dev Set a USDC balance via vm.store (slot 9 = USDC balance mapping on Monad).
     ///      Avoids StdStorage's balanceOf() probe which triggers a fork-backend fetch

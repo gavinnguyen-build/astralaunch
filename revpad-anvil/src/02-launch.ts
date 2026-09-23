@@ -150,21 +150,74 @@ async function main() {
   const creatorBal = await balanceOf(res.tokenAddress, creator);
   pass(creatorBal === 0n, 'creator holds 0 tokens at launch (allocation is vested)', `${creatorBal}`);
 
+  const savedPoolKey = {
+    currency0: state.poolKey.currency0 as Address,
+    currency1: state.poolKey.currency1 as Address,
+    fee: Number(state.poolKey.fee),
+    tickSpacing: Number(state.poolKey.tickSpacing),
+    hooks: state.poolKey.hooks as Address,
+  };
   saveState({
     token: res.tokenAddress,
     poolId: res.poolId,
-    poolKey: {
-      currency0: state.poolKey.currency0 as Address,
-      currency1: state.poolKey.currency1 as Address,
-      fee: Number(state.poolKey.fee),
-      tickSpacing: Number(state.poolKey.tickSpacing),
-      hooks: state.poolKey.hooks as Address,
-    },
+    poolKey: savedPoolKey,
     launchTx: res.transactionHash,
     launchGasUsed: receipt.gasUsed.toString(),
     buyVolumeUsdc: '0',
     sellVolumeToken: '0',
   });
+
+  // ── Register on RevpadRegistry ────────────────────────────────────────────
+  console.log('\nRegistering on RevpadRegistry...');
+  if (!contracts.registry) {
+    throw new Error('contracts.json is missing registry address. Re-deploy contracts first.');
+  }
+  const registryAddr = contracts.registry as Address;
+
+  // Inline ABI for register() — sourced from packages/contracts/out/RevpadRegistry.sol/RevpadRegistry.json
+  const registryAbi = [
+    {
+      type: 'function', name: 'register', stateMutability: 'nonpayable',
+      inputs: [
+        { name: 'asset', type: 'address' },
+        { name: 'creator', type: 'address' },
+      ],
+      outputs: [{ name: 'router', type: 'address' }],
+    },
+  ] as const;
+
+  // Creator calls register (creator address must match the vesting recipient)
+  const gasEst = await publicClient.estimateContractGas({
+    account: creatorWallet.account,
+    address: registryAddr,
+    abi: registryAbi,
+    functionName: 'register',
+    args: [res.tokenAddress, creator],
+  });
+  const registerHash = await creatorWallet.writeContract({
+    address: registryAddr,
+    abi: registryAbi,
+    functionName: 'register',
+    args: [res.tokenAddress, creator],
+    gas: withBuffer(gasEst),
+  });
+  const registerReceipt = await publicClient.waitForTransactionReceipt({ hash: registerHash });
+  if (registerReceipt.status !== 'success') throw new Error(`register reverted: ${registerHash}`);
+
+  // Decode the router address from the return value via a static call
+  const routerAddr = await publicClient.readContract({
+    address: registryAddr,
+    abi: [{ type: 'function', name: 'routers', stateMutability: 'view', inputs: [{ name: '', type: 'address' }], outputs: [{ name: '', type: 'address' }] }] as const,
+    functionName: 'routers',
+    args: [res.tokenAddress],
+  });
+  pass(routerAddr !== '0x0000000000000000000000000000000000000000', 'registry.register succeeded', routerAddr);
+
+  console.log('\n=== Launch + Register complete ===');
+  console.log(`  asset  : ${res.tokenAddress}`);
+  console.log(`  poolId : ${res.poolId}`);
+  console.log(`  router : ${routerAddr}`);
+  console.log(`  tx     : ${registerHash}  (gasUsed ${registerReceipt.gasUsed})`);
   console.log('\nSaved to .anvil-state/state.json. Next: npm run trade');
 }
 

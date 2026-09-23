@@ -12,6 +12,8 @@
     "pay": "tsx src/07-pay.ts",
     "gas-real": "tsx src/real-01-gas.ts",
     "pay-real": "tsx src/real-02-pay.ts",
+    "task0": "tsx src/task0-price.ts",
+    "e2e": "tsx src/e2e.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

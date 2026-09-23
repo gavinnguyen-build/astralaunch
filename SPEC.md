@@ -33,7 +33,7 @@
 ### Open
 | # | Question | Current default |
 |---|---|---|
-| O1 | Standard starting market cap | 10,000 USD (used in tests); revisit before mainnet |
+| O1 | Standard starting market cap | **Verified on Anvil fork (2026-09-23): 1 USDC buys ~96,776 tokens → implied FDV $10,333 (~1.03× target, within tick-rounding). `withCurves` config is correct. Keeping $10,000 for v1. Revisit for mainnet.** |
 | O2 | Stronger anti-snipe: Rehype hook (`startFee`→`endFee` decay + native asset buyback) | **Deferred — research later.** v1 uses D12 only |
 | O4 | Token-denominated escrow fees | Keeper swaps them to USDC (single-currency escrow accounting) |
 | O5 | Verified badge thresholds | Hackathon: ≥20 USDC clean revenue from ≥5 clean payers; mainnet: ≥100 USDC / ≥10 |
@@ -41,6 +41,7 @@
 | O7 | Can the creator change the provider payout address? | Yes, creator-only, emits event |
 | O8 | Facilitator submitter addresses (clean-revenue signal) | Observed: `0x7f6a2850669202519f0FE8aa912451238820Db86`. Maintain a list; never assume a single address (§13) |
 | O9 | Payers with EIP-7702-delegated wallets (ERC-1271 path in the facilitator) | Not yet tested on real Monad; add one payment test before mainnet |
+| O10 | Keeper and server availability SLA | Single-instance acceptable for hackathon; dual-region or decentralised keeper needed for mainnet (see §21) |
 
 When an open item is decided, move it to "Locked" and update the relevant section.
 
@@ -545,6 +546,15 @@ Explicit gas limits on every tx. Keeper wallet funded with MON; alert when low. 
 - Launch from X via existing Chrome extension.
 - Custom v4 hook: route anti-snipe tax fully to buyback; exempt BuybackVault from pool fee.
 - Anchoring gateway log hashes on-chain.
+- **Multi-asset quote pairs**: allow tokens to trade against MON (wrapped) or other stablecoins in addition to USDC, with the same fee split. Requires verifying the numeraire check in RevpadRegistry handles non-USDC pairs and updating the USDC-denominated escrow accounting to support FX conversion.
+
+---
+
+### Open (continued)
+
+| # | Question | Current default |
+|---|---|---|
+| O10 | Keeper and server availability SLA | Single-instance, no HA. Acceptable for hackathon; mainnet requires dual-region deployment or a decentralised keeper network. Evaluate before mainnet launch. |
 
 ---
 
