@@ -12,7 +12,23 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
-import { PORT } from './env.js';
+import { PORT, RPC_URL, PAYMENT_TIMEOUT_S } from './env.js';
+
+// Refuse to start with a dangerously wide payment window on a non-local RPC.
+// PAYMENT_TIMEOUT_SECONDS > 300 is only safe on a local Anvil fork where block
+// time may have been warped past wall-clock time.  On mainnet it would allow
+// replay of stale authorizations.
+{
+  const isLocalRpc = /^https?:\/\/(127\.|localhost|0\.0\.0\.0)/.test(RPC_URL);
+  if (PAYMENT_TIMEOUT_S > 300 && !isLocalRpc) {
+    console.error(
+      `FATAL: PAYMENT_TIMEOUT_SECONDS=${PAYMENT_TIMEOUT_S} exceeds 300 s but ` +
+      `MONAD_RPC_URL is not localhost (${RPC_URL}). ` +
+      `This setting is only permitted on a local Anvil fork.`
+    );
+    process.exit(1);
+  }
+}
 import health from './routes/health.js';
 import servicesRouter from './routes/services.js';
 import tokensRouter from './routes/tokens.js';
