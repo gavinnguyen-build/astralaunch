@@ -41,7 +41,7 @@
 | O7 | Can the creator change the provider payout address? | Yes, creator-only, emits event |
 | O8 | Facilitator submitter addresses (clean-revenue signal) | Observed: `0x7f6a2850669202519f0FE8aa912451238820Db86`. Maintain a list; never assume a single address (§13) |
 | O9 | Payers with EIP-7702-delegated wallets (ERC-1271 path in the facilitator) | Not yet tested on real Monad; add one payment test before mainnet |
-| O10 | Keeper and server availability SLA | Single-instance acceptable for hackathon; dual-region or decentralised keeper needed for mainnet (see §21) |
+| O10 | Keeper and server availability SLA | ✅ Resolved: single-instance confirmed acceptable for hackathon (23 Sep — keeper runs on a funded Anvil-dev wallet, verified collect/distribute/buyback in one tick). Mainnet requires dual-region or decentralised keeper; deferred to §21. |
 
 When an open item is decided, move it to "Locked" and update the relevant section.
 
@@ -492,7 +492,7 @@ Explicit gas limits on every tx. Keeper wallet funded with MON; alert when low. 
 | Per-wallet balance cap | Works (revert inside window, success after) |
 | Supply accounting | 1e9, creator 0 at launch, nothing to timelock |
 | USDC | `0x7547…b603`, name "USDC", version "2", 6 decimals, EIP-3009 |
-| x402 on fork (local facilitator) | verify/settle/replay/tamper all correct |
+| x402 on fork (local facilitator) | verify/settle/replay/tamper all correct. Note: Anvil mnemonic accounts 0–6, 9 carry ERC-7702 delegation code from Monad mainnet fork — must clear with `anvil_setCode` before signing EIP-3009 messages (otherwise facilitator takes ERC-1271 path and fails). Accounts 7, 8 are clean EOAs. |
 | x402 on real Monad (official facilitator) | verify + settle OK, replay rejected |
 | Launch gas on real Monad | 4,589,375 (~0.52 MON); fork within 0.9% |
 
@@ -510,8 +510,9 @@ Explicit gas limits on every tx. Keeper wallet funded with MON; alert when low. 
 | Window | Deliverables |
 |---|---|
 | 22–23 Sep | ✅ Anvil-fork + real-Monad verification; SPEC v0.2; all contracts done with 93 tests (78 unit + 15 fork); Fix 1-3 + integrator check; SPEC v0.3 |
-| 24–30 Sep | Gateway (HTTPFacilitatorClient, settle-after-success), logs, probes; Envio indexer; keeper |
-| 1–5 Oct | Gateway (HTTPFacilitatorClient, settle-after-success), logs, probes; Envio indexer; keeper; deploy to mainnet with a fresh admin key and small amounts; one full real flow |
+| 23 Sep (cont.) | ✅ Backend running end-to-end on Anvil fork: server (Hono + Postgres + x402 gateway) + keeper all functional. E2E test suite 17/17 PASS (A–J: registry, service register, 402, paid call + settlement, replay reject, upstream-fail → 502 + no charge, distribute, escrow claimable, buyback execute, burn). Keeper ran collect/distribute/buyback with real tx hashes. Two fork environment fixes documented: (1) ERC-7702 delegation on Anvil mnemonic accounts requires `anvil_setCode` clearance; (2) USDC EIP-712 domain name is `"USDC"` not `"USD Coin"` (CLAUDE.md rule 14). |
+| 24–30 Sep | Envio indexer; deploy to mainnet with a fresh admin key and small amounts; one full real flow |
+| 1–5 Oct | Deploy to mainnet; one full real flow with official facilitator |
 | 6–12 Oct | Web app (new UI), hosted Prompt template, wash scoring + UCR, 2–3 demo services, demo agent, video |
 | 13 Oct | Submission |
 
