@@ -16,6 +16,7 @@ packages/contracts  Foundry (Solidity ^0.8.24)
 packages/indexer    Envio HyperIndex
 packages/shared     constants, addresses, zod schemas, fee math, shared types
 docs/               VERIFICATION-anvil.md, VERIFICATION-real.md, BANKR_REFERENCE.md, decisions.md
+packages/contracts/docs/  decisions.md, CONTRACTS-REVIEW.md
 ```
 
 ## Commands

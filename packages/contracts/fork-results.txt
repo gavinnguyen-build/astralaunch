@@ -1,0 +1,19 @@
+Compiling 6 files with Solc 0.8.24
+Solc 0.8.24 finished in 22.36s
+Compiler run successful!
+
+Ran 1 test for test/fork/RegistryFork.t.sol:RegistryForkTest
+[FAIL: vm.setNonce: new nonce (0) must be strictly equal to or higher than the account's current nonce (1)] setUp() (block: 107231892) (gas: 0)
+Suite result: FAILED. 0 passed; 1 failed; 0 skipped; finished in 16.49ms (0.00ns CPU time)
+
+
+Ran 1 test suite in 38.01ms (16.49ms CPU time): 0 tests passed, 1 failed, 0 skipped (1 total tests)
+
+Failing tests:
+Encountered 1 failing test in test/fork/RegistryFork.t.sol:RegistryForkTest
+[FAIL: vm.setNonce: new nonce (0) must be strictly equal to or higher than the account's current nonce (1)] setUp() (block: 107231892) (gas: 0)
+
+Encountered a total of 1 failing tests, 0 tests succeeded
+
+Tip: Run `forge test --rerun` to retry only the 1 failed test
+Tip: Run `forge test --debug --match-test <TEST_NAME>` to inspect one failing test in the debugger
