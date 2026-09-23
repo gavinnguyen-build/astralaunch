@@ -1,3 +1,9 @@
 {
-  "onlyBuiltDependencies": ["esbuild"]
+  "onlyBuiltDependencies": [
+    "@reown/appkit",
+    "bufferutil",
+    "esbuild",
+    "keccak",
+    "utf-8-validate"
+  ]
 }
