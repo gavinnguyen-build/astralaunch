@@ -29,4 +29,16 @@ interface IPlatformFeeReceiver {
 
     /// @notice The current treasury that receives forwarded funds.
     function treasury() external view returns (address);
+
+    /// @notice Start a two-step admin transfer.
+    function transferAdmin(address newAdmin) external;
+
+    /// @notice Accept admin role (only callable by pendingAdmin).
+    function acceptAdmin() external;
+
+    /// @notice Cancel a pending admin transfer.
+    function cancelAdminTransfer() external;
+
+    /// @notice The pending admin (zero if none).
+    function pendingAdmin() external view returns (address);
 }

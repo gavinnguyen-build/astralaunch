@@ -30,6 +30,7 @@ contract PlatformFeeReceiver is ReentrancyGuard {
     address public treasury;
     address public proposedTreasury;
     uint256 public proposalExecutableAt;
+    address public pendingAdmin;
 
     // ── Per-asset state ─────────────────────────────────────────────────────────
     mapping(address asset => bytes32 poolId) public assetPoolIds;
@@ -42,6 +43,8 @@ contract PlatformFeeReceiver is ReentrancyGuard {
     error ProposalNotReady();
     error ProposalAlreadyActive();
     error AssetNotRegistered();
+    error NotPendingAdmin();
+    error NoActiveTransfer();
 
     // ── Events ──────────────────────────────────────────────────────────────────
     event AssetRegistered(address indexed asset, bytes32 indexed poolId);
@@ -49,6 +52,9 @@ contract PlatformFeeReceiver is ReentrancyGuard {
     event TreasuryProposed(address indexed proposed, uint256 executableAt);
     event TreasuryAccepted(address indexed oldTreasury, address indexed newTreasury);
     event TreasuryProposalCancelled(address indexed cancelled);
+    event AdminTransferStarted(address indexed currentAdmin, address indexed pendingAdmin);
+    event AdminTransferred(address indexed oldAdmin, address indexed newAdmin);
+    event AdminTransferCancelled(address indexed cancelledPendingAdmin);
 
     // ── Modifiers ───────────────────────────────────────────────────────────────
     modifier onlyAdmin() {
@@ -143,5 +149,30 @@ contract PlatformFeeReceiver is ReentrancyGuard {
     /// @notice Returns the pending treasury proposal details.
     function pendingTreasury() external view returns (address proposed, uint256 executableAt) {
         return (proposedTreasury, proposalExecutableAt);
+    }
+
+    // ── Two-step admin transfer ───────────────────────────────────────────────
+    /// @notice Start a two-step admin transfer. Only current admin.
+    function transferAdmin(address newAdmin) external onlyAdmin {
+        if (newAdmin == address(0)) revert ZeroAddress();
+        pendingAdmin = newAdmin;
+        emit AdminTransferStarted(admin, newAdmin);
+    }
+
+    /// @notice Accept admin role. Only pendingAdmin.
+    function acceptAdmin() external {
+        if (msg.sender != pendingAdmin) revert NotPendingAdmin();
+        address oldAdmin = admin;
+        admin = pendingAdmin;
+        pendingAdmin = address(0);
+        emit AdminTransferred(oldAdmin, admin);
+    }
+
+    /// @notice Cancel a pending admin transfer. Only current admin.
+    function cancelAdminTransfer() external onlyAdmin {
+        if (pendingAdmin == address(0)) revert NoActiveTransfer();
+        address cancelled = pendingAdmin;
+        pendingAdmin = address(0);
+        emit AdminTransferCancelled(cancelled);
     }
 }

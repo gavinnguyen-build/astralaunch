@@ -46,6 +46,7 @@ contract RevpadRegistry {
     address       public routerImplementation;
     address       public admin;
     bool          public paused;
+    address       public pendingAdmin;
 
     // ── Registry state ────────────────────────────────────────────────────────
     mapping(address asset => address router) public routers;
@@ -54,6 +55,9 @@ contract RevpadRegistry {
     error Paused();
     error AlreadyRegistered();
     error NotAdmin();
+    error NotPendingAdmin();
+    error ZeroAddress();
+    error NoActiveTransfer();
 
     // Airlock / initializer mismatch errors
     error WrongInitializer(address got, address expected);
@@ -92,6 +96,9 @@ contract RevpadRegistry {
         uint256 timestamp
     );
     event PauseSet(bool paused);
+    event AdminTransferStarted(address indexed currentAdmin, address indexed pendingAdmin);
+    event AdminTransferred(address indexed oldAdmin, address indexed newAdmin);
+    event AdminTransferCancelled(address indexed cancelledPendingAdmin);
 
     // ── Constructor ───────────────────────────────────────────────────────────
     constructor(
@@ -237,6 +244,32 @@ contract RevpadRegistry {
         if (msg.sender != admin) revert NotAdmin();
         paused = _paused;
         emit PauseSet(_paused);
+    }
+
+    /// @notice Start a two-step admin transfer. Only current admin.
+    function transferAdmin(address newAdmin) external {
+        if (msg.sender != admin) revert NotAdmin();
+        if (newAdmin == address(0)) revert ZeroAddress();
+        pendingAdmin = newAdmin;
+        emit AdminTransferStarted(admin, newAdmin);
+    }
+
+    /// @notice Accept admin role. Only pendingAdmin.
+    function acceptAdmin() external {
+        if (msg.sender != pendingAdmin) revert NotPendingAdmin();
+        address oldAdmin = admin;
+        admin = pendingAdmin;
+        pendingAdmin = address(0);
+        emit AdminTransferred(oldAdmin, admin);
+    }
+
+    /// @notice Cancel a pending admin transfer. Only current admin.
+    function cancelAdminTransfer() external {
+        if (msg.sender != admin) revert NotAdmin();
+        if (pendingAdmin == address(0)) revert NoActiveTransfer();
+        address cancelled = pendingAdmin;
+        pendingAdmin = address(0);
+        emit AdminTransferCancelled(cancelled);
     }
 
     // ── Internal ──────────────────────────────────────────────────────────────
