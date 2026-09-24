@@ -2,10 +2,21 @@
 pragma solidity ^0.8.24;
 
 interface IFeeEscrow {
-    /// @notice Register a new asset. Called by RevpadRegistry once.
-    function registerAsset(address asset, address creator, uint48 launchTime, bytes32 poolId) external;
+    /// @notice Register a new asset. Called by AstralaunchRegistry once.
+    /// @param asset      The DopplerERC20V1 token address.
+    /// @param creator    Creator address that may claim escrow.
+    /// @param launchTime Vesting start / launch timestamp.
+    /// @param poolId     Uniswap v4 pool identifier.
+    /// @param numeraire  Quote token for this asset's pool (USDC or WMON).
+    function registerAsset(
+        address asset,
+        address creator,
+        uint48 launchTime,
+        bytes32 poolId,
+        address numeraire
+    ) external;
 
-    /// @notice Authorize a RevenueRouter to call recordRevenue. Called by RevpadRegistry.
+    /// @notice Authorize a RevenueRouter to call recordRevenue. Called by AstralaunchRegistry.
     function authorizeRouter(address router) external;
 
     /// @notice Collect trading-fee accruals from the Doppler initializer for `asset`.

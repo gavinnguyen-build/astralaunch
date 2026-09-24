@@ -3,20 +3,29 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {PlatformFeeReceiver} from "../../src/PlatformFeeReceiver.sol";
-import {RevpadConstants as C} from "../../src/RevpadConstants.sol";
+import {AstralaunchConstants as C} from "../../src/AstralaunchConstants.sol";
+import {IFeeAdapter} from "../../src/interfaces/IFeeAdapter.sol";
+import {PoolKey} from "../../src/interfaces/IInitializer.sol";
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
-/// @dev Simulates the Doppler initializer's collectFees: deals USDC and tokens
-///      to the caller (msg.sender = PlatformFeeReceiver) via vm.store-style mint.
-contract MockInitializerPFR {
+/// @dev Implements IFeeAdapter so it can serve as the fee adapter in tests.
+contract MockInitializerPFR is IFeeAdapter {
     address constant USDC = 0x754704Bc059F8C67012fEd69BC8A327a5aafb603;
-    // If a test wants collectFees to actually mint tokens, it can pre-fund the PFR.
-    function collectFees(bytes32) external pure returns (uint128, uint128) {
+
+    function collectFees(bytes32) external pure override returns (uint128, uint128) {
         return (0, 0);
     }
 
-    function getShares(bytes32, address) external pure returns (uint256) { return 0; }
+    function getShares(bytes32, address) external pure override returns (uint256) { return 0; }
+
+    function getState(address)
+        external pure override
+        returns (address, uint8, PoolKey memory, int24)
+    {
+        PoolKey memory k;
+        return (address(0), 0, k, 0);
+    }
 }
 
 contract MockUSDCPFR {
@@ -60,18 +69,34 @@ contract MockTokenPFR {
     function totalSupply() external pure returns (uint256) { return 1e27; }
 }
 
+contract MockWMONPFR {
+    mapping(address => uint256) public balanceOf;
+
+    function mint(address to, uint256 amt) external { balanceOf[to] += amt; }
+
+    function transfer(address to, uint256 amt) external returns (bool) {
+        require(balanceOf[msg.sender] >= amt, "MockWMON: insufficient");
+        balanceOf[msg.sender] -= amt;
+        balanceOf[to] += amt;
+        return true;
+    }
+}
+
 // ── Test contract ────────────────────────────────────────────────────────────
 
 contract PlatformFeeReceiverTest is Test {
     address constant USDC_ADDR = 0x754704Bc059F8C67012fEd69BC8A327a5aafb603;
+    address constant WMON_ADDR = 0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A;
 
     PlatformFeeReceiver pfr;
     MockInitializerPFR  init_;
     MockUSDCPFR         usdc;
     MockTokenPFR        token;
+    MockWMONPFR         wmon;
 
     address registryAddr = address(0xABCD);
     address admin        = address(0xAD);
+    address guardian     = address(0x6A12D);
     address treasury     = address(0x7AEA5);
     address asset;
     bytes32 poolId       = keccak256("test-pool");
@@ -86,66 +111,85 @@ contract PlatformFeeReceiverTest is Test {
         vm.etch(USDC_ADDR, address(usdc).code);
         usdc = MockUSDCPFR(USDC_ADDR);
 
-        pfr = new PlatformFeeReceiver(registryAddr, address(init_), treasury, admin);
+        // Etch WMON at canonical address
+        wmon = new MockWMONPFR();
+        vm.etch(WMON_ADDR, address(wmon).code);
+        wmon = MockWMONPFR(WMON_ADDR);
+
+        // v2 constructor: (registry, treasury, admin, guardian) - no initializer
+        pfr = new PlatformFeeReceiver(registryAddr, treasury, admin, guardian);
     }
 
     // ── Constructor ─────────────────────────────────────────────────────────────
 
     function test_constructor_setsState() public view {
         assertEq(pfr.registry(), registryAddr);
-        assertEq(address(pfr.initializer()), address(init_));
         assertEq(pfr.treasury(), treasury);
         assertEq(pfr.admin(), admin);
+        assertEq(pfr.guardian(), guardian);
     }
 
     function test_constructor_revertsZeroRegistry() public {
         vm.expectRevert(PlatformFeeReceiver.ZeroAddress.selector);
-        new PlatformFeeReceiver(address(0), address(init_), treasury, admin);
-    }
-
-    function test_constructor_revertsZeroInitializer() public {
-        vm.expectRevert(PlatformFeeReceiver.ZeroAddress.selector);
-        new PlatformFeeReceiver(registryAddr, address(0), treasury, admin);
+        new PlatformFeeReceiver(address(0), treasury, admin, guardian);
     }
 
     function test_constructor_revertsZeroTreasury() public {
         vm.expectRevert(PlatformFeeReceiver.ZeroAddress.selector);
-        new PlatformFeeReceiver(registryAddr, address(init_), address(0), admin);
+        new PlatformFeeReceiver(registryAddr, address(0), admin, guardian);
     }
 
     function test_constructor_revertsZeroAdmin() public {
         vm.expectRevert(PlatformFeeReceiver.ZeroAddress.selector);
-        new PlatformFeeReceiver(registryAddr, address(init_), treasury, address(0));
+        new PlatformFeeReceiver(registryAddr, treasury, address(0), guardian);
+    }
+
+    function test_constructor_revertsZeroGuardian() public {
+        vm.expectRevert(PlatformFeeReceiver.ZeroAddress.selector);
+        new PlatformFeeReceiver(registryAddr, treasury, admin, address(0));
     }
 
     // ── registerAsset ───────────────────────────────────────────────────────────
 
-    function test_registerAsset_setsPoolId() public {
+    function test_registerAsset_setsPoolIdAndNumeraire() public {
         vm.prank(registryAddr);
-        pfr.registerAsset(asset, poolId);
+        pfr.registerAsset(asset, poolId, USDC_ADDR);
         assertEq(pfr.assetPoolIds(asset), poolId);
+        assertEq(pfr.assetNumeraires(asset), USDC_ADDR);
     }
 
     function test_registerAsset_emitsEvent() public {
         vm.prank(registryAddr);
-        vm.expectEmit(true, true, false, false);
-        emit PlatformFeeReceiver.AssetRegistered(asset, poolId);
-        pfr.registerAsset(asset, poolId);
+        vm.expectEmit(true, true, false, true);
+        emit PlatformFeeReceiver.AssetRegistered(asset, poolId, USDC_ADDR);
+        pfr.registerAsset(asset, poolId, USDC_ADDR);
     }
 
     function test_registerAsset_revertsIfNotRegistry() public {
         vm.expectRevert(PlatformFeeReceiver.NotRegistry.selector);
-        pfr.registerAsset(asset, poolId);
+        pfr.registerAsset(asset, poolId, USDC_ADDR);
     }
 
-    // ── collect ─────────────────────────────────────────────────────────────────
+    // ── setAdapter ────────────────────────────────────────────────────────────
+    function test_setAdapter_byRegistry() public {
+        vm.prank(registryAddr);
+        pfr.setAdapter(asset, address(init_));
+        // No revert means success
+    }
+
+    function test_setAdapter_revertsIfNotRegistry() public {
+        vm.expectRevert(PlatformFeeReceiver.NotRegistry.selector);
+        pfr.setAdapter(asset, address(init_));
+    }
+
+    // ── collect (USDC numeraire) ───────────────────────────────────────────────
 
     function test_collect_forwardsUSDC() public {
-        // Register asset
         vm.prank(registryAddr);
-        pfr.registerAsset(asset, poolId);
+        pfr.registerAsset(asset, poolId, USDC_ADDR);
+        vm.prank(registryAddr);
+        pfr.setAdapter(asset, address(init_));
 
-        // Seed PFR with USDC
         uint256 usdcAmt = 1_000_000; // 1 USDC
         usdc.mint(address(pfr), usdcAmt);
 
@@ -157,7 +201,9 @@ contract PlatformFeeReceiverTest is Test {
 
     function test_collect_forwardsTokens() public {
         vm.prank(registryAddr);
-        pfr.registerAsset(asset, poolId);
+        pfr.registerAsset(asset, poolId, USDC_ADDR);
+        vm.prank(registryAddr);
+        pfr.setAdapter(asset, address(init_));
 
         uint256 tokenAmt = 1e18;
         token.mint(address(pfr), tokenAmt);
@@ -169,7 +215,9 @@ contract PlatformFeeReceiverTest is Test {
 
     function test_collect_forwardsBoth() public {
         vm.prank(registryAddr);
-        pfr.registerAsset(asset, poolId);
+        pfr.registerAsset(asset, poolId, USDC_ADDR);
+        vm.prank(registryAddr);
+        pfr.setAdapter(asset, address(init_));
 
         usdc.mint(address(pfr), 500_000);
         token.mint(address(pfr), 2e18);
@@ -181,13 +229,16 @@ contract PlatformFeeReceiverTest is Test {
 
     function test_collect_emitsEvent() public {
         vm.prank(registryAddr);
-        pfr.registerAsset(asset, poolId);
+        pfr.registerAsset(asset, poolId, USDC_ADDR);
+        vm.prank(registryAddr);
+        pfr.setAdapter(asset, address(init_));
 
         usdc.mint(address(pfr), 100_000);
         token.mint(address(pfr), 1e18);
 
         vm.expectEmit(true, false, false, true);
-        emit PlatformFeeReceiver.Collected(asset, 100_000, 1e18);
+        // v2 Collected event has 3 amount fields: usdcForwarded, tokenForwarded, numeraireForwarded
+        emit PlatformFeeReceiver.Collected(asset, 100_000, 1e18, 0);
         pfr.collect(asset);
     }
 
@@ -198,10 +249,26 @@ contract PlatformFeeReceiverTest is Test {
 
     function test_collect_noopOnZeroBalance() public {
         vm.prank(registryAddr);
-        pfr.registerAsset(asset, poolId);
+        pfr.registerAsset(asset, poolId, USDC_ADDR);
+        vm.prank(registryAddr);
+        pfr.setAdapter(asset, address(init_));
 
         // Should not revert, just emit zero amounts
         pfr.collect(asset);
+    }
+
+    // ── collect (WMON numeraire) ──────────────────────────────────────────────
+    function test_collect_forwardsWMONForWMONPair() public {
+        vm.prank(registryAddr);
+        pfr.registerAsset(asset, poolId, WMON_ADDR);
+        vm.prank(registryAddr);
+        pfr.setAdapter(asset, address(init_));
+
+        wmon.mint(address(pfr), 1_000_000);
+
+        pfr.collect(asset);
+        assertEq(wmon.balanceOf(treasury), 1_000_000, "WMON forwarded to treasury");
+        assertEq(wmon.balanceOf(address(pfr)), 0, "PFR drained of WMON");
     }
 
     // ── proposeTreasury ─────────────────────────────────────────────────────────
@@ -296,13 +363,25 @@ contract PlatformFeeReceiverTest is Test {
         pfr.acceptTreasury();
     }
 
-    // ── cancelProposal ──────────────────────────────────────────────────────────
+    // ── cancelProposal: admin or guardian can cancel ────────────────────────────
 
-    function test_cancelProposal_clearsState() public {
+    function test_cancelProposal_byAdmin_clearsState() public {
         vm.prank(admin);
         pfr.proposeTreasury(address(0xBEEF));
 
         vm.prank(admin);
+        pfr.cancelProposal();
+
+        (address proposed,) = pfr.pendingTreasury();
+        assertEq(proposed, address(0));
+        assertEq(pfr.treasury(), treasury, "treasury unchanged");
+    }
+
+    function test_cancelProposal_byGuardian_clearsState() public {
+        vm.prank(admin);
+        pfr.proposeTreasury(address(0xBEEF));
+
+        vm.prank(guardian);
         pfr.cancelProposal();
 
         (address proposed,) = pfr.pendingTreasury();
@@ -327,12 +406,28 @@ contract PlatformFeeReceiverTest is Test {
         pfr.cancelProposal();
     }
 
-    function test_cancelProposal_revertsIfNotAdmin() public {
+    function test_cancelProposal_revertsIfNotAdminOrGuardian() public {
         vm.prank(admin);
         pfr.proposeTreasury(address(0xBEEF));
 
-        vm.expectRevert(PlatformFeeReceiver.NotAdmin.selector);
+        vm.expectRevert(PlatformFeeReceiver.NotAdminOrGuardian.selector);
         pfr.cancelProposal();
+    }
+
+    function test_guardian_cannotProposeTreasury() public {
+        vm.prank(guardian);
+        vm.expectRevert(PlatformFeeReceiver.NotAdmin.selector);
+        pfr.proposeTreasury(address(0xBEEF));
+    }
+
+    function test_guardian_cannotAcceptTreasury() public {
+        vm.prank(admin);
+        pfr.proposeTreasury(address(0xBEEF));
+        vm.warp(block.timestamp + C.TREASURY_CHANGE_DELAY);
+
+        vm.prank(guardian);
+        vm.expectRevert(PlatformFeeReceiver.NotAdmin.selector);
+        pfr.acceptTreasury();
     }
 
     // ── pendingTreasury ─────────────────────────────────────────────────────────
@@ -348,7 +443,9 @@ contract PlatformFeeReceiverTest is Test {
     function test_fullRoundTrip_treasuryChange() public {
         // Register asset and seed USDC
         vm.prank(registryAddr);
-        pfr.registerAsset(asset, poolId);
+        pfr.registerAsset(asset, poolId, USDC_ADDR);
+        vm.prank(registryAddr);
+        pfr.setAdapter(asset, address(init_));
 
         // Propose new treasury
         address newT = address(0xBEEF);
@@ -363,7 +460,7 @@ contract PlatformFeeReceiverTest is Test {
         pfr.acceptTreasury();
         assertEq(pfr.treasury(), newT);
 
-        // Seed and collect — funds should go to NEW treasury
+        // Seed and collect -- funds should go to NEW treasury
         usdc.mint(address(pfr), 5_000_000);
         token.mint(address(pfr), 3e18);
 
@@ -377,7 +474,9 @@ contract PlatformFeeReceiverTest is Test {
 
     function testFuzz_collect_exactForwarding(uint128 usdcAmt, uint128 tokenAmt) public {
         vm.prank(registryAddr);
-        pfr.registerAsset(asset, poolId);
+        pfr.registerAsset(asset, poolId, USDC_ADDR);
+        vm.prank(registryAddr);
+        pfr.setAdapter(asset, address(init_));
 
         usdc.mint(address(pfr), usdcAmt);
         token.mint(address(pfr), tokenAmt);
@@ -453,13 +552,22 @@ contract PlatformFeeReceiverTest is Test {
         pfr.acceptAdmin();
     }
 
-    // ── cancelAdminTransfer ──────────────────────────────────────────────────
+    // ── cancelAdminTransfer: admin or guardian can cancel ──────────────────────
 
-    function test_cancelAdminTransfer_clearsState() public {
+    function test_cancelAdminTransfer_byAdmin_clearsState() public {
         vm.prank(admin);
         pfr.transferAdmin(address(0xCAFE));
 
         vm.prank(admin);
+        pfr.cancelAdminTransfer();
+        assertEq(pfr.pendingAdmin(), address(0));
+    }
+
+    function test_cancelAdminTransfer_byGuardian_clearsState() public {
+        vm.prank(admin);
+        pfr.transferAdmin(address(0xCAFE));
+
+        vm.prank(guardian);
         pfr.cancelAdminTransfer();
         assertEq(pfr.pendingAdmin(), address(0));
     }
@@ -481,12 +589,27 @@ contract PlatformFeeReceiverTest is Test {
         pfr.cancelAdminTransfer();
     }
 
-    function test_cancelAdminTransfer_revertsIfNotAdmin() public {
+    function test_cancelAdminTransfer_revertsIfNotAdminOrGuardian() public {
         vm.prank(admin);
         pfr.transferAdmin(address(0xCAFE));
 
-        vm.expectRevert(PlatformFeeReceiver.NotAdmin.selector);
+        vm.expectRevert(PlatformFeeReceiver.NotAdminOrGuardian.selector);
         pfr.cancelAdminTransfer();
+    }
+
+    function test_guardian_cannotTransferAdmin() public {
+        vm.prank(guardian);
+        vm.expectRevert(PlatformFeeReceiver.NotAdmin.selector);
+        pfr.transferAdmin(address(0xCAFE));
+    }
+
+    function test_guardian_cannotAcceptAdmin() public {
+        vm.prank(admin);
+        pfr.transferAdmin(address(0xCAFE));
+
+        vm.prank(guardian);
+        vm.expectRevert(PlatformFeeReceiver.NotPendingAdmin.selector);
+        pfr.acceptAdmin();
     }
 
     // ── Old admin loses rights after transfer ────────────────────────────────

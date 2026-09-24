@@ -3,18 +3,26 @@ pragma solidity ^0.8.24;
 
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
-import {RevpadConstants as C} from "./RevpadConstants.sol";
-import {IInitializer, PoolKey} from "./interfaces/IInitializer.sol";
+import {AstralaunchConstants as C} from "./AstralaunchConstants.sol";
+import {IFeeAdapter} from "./interfaces/IFeeAdapter.sol";
 import {IPoolManager, IUnlockCallback, SwapParams, BalanceDelta, BalanceDeltaLib} from "./interfaces/IPoolManager.sol";
+import {PoolKey} from "./interfaces/IInitializer.sol";
 import {IDopplerERC20V1} from "./interfaces/IDopplerERC20V1.sol";
 import {SOURCE_TRADING} from "./interfaces/IBuybackVault.sol";
 
 /// @title  BuybackVault
 /// @notice Singleton that holds buyback funds per asset.
-///         Collects its 10 % trading-fee share from Doppler and receives 30 % of service
+///         Collects its 10% trading-fee share from Doppler and receives 30% of service
 ///         revenue from RevenueRouter. Swaps USDC → asset via PoolManager.unlock and burns.
 ///
-///         Swap path: PoolManager.unlock → unlockCallback → swap → settle USDC → take asset.
+///         v2 changes:
+///         - Dual numeraire support (USDC or WMON pairs).
+///         - For WMON-paired tokens, buyback accumulates USDC but skips the swap
+///           (no USDC/WMON v4 pool exists). TODO: add two-hop path when pool available.
+///         - Removed CapWindowActive guard (Decision #6: balance-limit exclusions
+///           ensure the vault is excluded, so it can hold tokens from minute 0).
+///
+///         Swap path (USDC pairs): PoolManager.unlock → unlockCallback → swap → settle USDC → take asset.
 ///         No Universal Router, no Permit2 (CLAUDE.md rule 13 / D14).
 ///
 ///         SPEC §6.4.
@@ -27,10 +35,11 @@ contract BuybackVault is ReentrancyGuard, IUnlockCallback {
         PoolKey  poolKey;
         bytes32  poolId;
         bool     registered;
-        uint128  balanceUSDC;          // USDC pending for buyback
-        uint128  buybackFromRevenue;   // cumulative USDC swapped tagged SOURCE_REVENUE/FORFEIT
-        uint128  buybackFromTrading;   // cumulative USDC swapped tagged SOURCE_TRADING
-        uint128  tokenBalance;         // asset tokens accumulated (from collect); burned separately
+        address  numeraire;              // USDC or WMON
+        uint128  balanceUSDC;            // USDC pending for buyback
+        uint128  buybackFromRevenue;     // cumulative USDC swapped tagged SOURCE_REVENUE/FORFEIT
+        uint128  buybackFromTrading;     // cumulative USDC swapped tagged SOURCE_TRADING
+        uint128  tokenBalance;           // asset tokens accumulated (from collect); burned separately
         uint64   lastExecuteTime;
     }
 
@@ -38,9 +47,12 @@ contract BuybackVault is ReentrancyGuard, IUnlockCallback {
 
     // ── Singletons ────────────────────────────────────────────────────────────
     address          public immutable registry;
-    IInitializer     public immutable initializer;
     IPoolManager     public immutable poolManager;
     address          constant USDC = 0x754704Bc059F8C67012fEd69BC8A327a5aafb603;
+    address          constant WMON = 0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A;
+
+    /// @notice Fee adapters per-asset (set at registration).
+    mapping(address asset => IFeeAdapter) private _adapters;
 
     // Authorised callers of creditUSDC
     mapping(address => bool) public authorizedCallers;
@@ -56,29 +68,28 @@ contract BuybackVault is ReentrancyGuard, IUnlockCallback {
     error AssetNotRegistered();
     error AlreadyRegistered();
     error CooldownActive();
-    error CapWindowActive();
     error ExceedsMaxPerCall();
     error SlippageTooHigh();
     error SwapFailed();
     error InsufficientBalance();
+    error BuybackNotAvailable(); // WMON-paired tokens cannot be bought back yet (no USDC/WMON pool)
 
     // ── Events ────────────────────────────────────────────────────────────────
-    event AssetRegistered(address indexed asset, bytes32 poolId);
+    event AssetRegistered(address indexed asset, bytes32 poolId, address numeraire);
     event CallerAuthorized(address indexed caller);
-    event FeeCollected(address indexed asset, uint256 usdcDelta, uint256 tokenDelta);
+    event FeeCollected(address indexed asset, uint256 numeraireDelta, uint256 tokenDelta);
     event USDCCredited(address indexed asset, uint256 amt, uint8 sourceTag);
     event BuybackExecuted(address indexed asset, uint256 usdcIn, uint256 tokensBurned, uint8 sourceTag);
     event TokensBurned(address indexed asset, uint256 amt);
 
     // ── Constructor ───────────────────────────────────────────────────────────
-    constructor(address _registry, address _initializer, address _poolManager) {
+    constructor(address _registry, address _poolManager) {
         registry    = _registry;
-        initializer = IInitializer(_initializer);
         poolManager = IPoolManager(_poolManager);
     }
 
     // ── Registry callbacks ────────────────────────────────────────────────────
-    function registerAsset(address asset, PoolKey calldata poolKey, bytes32 poolId)
+    function registerAsset(address asset, PoolKey calldata poolKey, bytes32 poolId, address numeraire)
         external
     {
         if (msg.sender != registry) revert NotRegistry();
@@ -86,7 +97,14 @@ contract BuybackVault is ReentrancyGuard, IUnlockCallback {
         _assets[asset].poolKey    = poolKey;
         _assets[asset].poolId     = poolId;
         _assets[asset].registered = true;
-        emit AssetRegistered(asset, poolId);
+        _assets[asset].numeraire  = numeraire;
+        emit AssetRegistered(asset, poolId, numeraire);
+    }
+
+    /// @notice Set the fee adapter for an asset. Called by AstralaunchRegistry at registration.
+    function setAdapter(address asset, address adapter) external {
+        if (msg.sender != registry) revert NotRegistry();
+        _adapters[asset] = IFeeAdapter(adapter);
     }
 
     function authorize(address caller) external {
@@ -96,26 +114,36 @@ contract BuybackVault is ReentrancyGuard, IUnlockCallback {
     }
 
     // ── Collect trading fees ──────────────────────────────────────────────────
-    /// @notice Pull the vault's 10 % Doppler trading-fee share for `asset`.
+    /// @notice Pull the vault's 10% Doppler trading-fee share for `asset`.
+    ///         For USDC pairs: receives USDC + asset tokens.
+    ///         For WMON pairs: receives WMON + asset tokens.
     function collect(address asset) external nonReentrant {
         AssetData storage d = _assets[asset];
         if (!d.registered) revert AssetNotRegistered();
 
-        uint256 usdcBefore  = USDC.balanceOf(address(this));
-        uint256 tokenBefore = asset.balanceOf(address(this));
+        address num = d.numeraire;
+        uint256 numeraireBefore = num.balanceOf(address(this));
+        uint256 tokenBefore     = asset.balanceOf(address(this));
 
-        initializer.collectFees(d.poolId);
+        _adapters[asset].collectFees(d.poolId);
 
-        uint256 usdcDelta  = USDC.balanceOf(address(this)) - usdcBefore;
-        uint256 tokenDelta = asset.balanceOf(address(this)) - tokenBefore;
+        uint256 numeraireDelta = num.balanceOf(address(this)) - numeraireBefore;
+        uint256 tokenDelta     = asset.balanceOf(address(this)) - tokenBefore;
 
-        if (usdcDelta  > 0) {
-            d.balanceUSDC        += uint128(usdcDelta);
-            d.buybackFromTrading += uint128(usdcDelta);
+        if (num == USDC) {
+            // USDC pair: numeraire fees are USDC, credit directly for buyback
+            if (numeraireDelta > 0) {
+                d.balanceUSDC        += uint128(numeraireDelta);
+                d.buybackFromTrading += uint128(numeraireDelta);
+            }
+        } else {
+            // WMON pair: numeraire fees are WMON. For now, WMON just stays in the vault.
+            // TODO: when USDC/WMON v4 pool exists, swap WMON → USDC → asset.
+            // Trading fee WMON is tracked implicitly by WMON balance held.
         }
         if (tokenDelta > 0) d.tokenBalance += uint128(tokenDelta);
 
-        emit FeeCollected(asset, usdcDelta, tokenDelta);
+        emit FeeCollected(asset, numeraireDelta, tokenDelta);
     }
 
     // ── USDC accounting hook ──────────────────────────────────────────────────
@@ -138,6 +166,10 @@ contract BuybackVault is ReentrancyGuard, IUnlockCallback {
     /// @notice Swap up to `usdcIn` USDC for `asset` through the asset's own Uniswap v4 pool
     ///         and burn all received tokens. Permissionless.
     ///
+    ///         Only available for USDC-paired tokens. For WMON-paired tokens, the USDC
+    ///         accumulates but cannot be swapped (no USDC/WMON v4 pool). Reverts with
+    ///         BuybackNotAvailable().
+    ///
     ///         Constraints: usdcIn ≤ MAX_PER_CALL; at most once per MIN_INTERVAL per asset.
     function execute(address asset, uint256 usdcIn, uint256 minTokenOut)
         external
@@ -145,11 +177,10 @@ contract BuybackVault is ReentrancyGuard, IUnlockCallback {
     {
         AssetData storage d = _assets[asset];
         if (!d.registered) revert AssetNotRegistered();
-        // Refuse during the DopplerERC20V1 per-wallet balance-cap window.
-        // At launch price (~$0.00001/token), even 0.1 USDC buys ≥1% of supply,
-        // which exceeds the vault's own balance limit and reverts inside the swap.
-        // Guard here gives a clear error instead of a cryptic ERC-20 revert.
-        if (block.timestamp < uint256(IDopplerERC20V1(asset).balanceLimitEnd())) revert CapWindowActive();
+
+        // WMON-paired tokens cannot be bought back yet (Decision: accumulate USDC, skip swap)
+        if (d.numeraire == WMON) revert BuybackNotAvailable();
+
         if (block.timestamp < uint256(d.lastExecuteTime) + C.BUYBACK_MIN_INTERVAL) revert CooldownActive();
         if (usdcIn > C.BUYBACK_MAX_PER_CALL) revert ExceedsMaxPerCall();
         if (usdcIn > uint256(d.balanceUSDC)) revert InsufficientBalance();
@@ -200,9 +231,6 @@ contract BuybackVault is ReentrancyGuard, IUnlockCallback {
         BalanceDelta delta = poolManager.swap(key, params, "");
 
         // delta signs: negative = we owe the pool; positive = pool owes us
-        // After selling USDC (currency0 or 1):
-        //   the USDC side of delta is negative (we owe)
-        //   the asset side of delta is positive (pool owes us)
         int128 usdcDeltaI  = zeroForOne ? delta.amount0() : delta.amount1();
         int128 tokenDeltaI = zeroForOne ? delta.amount1() : delta.amount0();
 

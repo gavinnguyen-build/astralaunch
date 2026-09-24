@@ -3,34 +3,58 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {FeeEscrow} from "../../src/FeeEscrow.sol";
-import {RevpadConstants as C} from "../../src/RevpadConstants.sol";
+import {AstralaunchConstants as C} from "../../src/AstralaunchConstants.sol";
+import {IFeeAdapter} from "../../src/interfaces/IFeeAdapter.sol";
+import {PoolKey} from "../../src/interfaces/IInitializer.sol";
 import {SOURCE_FORFEIT} from "../../src/interfaces/IBuybackVault.sol";
 
 // ── Stubs ─────────────────────────────────────────────────────────────────────
-contract MockInitializerFee {
-    // Simulates collectFees: sends USDC (and optionally tokens) to caller.
+
+/// @dev Implements IFeeAdapter so it can serve as both the fee adapter in tests.
+///      Simulates collectFees: sends USDC (or WMON) and optionally tokens to caller.
+contract MockInitializerFee is IFeeAdapter {
     MockTokenUSDC usdc;
+    address       wmon;
     mapping(bytes32 => mapping(address => uint256)) public usdcPending;
-    mapping(bytes32 => mapping(address => uint256)) public tokenPending;
+    mapping(bytes32 => mapping(address => uint256)) public wmonPending;
     address public lastCaller;
 
-    constructor(address _usdc) { usdc = MockTokenUSDC(_usdc); }
+    constructor(address _usdc, address _wmon) {
+        usdc = MockTokenUSDC(_usdc);
+        wmon = _wmon;
+    }
 
     function setUSDCPending(bytes32 poolId, address who, uint256 amt) external {
         usdcPending[poolId][who] = amt;
     }
-    function setTokenPending(bytes32 poolId, address token, address who, uint256 amt) external {
-        tokenPending[poolId][who] = amt; // using who as key
+
+    function setWMONPending(bytes32 poolId, address who, uint256 amt) external {
+        wmonPending[poolId][who] = amt;
     }
 
-    function collectFees(bytes32 poolId) external returns (uint128, uint128) {
+    function collectFees(bytes32 poolId) external override returns (uint128, uint128) {
         lastCaller = msg.sender;
         uint256 u = usdcPending[poolId][msg.sender];
+        uint256 w = wmonPending[poolId][msg.sender];
         if (u > 0) {
             usdcPending[poolId][msg.sender] = 0;
             usdc.mint(msg.sender, u);
         }
-        return (uint128(u), 0);
+        if (w > 0) {
+            wmonPending[poolId][msg.sender] = 0;
+            MockTokenUSDC(wmon).mint(msg.sender, w);
+        }
+        return (uint128(u), uint128(w));
+    }
+
+    function getShares(bytes32, address) external pure override returns (uint256) { return 0; }
+
+    function getState(address)
+        external pure override
+        returns (address, uint8, PoolKey memory, int24)
+    {
+        PoolKey memory k;
+        return (address(0), 0, k, 0);
     }
 }
 
@@ -42,7 +66,7 @@ contract MockBuybackVaultFee {
         lastTag   = tag;
     }
     function authorize(address) external {}
-    function registerAsset(address, bytes calldata, bytes32) external {}
+    function registerAsset(address, bytes calldata, bytes32, address) external {}
 }
 
 contract MockTokenUSDC {
@@ -58,10 +82,14 @@ contract MockTokenUSDC {
 
 // ── Test contract ─────────────────────────────────────────────────────────────
 contract FeeEscrowTest is Test {
+    address constant USDC_ADDR = 0x754704Bc059F8C67012fEd69BC8A327a5aafb603;
+    address constant WMON_ADDR = 0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A;
+
     FeeEscrow          escrow;
     MockInitializerFee init_;
     MockBuybackVaultFee vault;
     MockTokenUSDC       usdc;
+    MockTokenUSDC       wmon;
 
     address registry = address(this);
     address asset    = address(0xA55E7);
@@ -74,16 +102,24 @@ contract FeeEscrowTest is Test {
     function setUp() public {
         // Etch canonical USDC address FIRST so all mocks use the same address
         MockTokenUSDC tmpUsdc = new MockTokenUSDC();
-        vm.etch(0x754704Bc059F8C67012fEd69BC8A327a5aafb603, address(tmpUsdc).code);
-        usdc = MockTokenUSDC(0x754704Bc059F8C67012fEd69BC8A327a5aafb603);
+        vm.etch(USDC_ADDR, address(tmpUsdc).code);
+        usdc = MockTokenUSDC(USDC_ADDR);
 
-        // Now create init_ with the canonical address so collectFees mints to it
-        init_  = new MockInitializerFee(address(usdc));
+        // Etch WMON at canonical address
+        MockTokenUSDC tmpWmon = new MockTokenUSDC();
+        vm.etch(WMON_ADDR, address(tmpWmon).code);
+        wmon = MockTokenUSDC(WMON_ADDR);
+
+        // Create init_ with canonical addresses so collectFees mints correctly
+        init_  = new MockInitializerFee(address(usdc), address(wmon));
         vault  = new MockBuybackVaultFee();
-        escrow = new FeeEscrow(registry, address(vault), address(init_));
 
-        // Register asset
-        escrow.registerAsset(asset, creator, launch, poolId);
+        // v2 constructor: (registry, buybackVault) - no initializer
+        escrow = new FeeEscrow(registry, address(vault));
+
+        // Register asset with USDC numeraire
+        escrow.registerAsset(asset, creator, launch, poolId, USDC_ADDR);
+        escrow.setAdapter(asset, address(init_));
         escrow.authorizeRouter(router1);
     }
 
@@ -93,18 +129,19 @@ contract FeeEscrowTest is Test {
         assertEq(d.creator,    creator);
         assertEq(d.launchTime, launch);
         assertEq(d.poolId,     poolId);
+        assertEq(d.numeraire,  USDC_ADDR);
         assertFalse(d.forfeited);
     }
 
     function test_register_revertsIfNotRegistry() public {
         vm.prank(address(0x999));
         vm.expectRevert(FeeEscrow.NotRegistry.selector);
-        escrow.registerAsset(address(0x1), creator, launch, poolId);
+        escrow.registerAsset(address(0x1), creator, launch, poolId, USDC_ADDR);
     }
 
     function test_register_revertsIfDuplicate() public {
         vm.expectRevert(FeeEscrow.AlreadyRegistered.selector);
-        escrow.registerAsset(asset, creator, launch, poolId);
+        escrow.registerAsset(asset, creator, launch, poolId, USDC_ADDR);
     }
 
     function test_register_revertsForUnregisteredAsset() public {
@@ -112,7 +149,14 @@ contract FeeEscrowTest is Test {
         escrow.collect(address(0xDEAD));
     }
 
-    // ── collect ───────────────────────────────────────────────────────────────
+    // ── setAdapter ────────────────────────────────────────────────────────────
+    function test_setAdapter_revertsIfNotRegistry() public {
+        vm.prank(address(0x999));
+        vm.expectRevert(FeeEscrow.NotRegistry.selector);
+        escrow.setAdapter(asset, address(init_));
+    }
+
+    // ── collect (USDC numeraire) ──────────────────────────────────────────────
     function test_collect_accumulatesUSDC() public {
         init_.setUSDCPending(poolId, address(escrow), 500_000);
         escrow.collect(asset);
@@ -123,6 +167,23 @@ contract FeeEscrowTest is Test {
     function test_collect_zeroDoesNothing() public {
         escrow.collect(asset);
         assertEq(escrow.tokenData(asset).usdcAccrued, 0);
+    }
+
+    // ── collect (WMON numeraire) ──────────────────────────────────────────────
+    function test_collect_wmon_parksAsNumerairePending() public {
+        // Register a WMON-paired asset
+        address wmonAsset = address(0xBEE);
+        bytes32 wmonPoolId = keccak256("wmon-pool");
+        escrow.registerAsset(wmonAsset, creator, launch, wmonPoolId, WMON_ADDR);
+        escrow.setAdapter(wmonAsset, address(init_));
+
+        init_.setWMONPending(wmonPoolId, address(escrow), 300_000);
+        escrow.collect(wmonAsset);
+
+        FeeEscrow.TokenData memory d = escrow.tokenData(wmonAsset);
+        // WMON fees are parked as numerairePending (not usdcAccrued)
+        assertEq(d.numerairePending, 300_000);
+        assertEq(d.usdcAccrued, 0);
     }
 
     // ── recordRevenue ─────────────────────────────────────────────────────────
@@ -143,7 +204,7 @@ contract FeeEscrowTest is Test {
     }
 
     function test_claimable_cappedByAccrued() public {
-        // 1 USDC accrued, 100 USDC revenue → allowance = 20 USDC; capped by 1 USDC accrued
+        // 1 USDC accrued, 100 USDC revenue -> allowance = 20 USDC; capped by 1 USDC accrued
         init_.setUSDCPending(poolId, address(escrow), 1_000_000);
         escrow.collect(asset);
         vm.prank(router1);
@@ -152,7 +213,7 @@ contract FeeEscrowTest is Test {
     }
 
     function test_claimable_cappedByAllowance() public {
-        // 100 USDC accrued, 1 USDC revenue → allowance = 0.2 USDC
+        // 100 USDC accrued, 1 USDC revenue -> allowance = 0.2 USDC
         init_.setUSDCPending(poolId, address(escrow), 100_000_000);
         escrow.collect(asset);
         vm.prank(router1);
@@ -223,10 +284,32 @@ contract FeeEscrowTest is Test {
         assertEq(escrow.claimable(asset), 0);
     }
 
+    // ── forfeit with WMON pending ─────────────────────────────────────────────
+    function test_forfeit_movesWMONToBuyback() public {
+        // Register a WMON-paired asset
+        address wmonAsset = address(0xBEE);
+        bytes32 wmonPoolId = keccak256("wmon-pool");
+        escrow.registerAsset(wmonAsset, creator, launch, wmonPoolId, WMON_ADDR);
+        escrow.setAdapter(wmonAsset, address(init_));
+
+        // Accrue WMON
+        init_.setWMONPending(wmonPoolId, address(escrow), 500_000);
+        escrow.collect(wmonAsset);
+        assertEq(escrow.tokenData(wmonAsset).numerairePending, 500_000);
+
+        vm.warp(uint256(launch) + C.FORFEIT_DELAY + 1);
+        escrow.forfeit(wmonAsset);
+
+        assertTrue(escrow.tokenData(wmonAsset).forfeited);
+        // WMON should be transferred to buyback vault
+        assertEq(wmon.balanceOf(address(vault)), 500_000);
+        assertEq(escrow.tokenData(wmonAsset).numerairePending, 0);
+    }
+
     // ── Fuzz ──────────────────────────────────────────────────────────────────
-    /// @dev claimable ≤ min(allowance, accrued) − claimed always.
+    /// @dev claimable <= min(allowance, accrued) - claimed always.
     function testFuzz_claimable_bounds(uint128 accrued, uint128 revenue, uint128 claimed) public {
-        // bound claimed ≤ accrued
+        // bound claimed <= accrued
         claimed = uint128(bound(uint256(claimed), 0, uint256(accrued)));
 
         init_.setUSDCPending(poolId, address(escrow), accrued);
@@ -234,9 +317,6 @@ contract FeeEscrowTest is Test {
         vm.prank(router1);
         escrow.recordRevenue(asset, revenue);
 
-        // Manually set claimed via partial claims (simulate with token transfers)
-        // We can't set usdcClaimed directly; use real claim flow
-        // Just verify claimable never exceeds theoretical max
         uint256 c = escrow.claimable(asset);
         uint256 allowance = (uint256(revenue) * C.ESCROW_UNLOCK_BPS) / 10_000;
         uint256 maxPay    = allowance < accrued ? allowance : accrued;
@@ -244,7 +324,7 @@ contract FeeEscrowTest is Test {
         assertGe(c, 0);
     }
 
-    /// @dev sum of claimed + remaining claimable ≤ accrued at all times.
+    /// @dev sum of claimed + remaining claimable <= accrued at all times.
     function testFuzz_escrow_noOverpayment(uint128 accrued, uint128 revenue) public {
         revenue = uint128(bound(uint256(revenue), 1e6, type(uint128).max));
         accrued = uint128(bound(uint256(accrued), 1, type(uint64).max));
@@ -261,7 +341,7 @@ contract FeeEscrowTest is Test {
         }
 
         FeeEscrow.TokenData memory d = escrow.tokenData(asset);
-        // claimed + remaining claimable ≤ usdcAccrued
+        // claimed + remaining claimable <= usdcAccrued
         assertLe(uint256(d.usdcClaimed) + escrow.claimable(asset), uint256(d.usdcAccrued));
     }
 }
