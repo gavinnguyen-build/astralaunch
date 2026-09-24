@@ -239,98 +239,173 @@ cast call 0x660eAaEdEBc968f8f3694354FA8EC0b4c5Ba8D12 \
 
 ---
 
-## 5. Start server
+## 5. Start server (mainnet)
+
+Fill in secrets in `apps/server/.env.mainnet` (copy from `.env.mainnet.example`):
 
 ```bash
-# Contracts (from deployments/monad-mainnet.json)
-USDC_ADDRESS=0x754704Bc059F8C67012fEd69BC8A327a5aafb603
-PLATFORM_FEE_RECEIVER_ADDRESS=$(jq -r .platformFeeReceiver deployments/monad-mainnet.json)
-REVPAD_REGISTRY_ADDRESS=$(jq -r .registry deployments/monad-mainnet.json)
-FEE_ESCROW_ADDRESS=$(jq -r .escrow deployments/monad-mainnet.json)
-BUYBACK_VAULT_ADDRESS=$(jq -r .vault deployments/monad-mainnet.json)
-
-# Point to contracts JSON for dryRun check
-CONTRACTS_JSON_PATH=packages/contracts/deployments/monad-mainnet.json
-
-# Admin verification (server checks .admin() on startup)
-ADMIN_ADDRESS=0xe89f19D370F496520803e7ABb30c1A20B04B0f7f
-
-MONAD_RPC_URL=https://rpc.monad.xyz
-MONAD_CHAIN_ID=143
-X402_FACILITATOR_URL=https://x402-facilitator.molandak.org
-FACILITATOR_SUBMITTER_ADDRESSES=0x7f6a2850669202519f0FE8aa912451238820Db86
-PAYMENT_TIMEOUT_SECONDS=60
-GATEWAY_HMAC_MASTER_KEY=<openssl rand -hex 32>
-DATABASE_URL=postgresql://revpad:<pw>@<host>:5432/revpad
-PRIVY_APP_ID=<app id>
-PRIVY_APP_SECRET=<app secret>
-LITELLM_BASE_URL=<url>
-LITELLM_API_KEY=<key>
+cd apps/server
+cp .env.mainnet.example .env.mainnet
+# Edit: DATABASE_URL, GATEWAY_HMAC_MASTER_KEY (openssl rand -hex 32),
+#       PRIVY_APP_ID, PRIVY_APP_SECRET, LITELLM_BASE_URL, LITELLM_API_KEY
 ```
 
-The server:
-1. Checks `dryRun` flag in `CONTRACTS_JSON_PATH` -- refuses to start if `true`
-2. Verifies all contract addresses have bytecode on chain
-3. If `ADMIN_ADDRESS` is set, checks `RevpadRegistry.admin()` and `PlatformFeeReceiver.admin()` match
+Start:
 
 ```bash
-pnpm -F server dev
+pnpm -F server start:mainnet
+```
+
+The server checks `dryRun`, bytecode, and admin wiring before accepting traffic.
+
+---
+
+## 6. Start keeper (mainnet)
+
+Fill in `apps/keeper/.env.mainnet`:
+
+```bash
+cd apps/keeper
+cp .env.mainnet.example .env.mainnet
+# Edit: KEEPER_PRIVATE_KEY (set via read -s at runtime if preferred),
+#       ASSETS, ROUTERS, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+```
+
+```bash
+# Set keeper key without shell history
+read -s KEEPER_PRIVATE_KEY && export KEEPER_PRIVATE_KEY
+
+pnpm -F keeper start:mainnet -- --telegram-test  # test alerts first
+pnpm -F keeper start:mainnet                     # start polling
+```
+
+The keeper runs immediately on start, then every `POLL_INTERVAL_S` seconds.
+
+---
+
+## 7. Register BYO service
+
+With the server running on mainnet:
+
+```bash
+curl -X POST http://localhost:3001/api/services \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "asset": "0x13DB78bd3F92382306a17d50dAC93Af1904e171d",
+    "creator": "0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6",
+    "slug": "nullsight",
+    "name": "nullsight",
+    "upstreamUrl": "https://httpbin.org",
+    "priceUsdc": "500000",
+    "description": "nullsight test endpoint",
+    "responseSchema": "{\"type\":\"object\",\"required\":[\"slideshow\"]}"
+  }'
+```
+
+Expected: `201` with `{ "id": "...", "slug": "nullsight", "router": "0x95D381..." }`.
+
+Verify:
+
+```bash
+curl http://localhost:3001/api/services/nullsight/manifest | jq .
 ```
 
 ---
 
-## 6. Start keeper
+## 8. First paid call
 
 ```bash
-MONAD_RPC_URL=https://rpc.monad.xyz
-KEEPER_PRIVATE_KEY=<funded keeper wallet>
-ASSETS=<comma-separated asset addresses>
-ROUTERS=<comma-separated router addresses>
-CONTRACTS_JSON_PATH=packages/contracts/deployments/monad-mainnet.json
-PLATFORM_FEE_RECEIVER_ADDRESS=$(jq -r .platformFeeReceiver deployments/monad-mainnet.json)
-REVPAD_REGISTRY_ADDRESS=$(jq -r .registry deployments/monad-mainnet.json)
-FEE_ESCROW_ADDRESS=$(jq -r .escrow deployments/monad-mainnet.json)
-BUYBACK_VAULT_ADDRESS=$(jq -r .vault deployments/monad-mainnet.json)
-ADMIN_ADDRESS=0xe89f19D370F496520803e7ABb30c1A20B04B0f7f
-TELEGRAM_BOT_TOKEN=<bot token>
-TELEGRAM_CHAT_ID=<chat id>
-POLL_INTERVAL_S=30
-```
+read -s AGENT_PRIVATE_KEY && export AGENT_PRIVATE_KEY
 
-```bash
-pnpm -F keeper dev -- --telegram-test   # test alerts first
-pnpm -F keeper dev
-```
-
----
-
-## 7. First paid call
-
-```bash
 cd revpad-anvil
-echo "REAL_PRIVATE_KEY=<private key with USDC balance>" > .env.real
-npx tsx src/real-02-pay.ts
+
+SERVER_URL=http://localhost:3001 \
+SERVICE_SLUG=nullsight \
+SERVICE_PATH=/json \
+MONAD_RPC_URL=https://rpc.monad.xyz \
+  npx tsx src/mainnet-pay.ts
 ```
+
+The script:
+1. Fetches service manifest (payment requirements)
+2. Signs EIP-3009 payment (0.5 USDC)
+3. Sends paid request through gateway
+4. Prints response, router USDC delta, and settlement tx hash
+
+Expected: router balance +500000 (0.5 USDC).
 
 ---
 
-## 8. Verify each step
+## 9. Keeper distribute + verify
+
+After the paid call, the router holds 0.5 USDC. The keeper distributes on its next tick.
+For a one-shot run, just start and stop after the first tick:
+
+```bash
+# One tick runs immediately on start. Ctrl+C after it finishes.
+pnpm -F keeper start:mainnet
+```
+
+### Expected distribute() split (0.5 USDC = 500000)
+
+| Recipient | Share | Amount (6 dec) |
+|-----------|-------|----------------|
+| Provider (creator) | 60% | 300,000 (0.30 USDC) |
+| BuybackVault | 30% | 150,000 (0.15 USDC) |
+| PlatformFeeReceiver | 10% | 50,000 (0.05 USDC) |
+| Escrow allowance | 20% of recorded revenue | 100,000 (0.10 USDC) |
+
+**Buyback (execute)**: skipped until `block.timestamp > balanceLimitEnd` (1790235703, ~12 min after launch).
+
+**PlatformFeeReceiver.collect()**: forwards USDC to treasury `0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C`.
+
+---
+
+## 10. Verify each step on-chain
 
 ```bash
 RPC=https://rpc.monad.xyz
-ROUTER=<router address from registration>
-ESCROW=$(jq -r .escrow deployments/monad-mainnet.json)
-VAULT=$(jq -r .vault deployments/monad-mainnet.json)
-PFR=$(jq -r .platformFeeReceiver deployments/monad-mainnet.json)
+USDC=0x754704Bc059F8C67012fEd69BC8A327a5aafb603
+ASSET=0x13DB78bd3F92382306a17d50dAC93Af1904e171d
+ROUTER=0x95D381aa54A2DA62C835Dd081D1D5a0f8700C722
+REGISTRY=0x25845Cee2b0E6dF0DA40bb9B60A84D162eabd00B
+ESCROW=0x22523FeEA974939Fd6c94dAF7F9d112D667DeC3B
+VAULT=0xcBe741362a59943174f028a44A1b82722c24e7E7
+PFR=0x510cb102906a4bE9193B025620f6824ee8b4eC21
+TREASURY=0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C
+CREATOR=0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6
 
-cast call 0x754704Bc059F8C67012fEd69BC8A327a5aafb603 \
-  "balanceOf(address)(uint256)" $ROUTER --rpc-url $RPC
-cast call 0x754704Bc059F8C67012fEd69BC8A327a5aafb603 \
-  "balanceOf(address)(uint256)" $ESCROW --rpc-url $RPC
-cast call 0x754704Bc059F8C67012fEd69BC8A327a5aafb603 \
-  "balanceOf(address)(uint256)" $VAULT --rpc-url $RPC
-cast call 0x754704Bc059F8C67012fEd69BC8A327a5aafb603 \
-  "balanceOf(address)(uint256)" $PFR --rpc-url $RPC
+# ── After paid call ──
+# Router should have 0.5 USDC (before distribute)
+cast call $USDC "balanceOf(address)(uint256)" $ROUTER --rpc-url $RPC
+
+# ── After keeper distribute ──
+# Router should be ~0 (dust remains)
+cast call $USDC "balanceOf(address)(uint256)" $ROUTER --rpc-url $RPC
+
+# Provider (creator) received 0.30 USDC
+cast call $USDC "balanceOf(address)(uint256)" $CREATOR --rpc-url $RPC
+
+# BuybackVault credited 0.15 USDC (from revenue)
+cast call $VAULT "getAssetData(address)" $ASSET --rpc-url $RPC
+
+# PlatformFeeReceiver received 0.05 USDC -> forwarded to treasury
+cast call $USDC "balanceOf(address)(uint256)" $TREASURY --rpc-url $RPC
+
+# Escrow: recorded revenue = 0.5 USDC, claimable = 20% = 0.10 USDC
+cast call $ESCROW "claimable(address)(uint256)" $ASSET --rpc-url $RPC
+
+# ── After keeper collect (trading fees) ──
+# FeeEscrow and BuybackVault call collectFees on the initializer
+cast call $USDC "balanceOf(address)(uint256)" $ESCROW --rpc-url $RPC
+cast call $USDC "balanceOf(address)(uint256)" $VAULT --rpc-url $RPC
+
+# ── Buyback (only after balanceLimitEnd) ──
+cast call $ASSET "balanceLimitEnd()(uint48)" --rpc-url $RPC
+# Expected: 1790235703. Wait until block.timestamp > this value.
+
+# Total supply decreases after buyback burn
+cast call $ASSET "totalSupply()(uint256)" --rpc-url $RPC
 ```
 
 ---
