@@ -14,7 +14,7 @@ export default function Explorer() {
       <div>
         <h1 style={{ margin: '0 0 4px', fontSize: '20px', fontWeight: 700 }}>x402 service explorer</h1>
         <p style={{ color: 'var(--color-muted)', margin: 0, fontSize: '13px' }}>
-          All Revpad x402 API services on Monad. Any agent can pay per call.
+          All Astralaunch x402 API services on Monad. Any agent can pay per call.
         </p>
       </div>
 

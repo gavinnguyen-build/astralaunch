@@ -1,7 +1,7 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api.js';
-import { fmtUsdc, fmtToken, fmtRelative, fmtAddr } from '../lib/format.js';
+import { fmtUsdc, fmtRelative, fmtAddr } from '../lib/format.js';
 
 export default function Token() {
   const { asset } = useParams<{ asset: string }>();
@@ -27,8 +27,6 @@ export default function Token() {
   if (isLoading) return <div style={{ color: 'var(--color-muted)', padding: '2rem' }}>Loading…</div>;
   if (error || !token) return <div style={{ color: 'var(--color-danger)', padding: '2rem' }}>Token not found</div>;
 
-  const rev30 = BigInt(token.metrics.cleanRevenue30d);
-  const hasRevenue = rev30 > 0n;
   const now = Math.floor(Date.now() / 1000);
   const balanceLimitEnd = token.onChain.balanceLimitEnd;
   const capActive = balanceLimitEnd != null && now < balanceLimitEnd;

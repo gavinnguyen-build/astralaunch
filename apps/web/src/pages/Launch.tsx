@@ -11,11 +11,6 @@
  */
 import { useState } from 'react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
-import { createWalletClient, custom, type Address } from 'viem';
-import { monadChain, registryAbi } from '../lib/chain.js';
-import { api } from '../lib/api.js';
-import { withBuffer } from '@revpad/shared';
-import { REGISTRY_ADDR } from '../env.js';
 
 type Step = 'form' | 'review' | 'launching' | 'done';
 
@@ -61,7 +56,7 @@ export default function Launch() {
   const { wallets } = useWallets();
   const [form, setForm] = useState<FormData>(DEFAULTS);
   const [step, setStep] = useState<Step>('form');
-  const [result, setResult] = useState<{ asset: string; router: string } | null>(null);
+  const [result, _setResult] = useState<{ asset: string; router: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const wallet = wallets[0];
@@ -211,8 +206,8 @@ export default function Launch() {
           {step === 'form' ? 'Review launch' : 'Edit'}
         </button>
 
-        {step === 'review' && (
-          <button className="btn btn-primary" onClick={handleLaunch} style={{ alignSelf: 'flex-start' }}>
+        {(step === 'review' || step === 'launching') && (
+          <button className="btn btn-primary" onClick={handleLaunch} disabled={step === 'launching'} style={{ alignSelf: 'flex-start' }}>
             {step === 'launching' ? 'Launching…' : 'Confirm launch (~0.52 MON)'}
           </button>
         )}
@@ -222,7 +217,7 @@ export default function Launch() {
       <div className="card" style={{ alignSelf: 'start' }}>
         <h3 style={{ margin: '0 0 1rem', fontSize: '14px', fontWeight: 600 }}>Fixed economics</h3>
         <p style={{ color: 'var(--color-muted)', fontSize: '11px', margin: '0 0 1rem' }}>
-          These are not configurable. This is how Revpad works.
+          These are not configurable. This is how Astralaunch works.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           {ECONOMICS.map(({ label, value }) => (
