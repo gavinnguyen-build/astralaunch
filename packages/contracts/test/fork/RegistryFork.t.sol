@@ -540,6 +540,70 @@ contract RegistryForkTest is Test {
         assertGt(newTreasuryBal, 0, "new treasury received fees");
     }
 
+    // ── Y. Admin transfer on deployed contracts ───────────────────────────────
+
+    function test_adminTransfer_fullPath() public {
+        address newAdmin = address(0xBEEF);
+
+        // ── Registry admin transfer ──
+        vm.prank(ADMIN);
+        registry.transferAdmin(newAdmin);
+        assertEq(registry.pendingAdmin(), newAdmin, "registry pendingAdmin set");
+
+        vm.prank(newAdmin);
+        registry.acceptAdmin();
+        assertEq(registry.admin(), newAdmin, "registry admin changed");
+        assertEq(registry.pendingAdmin(), address(0), "registry pendingAdmin cleared");
+
+        // Old admin cannot pause
+        vm.prank(ADMIN);
+        vm.expectRevert(RevpadRegistry.NotAdmin.selector);
+        registry.setPause(true);
+
+        // New admin CAN pause
+        vm.prank(newAdmin);
+        registry.setPause(true);
+        assertTrue(registry.paused(), "new admin can pause");
+        vm.prank(newAdmin);
+        registry.setPause(false);
+
+        // ── PFR admin transfer ──
+        vm.prank(ADMIN);
+        pfr.transferAdmin(newAdmin);
+        assertEq(pfr.pendingAdmin(), newAdmin, "pfr pendingAdmin set");
+
+        vm.prank(newAdmin);
+        pfr.acceptAdmin();
+        assertEq(pfr.admin(), newAdmin, "pfr admin changed");
+
+        // Old admin cannot propose treasury
+        vm.prank(ADMIN);
+        vm.expectRevert(PlatformFeeReceiver.NotAdmin.selector);
+        pfr.proposeTreasury(address(0xDEAD));
+
+        // New admin CAN propose treasury
+        vm.prank(newAdmin);
+        pfr.proposeTreasury(address(0xDEAD));
+        (address proposed,) = pfr.pendingTreasury();
+        assertEq(proposed, address(0xDEAD), "new admin proposed treasury");
+
+        console.log("--- Admin transfer ---");
+        console.log("registry.admin:", registry.admin());
+        console.log("pfr.admin:     ", pfr.admin());
+
+        // Restore admin for other tests (setUp clears registration but not admin)
+        vm.prank(newAdmin);
+        registry.transferAdmin(ADMIN);
+        vm.prank(ADMIN);
+        registry.acceptAdmin();
+        vm.prank(newAdmin);
+        pfr.cancelProposal();
+        vm.prank(newAdmin);
+        pfr.transferAdmin(ADMIN);
+        vm.prank(ADMIN);
+        pfr.acceptAdmin();
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /// @dev Clear all registration state for `a` so that register() can be called
@@ -550,7 +614,7 @@ contract RegistryForkTest is Test {
     ///      RevpadRegistry:
     ///        platformFeeReceiver (slot0), feeEscrow (slot1), buybackVault (slot2),
     ///        routerImplementation (slot3), admin+paused (slot4, packed),
-    ///        routers mapping (slot5)
+    ///        pendingAdmin (slot5), routers mapping (slot6)
     ///
     ///      FeeEscrow (immutables not in storage):
     ///        _data mapping (slot0); base = keccak256(abi.encode(asset, 0))
@@ -560,9 +624,13 @@ contract RegistryForkTest is Test {
     ///        _assets mapping (slot0); base = keccak256(abi.encode(asset, 0))
     ///        PoolKey fields: currency0 (base+0), currency1+fee+tickSpacing (base+1), hooks (base+2)
     ///        poolId (base+3), registered+balanceUSDC packed (base+4)
+    ///
+    ///      PlatformFeeReceiver:
+    ///        admin(0), treasury(1), proposedTreasury(2), proposalExecutableAt(3),
+    ///        pendingAdmin(4), assetPoolIds mapping(5).
     function _clearRegistration(address a) internal {
-        // 1. RevpadRegistry.routers[a] — mapping at slot 5
-        vm.store(address(registry), keccak256(abi.encode(a, uint256(5))), bytes32(0));
+        // 1. RevpadRegistry.routers[a] — mapping at slot 6
+        vm.store(address(registry), keccak256(abi.encode(a, uint256(6))), bytes32(0));
 
         // 2. FeeEscrow._data[a] base+0 (clears launchTime, passing AlreadyRegistered guard)
         bytes32 eBase = keccak256(abi.encode(a, uint256(0)));
@@ -572,10 +640,8 @@ contract RegistryForkTest is Test {
         bytes32 vBase = keccak256(abi.encode(a, uint256(0)));
         vm.store(address(vault), bytes32(uint256(vBase) + 4), bytes32(0));
 
-        // 4. PlatformFeeReceiver.assetPoolIds[a] — mapping at slot 4
-        //    Storage layout: admin(0), treasury(1), proposedTreasury(2), proposalExecutableAt(3),
-        //    assetPoolIds mapping(4).  Immutables (registry, initializer, USDC) are not in storage.
-        vm.store(address(pfr), keccak256(abi.encode(a, uint256(4))), bytes32(0));
+        // 4. PlatformFeeReceiver.assetPoolIds[a] — mapping at slot 5
+        vm.store(address(pfr), keccak256(abi.encode(a, uint256(5))), bytes32(0));
     }
 
     /// @dev Set a USDC balance via vm.store (slot 9 = USDC balance mapping on Monad).

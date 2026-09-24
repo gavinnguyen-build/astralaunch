@@ -491,6 +491,127 @@ contract RevpadRegistryTest is Test {
         registry.setPause(true);
     }
 
+    // ── admin transfer ──────────────────────────────────────────────────────
+
+    function test_transferAdmin_setsPendingAdmin() public {
+        address newAdmin = address(0xCAFE);
+        vm.prank(admin);
+        registry.transferAdmin(newAdmin);
+        assertEq(registry.pendingAdmin(), newAdmin);
+    }
+
+    function test_transferAdmin_emitsEvent() public {
+        address newAdmin = address(0xCAFE);
+        vm.prank(admin);
+        vm.expectEmit(true, true, false, false);
+        emit RevpadRegistry.AdminTransferStarted(admin, newAdmin);
+        registry.transferAdmin(newAdmin);
+    }
+
+    function test_transferAdmin_revertsIfNotAdmin() public {
+        vm.expectRevert(RevpadRegistry.NotAdmin.selector);
+        registry.transferAdmin(address(0xCAFE));
+    }
+
+    function test_transferAdmin_revertsZeroAddress() public {
+        vm.prank(admin);
+        vm.expectRevert(RevpadRegistry.ZeroAddress.selector);
+        registry.transferAdmin(address(0));
+    }
+
+    function test_acceptAdmin_updatesAdmin() public {
+        address newAdmin = address(0xCAFE);
+        vm.prank(admin);
+        registry.transferAdmin(newAdmin);
+
+        vm.prank(newAdmin);
+        registry.acceptAdmin();
+        assertEq(registry.admin(), newAdmin);
+        assertEq(registry.pendingAdmin(), address(0));
+    }
+
+    function test_acceptAdmin_emitsEvent() public {
+        address newAdmin = address(0xCAFE);
+        vm.prank(admin);
+        registry.transferAdmin(newAdmin);
+
+        vm.prank(newAdmin);
+        vm.expectEmit(true, true, false, false);
+        emit RevpadRegistry.AdminTransferred(admin, newAdmin);
+        registry.acceptAdmin();
+    }
+
+    function test_acceptAdmin_revertsIfNotPendingAdmin() public {
+        vm.prank(admin);
+        registry.transferAdmin(address(0xCAFE));
+
+        vm.prank(admin); // not pendingAdmin
+        vm.expectRevert(RevpadRegistry.NotPendingAdmin.selector);
+        registry.acceptAdmin();
+    }
+
+    function test_acceptAdmin_revertsIfNoPending() public {
+        vm.expectRevert(RevpadRegistry.NotPendingAdmin.selector);
+        registry.acceptAdmin();
+    }
+
+    function test_cancelAdminTransfer_clearsState() public {
+        vm.prank(admin);
+        registry.transferAdmin(address(0xCAFE));
+
+        vm.prank(admin);
+        registry.cancelAdminTransfer();
+        assertEq(registry.pendingAdmin(), address(0));
+    }
+
+    function test_cancelAdminTransfer_emitsEvent() public {
+        address newAdmin = address(0xCAFE);
+        vm.prank(admin);
+        registry.transferAdmin(newAdmin);
+
+        vm.prank(admin);
+        vm.expectEmit(true, false, false, false);
+        emit RevpadRegistry.AdminTransferCancelled(newAdmin);
+        registry.cancelAdminTransfer();
+    }
+
+    function test_cancelAdminTransfer_revertsIfNoTransfer() public {
+        vm.prank(admin);
+        vm.expectRevert(RevpadRegistry.NoActiveTransfer.selector);
+        registry.cancelAdminTransfer();
+    }
+
+    function test_cancelAdminTransfer_revertsIfNotAdmin() public {
+        vm.prank(admin);
+        registry.transferAdmin(address(0xCAFE));
+
+        vm.expectRevert(RevpadRegistry.NotAdmin.selector);
+        registry.cancelAdminTransfer();
+    }
+
+    function test_oldAdminLosesAllRights() public {
+        address newAdmin = address(0xCAFE);
+        vm.prank(admin);
+        registry.transferAdmin(newAdmin);
+        vm.prank(newAdmin);
+        registry.acceptAdmin();
+
+        // Old admin cannot pause
+        vm.prank(admin);
+        vm.expectRevert(RevpadRegistry.NotAdmin.selector);
+        registry.setPause(true);
+
+        // Old admin cannot transfer again
+        vm.prank(admin);
+        vm.expectRevert(RevpadRegistry.NotAdmin.selector);
+        registry.transferAdmin(address(0xDEAD));
+
+        // New admin CAN pause
+        vm.prank(newAdmin);
+        registry.setPause(true);
+        assertTrue(registry.paused());
+    }
+
     // ── PlatformFeeReceiver wiring ────────────────────────────────────────────
     function test_register_registersPFRAsset() public {
         registry.register(asset, creator);

@@ -387,6 +387,134 @@ contract PlatformFeeReceiverTest is Test {
         assertEq(token.balanceOf(treasury), tokenAmt, "token exact");
     }
 
+    // ── transferAdmin ─────────────────────────────────────────────────────────
+
+    function test_transferAdmin_setsPendingAdmin() public {
+        address newAdmin = address(0xCAFE);
+        vm.prank(admin);
+        pfr.transferAdmin(newAdmin);
+        assertEq(pfr.pendingAdmin(), newAdmin);
+    }
+
+    function test_transferAdmin_emitsEvent() public {
+        address newAdmin = address(0xCAFE);
+        vm.prank(admin);
+        vm.expectEmit(true, true, false, false);
+        emit PlatformFeeReceiver.AdminTransferStarted(admin, newAdmin);
+        pfr.transferAdmin(newAdmin);
+    }
+
+    function test_transferAdmin_revertsIfNotAdmin() public {
+        vm.expectRevert(PlatformFeeReceiver.NotAdmin.selector);
+        pfr.transferAdmin(address(0xCAFE));
+    }
+
+    function test_transferAdmin_revertsZeroAddress() public {
+        vm.prank(admin);
+        vm.expectRevert(PlatformFeeReceiver.ZeroAddress.selector);
+        pfr.transferAdmin(address(0));
+    }
+
+    // ── acceptAdmin ──────────────────────────────────────────────────────────
+
+    function test_acceptAdmin_updateAdmin() public {
+        address newAdmin = address(0xCAFE);
+        vm.prank(admin);
+        pfr.transferAdmin(newAdmin);
+
+        vm.prank(newAdmin);
+        pfr.acceptAdmin();
+        assertEq(pfr.admin(), newAdmin);
+        assertEq(pfr.pendingAdmin(), address(0));
+    }
+
+    function test_acceptAdmin_emitsEvent() public {
+        address newAdmin = address(0xCAFE);
+        vm.prank(admin);
+        pfr.transferAdmin(newAdmin);
+
+        vm.prank(newAdmin);
+        vm.expectEmit(true, true, false, false);
+        emit PlatformFeeReceiver.AdminTransferred(admin, newAdmin);
+        pfr.acceptAdmin();
+    }
+
+    function test_acceptAdmin_revertsIfNotPendingAdmin() public {
+        vm.prank(admin);
+        pfr.transferAdmin(address(0xCAFE));
+
+        vm.prank(admin); // admin is NOT pendingAdmin
+        vm.expectRevert(PlatformFeeReceiver.NotPendingAdmin.selector);
+        pfr.acceptAdmin();
+    }
+
+    function test_acceptAdmin_revertsIfNoPending() public {
+        vm.expectRevert(PlatformFeeReceiver.NotPendingAdmin.selector);
+        pfr.acceptAdmin();
+    }
+
+    // ── cancelAdminTransfer ──────────────────────────────────────────────────
+
+    function test_cancelAdminTransfer_clearsState() public {
+        vm.prank(admin);
+        pfr.transferAdmin(address(0xCAFE));
+
+        vm.prank(admin);
+        pfr.cancelAdminTransfer();
+        assertEq(pfr.pendingAdmin(), address(0));
+    }
+
+    function test_cancelAdminTransfer_emitsEvent() public {
+        address newAdmin = address(0xCAFE);
+        vm.prank(admin);
+        pfr.transferAdmin(newAdmin);
+
+        vm.prank(admin);
+        vm.expectEmit(true, false, false, false);
+        emit PlatformFeeReceiver.AdminTransferCancelled(newAdmin);
+        pfr.cancelAdminTransfer();
+    }
+
+    function test_cancelAdminTransfer_revertsIfNoTransfer() public {
+        vm.prank(admin);
+        vm.expectRevert(PlatformFeeReceiver.NoActiveTransfer.selector);
+        pfr.cancelAdminTransfer();
+    }
+
+    function test_cancelAdminTransfer_revertsIfNotAdmin() public {
+        vm.prank(admin);
+        pfr.transferAdmin(address(0xCAFE));
+
+        vm.expectRevert(PlatformFeeReceiver.NotAdmin.selector);
+        pfr.cancelAdminTransfer();
+    }
+
+    // ── Old admin loses rights after transfer ────────────────────────────────
+
+    function test_oldAdminLosesAllRights() public {
+        address newAdmin = address(0xCAFE);
+        vm.prank(admin);
+        pfr.transferAdmin(newAdmin);
+        vm.prank(newAdmin);
+        pfr.acceptAdmin();
+
+        // Old admin cannot propose treasury
+        vm.prank(admin);
+        vm.expectRevert(PlatformFeeReceiver.NotAdmin.selector);
+        pfr.proposeTreasury(address(0xBEEF));
+
+        // Old admin cannot transfer admin again
+        vm.prank(admin);
+        vm.expectRevert(PlatformFeeReceiver.NotAdmin.selector);
+        pfr.transferAdmin(address(0xDEAD));
+
+        // New admin CAN propose treasury
+        vm.prank(newAdmin);
+        pfr.proposeTreasury(address(0xBEEF));
+    }
+
+    // ── Fuzz ─────────────────────────────────────────────────────────────────
+
     function testFuzz_acceptTreasury_delayEnforcement(uint24 warpDelta) public {
         vm.prank(admin);
         pfr.proposeTreasury(address(0xBEEF));
