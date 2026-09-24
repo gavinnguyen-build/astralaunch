@@ -241,19 +241,36 @@ cast call 0x660eAaEdEBc968f8f3694354FA8EC0b4c5Ba8D12 \
 
 ## 5. Start server (mainnet)
 
+### Create the database
+
+```bash
+# On the Postgres host (or via Coolify):
+createdb revpad
+```
+
+### Configure environment
+
 Fill in secrets in `apps/server/.env.mainnet` (copy from `.env.mainnet.example`):
 
 ```bash
 cd apps/server
 cp .env.mainnet.example .env.mainnet
-# Edit: DATABASE_URL, GATEWAY_HMAC_MASTER_KEY (openssl rand -hex 32),
+# Edit: DATABASE_URL (e.g. postgres://user:pass@localhost:5432/revpad),
+#       GATEWAY_HMAC_MASTER_KEY (openssl rand -hex 32),
 #       PRIVY_APP_ID, PRIVY_APP_SECRET, LITELLM_BASE_URL, LITELLM_API_KEY
 ```
 
-Start:
+### Run migrations
+
+```bash
+pnpm -F server db:migrate
+```
+
+### Start (port 3001)
 
 ```bash
 pnpm -F server start:mainnet
+# Listens on http://localhost:3001
 ```
 
 The server checks `dryRun`, bytecode, and admin wiring before accepting traffic.
@@ -347,6 +364,20 @@ If spend guards trigger (24h budget exceeded or balance too low), remaining jobs
 
 With the server running on mainnet:
 
+### Sign the registration message
+
+The creator must sign the message: `Revpad: register service "nullsight" for token 0x13db78bd3f92382306a17d50dac93af1904e171d`
+
+```bash
+# Using cast:
+SIG=$(cast wallet sign \
+  --account <creator-keystore> \
+  "Revpad: register service \"nullsight\" for token 0x13db78bd3f92382306a17d50dac93af1904e171d")
+echo $SIG
+```
+
+### Register
+
 ```bash
 curl -X POST http://localhost:3001/api/services \
   -H 'Content-Type: application/json' \
@@ -357,6 +388,7 @@ curl -X POST http://localhost:3001/api/services \
     "name": "nullsight",
     "upstreamUrl": "https://httpbin.org",
     "priceUsdc": "500000",
+    "signature": "'$SIG'",
     "description": "nullsight test endpoint",
     "responseSchema": "{\"type\":\"object\",\"required\":[\"slideshow\"]}"
   }'
