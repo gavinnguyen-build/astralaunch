@@ -3,12 +3,12 @@ import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { services } from '../db/schema.js';
-import { createServiceSchema, updateServiceSchema } from '@revpad/shared';
+import { createServiceSchema, updateServiceSchema, serviceRegistrationMessage } from '@revpad/shared';
 import { MONAD_NETWORK, USDC } from '@revpad/shared';
 import { assertSafeUpstream, SsrfError } from '../lib/ssrf.js';
 import { generateSecret } from '../lib/hmac.js';
 import { REGISTRY_ADDR, RPC_URL, CHAIN_ID, USDC_ADDR, PAYMENT_TIMEOUT_S } from '../env.js';
-import { createPublicClient, http, type Address } from 'viem';
+import { createPublicClient, http, verifyMessage, getAddress, type Address } from 'viem';
 import { defineChain } from 'viem';
 
 const monad = defineChain({
@@ -41,7 +41,23 @@ app.post('/', zValidator('json', createServiceSchema), async (c) => {
     throw e;
   }
 
-  // 2. Verify token is registered in RevpadRegistry on-chain
+  // 2. Verify creator signature (personal_sign)
+  const message = serviceRegistrationMessage(body.slug, body.asset);
+  let sigValid: boolean;
+  try {
+    sigValid = await verifyMessage({
+      address: getAddress(body.creator) as Address,
+      message,
+      signature: body.signature as `0x${string}`,
+    });
+  } catch {
+    sigValid = false;
+  }
+  if (!sigValid) {
+    return c.json({ error: 'Invalid creator signature' }, 401);
+  }
+
+  // 3. Verify token is registered in RevpadRegistry on-chain
   let router: Address;
   try {
     router = await publicClient.readContract({
@@ -57,11 +73,11 @@ app.post('/', zValidator('json', createServiceSchema), async (c) => {
     return c.json({ error: 'Failed to read RevpadRegistry' }, 502);
   }
 
-  // 3. Check slug uniqueness
+  // 4. Check slug uniqueness
   const existing = await db.query.services.findFirst({ where: eq(services.slug, body.slug) });
   if (existing) return c.json({ error: 'Slug already taken' }, 409);
 
-  // 4. Persist
+  // 5. Persist
   const secret = generateSecret();
   const [svc] = await db.insert(services).values({
     slug:           body.slug,

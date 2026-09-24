@@ -10,7 +10,8 @@
     "start:mainnet": "tsx src/start-mainnet.ts",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/db/migrate.ts"
+    "db:migrate": "tsx src/db/migrate.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
@@ -18,17 +19,18 @@
     "@revpad/shared": "workspace:*",
     "@x402/core": "2.26.0",
     "@x402/evm": "2.26.0",
+    "dotenv": "^16.4.5",
     "drizzle-orm": "^0.38.0",
     "hono": "^4.6.0",
     "postgres": "^3.4.5",
     "viem": "^2.21.0",
-    "zod": "^3.23.0",
-    "dotenv": "^16.4.5"
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "drizzle-kit": "^0.30.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vitest": "^5.0.1"
   }
 }

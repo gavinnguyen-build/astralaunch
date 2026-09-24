@@ -25,6 +25,8 @@ export const createServiceSchema = z.object({
   upstreamUrl:  z.string().url().max(500),
   /** Default price per call in USDC (raw bigint string, 6 dec). */
   priceUsdc:    z.string().regex(/^\d+$/, 'must be a raw bigint string'),
+  /** personal_sign signature from the creator wallet over the registration message. */
+  signature:    z.string().regex(/^0x[0-9a-fA-F]+$/, 'hex signature'),
   /** Optional JSON schema for request body validation (stringified). */
   requestSchema:  z.string().optional(),
   /** Optional JSON schema for response body validation (stringified). */
@@ -34,6 +36,11 @@ export const createServiceSchema = z.object({
   /** Description shown to agents in the manifest. */
   description:  z.string().max(500).optional(),
 });
+
+/** Build the message that the creator must sign for service registration. */
+export function serviceRegistrationMessage(slug: string, asset: string): string {
+  return `Revpad: register service "${slug}" for token ${asset.toLowerCase()}`;
+}
 
 export type CreateServiceInput = z.infer<typeof createServiceSchema>;
 
