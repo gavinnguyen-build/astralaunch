@@ -14,7 +14,11 @@ import { eq, desc, and, gte, sql, count } from 'drizzle-orm';
 import { createPublicClient, http, type Address } from 'viem';
 import { defineChain } from 'viem';
 import { db } from '../db/client.js';
-import { tokens, services, gatewayRequests, serviceProbes } from '../db/schema.js';
+import {
+  tokens, services, gatewayRequests, serviceProbes,
+  idxDistributions, idxBuybacks, idxEscrowClaims, idxEscrowForfeits,
+  idxUsdcTransfers, idxCheckpoints,
+} from '../db/schema.js';
 import { addressSchema } from '@revpad/shared';
 import { RPC_URL, CHAIN_ID, REGISTRY_ADDR, SUBMITTERS } from '../env.js';
 
@@ -301,7 +305,7 @@ app.get('/:asset', async (c) => {
   // On-chain reads (non-fatal — return nulls on error)
   let escrowData: any = null;
   let vaultData:  any = null;
-  let capEnd: bigint | null = null;
+  let capEnd: number | null = null;
 
   try {
     escrowData = await publicClient.readContract({
@@ -369,12 +373,119 @@ app.get('/:asset', async (c) => {
   });
 });
 
+// GET /api/tokens/:asset/metrics — aggregated on-chain metrics from indexed data
+app.get('/:asset/metrics', async (c) => {
+  const asset = c.req.param('asset').toLowerCase();
+
+  const [distRows] = await db
+    .select({
+      totalRevenue:    sql<string>`COALESCE(SUM(${idxDistributions.total}), '0')`,
+      totalCount:      sql<number>`COUNT(*)::int`,
+      providerRevenue: sql<string>`COALESCE(SUM(${idxDistributions.providerAmt}), '0')`,
+      buybackRevenue:  sql<string>`COALESCE(SUM(${idxDistributions.buybackAmt}), '0')`,
+      treasuryRevenue: sql<string>`COALESCE(SUM(${idxDistributions.treasuryAmt}), '0')`,
+    })
+    .from(idxDistributions)
+    .where(eq(idxDistributions.asset, asset));
+
+  const [buybackRows] = await db
+    .select({
+      totalUsdc:   sql<string>`COALESCE(SUM(${idxBuybacks.usdcIn}), '0')`,
+      totalBurned: sql<string>`COALESCE(SUM(${idxBuybacks.tokensBurned}), '0')`,
+    })
+    .from(idxBuybacks)
+    .where(eq(idxBuybacks.asset, asset));
+
+  const [claimRows] = await db
+    .select({
+      totalClaimed: sql<string>`COALESCE(SUM(${idxEscrowClaims.amount}), '0')`,
+    })
+    .from(idxEscrowClaims)
+    .where(eq(idxEscrowClaims.asset, asset));
+
+  const [forfeitRows] = await db
+    .select({
+      totalForfeited: sql<string>`COALESCE(SUM(${idxEscrowForfeits.usdcMoved}), '0')`,
+    })
+    .from(idxEscrowForfeits)
+    .where(eq(idxEscrowForfeits.asset, asset));
+
+  // Find the router for this asset to query USDC transfers
+  const token = await db.query.tokens.findFirst({ where: eq(tokens.asset, asset) });
+  let usdcCount = 0;
+  let usdcTotal = '0';
+  if (token?.router) {
+    const [usdcRows] = await db
+      .select({
+        cnt:   sql<number>`COUNT(*)::int`,
+        total: sql<string>`COALESCE(SUM(${idxUsdcTransfers.value}), '0')`,
+      })
+      .from(idxUsdcTransfers)
+      .where(eq(idxUsdcTransfers.toAddr, token.router.toLowerCase()));
+    usdcCount = usdcRows?.cnt ?? 0;
+    usdcTotal = usdcRows?.total ?? '0';
+  }
+
+  // Last indexed block from checkpoints
+  const checkpoints = await db.select().from(idxCheckpoints);
+  const lastBlock = checkpoints.reduce(
+    (max, cp) => (cp.blockNumber > max ? cp.blockNumber : max),
+    0n,
+  );
+
+  return c.json({
+    totalRevenue:       distRows?.totalRevenue ?? '0',
+    totalDistributions: distRows?.totalCount ?? 0,
+    providerRevenue:    distRows?.providerRevenue ?? '0',
+    buybackRevenue:     distRows?.buybackRevenue ?? '0',
+    treasuryRevenue:    distRows?.treasuryRevenue ?? '0',
+    totalBuybackUsdc:   buybackRows?.totalUsdc ?? '0',
+    totalTokensBurned:  buybackRows?.totalBurned ?? '0',
+    escrowClaimed:      claimRows?.totalClaimed ?? '0',
+    escrowForfeited:    forfeitRows?.totalForfeited ?? '0',
+    usdcTransferCount:  usdcCount,
+    usdcTransferTotal:  usdcTotal,
+    lastIndexedBlock:   Number(lastBlock),
+  });
+});
+
 // GET /api/tokens/:asset/payments — recent settled payments
+// ?source=indexed reads from idx_usdc_transfers instead of gateway_requests
 app.get('/:asset/payments', async (c) => {
   const asset  = c.req.param('asset').toLowerCase();
+  const source = c.req.query('source');
   const limit  = Math.min(Number(c.req.query('limit') ?? 20), 100);
   const offset = Number(c.req.query('offset') ?? 0);
 
+  if (source === 'indexed') {
+    // Read from indexed USDC transfers
+    const token = await db.query.tokens.findFirst({ where: eq(tokens.asset, asset) });
+    if (!token?.router) return c.json({ payments: [], limit, offset });
+
+    const rows = await db.select()
+      .from(idxUsdcTransfers)
+      .where(eq(idxUsdcTransfers.toAddr, token.router.toLowerCase()))
+      .orderBy(desc(idxUsdcTransfers.blockNumber))
+      .limit(limit)
+      .offset(offset);
+
+    return c.json({
+      payments: rows.map(r => ({
+        fromAddr:             r.fromAddr,
+        toAddr:               r.toAddr,
+        amountUsdc:           r.value,
+        txHash:               r.txHash,
+        txFrom:               r.txFrom,
+        isFacilitatorSettled: r.isFacilitatorSettled,
+        blockNumber:          Number(r.blockNumber),
+        timestamp:            Number(r.timestamp),
+      })),
+      limit,
+      offset,
+    });
+  }
+
+  // Default: read from gateway_requests
   const rows = await db.select()
     .from(gatewayRequests)
     .where(and(eq(gatewayRequests.asset, asset), eq(gatewayRequests.settled, true)))
@@ -393,6 +504,35 @@ app.get('/:asset/payments', async (c) => {
     })),
     limit,
     offset,
+  });
+});
+
+// GET /api/tokens/:asset/buybacks — paginated buyback events from indexed data
+app.get('/:asset/buybacks', async (c) => {
+  const asset = c.req.param('asset').toLowerCase();
+  const limit = Math.min(Number(c.req.query('limit') ?? 20), 100);
+  const offset = Number(c.req.query('offset') ?? 0);
+
+  const rows = await db.select()
+    .from(idxBuybacks)
+    .where(eq(idxBuybacks.asset, asset))
+    .orderBy(desc(idxBuybacks.blockNumber))
+    .limit(limit + 1) // fetch one extra to determine if there's a next page
+    .offset(offset);
+
+  const hasMore = rows.length > limit;
+  const items = hasMore ? rows.slice(0, limit) : rows;
+
+  return c.json({
+    buybacks: items.map(r => ({
+      usdcIn:       r.usdcIn,
+      tokensBurned: r.tokensBurned,
+      sourceTag:    r.sourceTag,
+      blockNumber:  Number(r.blockNumber),
+      txHash:       r.txHash,
+      timestamp:    Number(r.timestamp),
+    })),
+    cursor: hasMore ? String(offset + limit) : null,
   });
 });
 

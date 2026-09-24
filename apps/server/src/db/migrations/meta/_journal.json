@@ -15,6 +15,13 @@
       "when": 1727136000000,
       "tag": "0002_tokens_probes",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1727222400000,
+      "tag": "0003_indexer_tables",
+      "breakpoints": true
     }
   ]
 }

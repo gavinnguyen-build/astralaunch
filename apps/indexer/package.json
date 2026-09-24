@@ -1,0 +1,25 @@
+{
+  "name": "@revpad/indexer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/cli.ts --follow",
+    "start": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@revpad/shared": "workspace:*",
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.38.0",
+    "postgres": "^3.4.5",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^5.0.1"
+  }
+}

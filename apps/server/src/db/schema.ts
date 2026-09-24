@@ -1,4 +1,4 @@
-import { pgTable, text, integer, boolean, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, boolean, timestamp, uuid, serial, bigint, numeric, uniqueIndex } from 'drizzle-orm/pg-core';
 
 // ── tokens ────────────────────────────────────────────────────────────────────
 export const tokens = pgTable('tokens', {
@@ -73,3 +73,158 @@ export const serviceProbes = pgTable('service_probes', {
 });
 
 export type ServiceProbe = typeof serviceProbes.$inferSelect;
+
+// ── Indexer tables (migration 0003, D24) ─────────────────────────────────────
+
+export const idxCheckpoints = pgTable('idx_checkpoints', {
+  contractSet: text('contract_set').primaryKey(),
+  blockNumber:  bigint('block_number', { mode: 'bigint' }).notNull(),
+  updatedAt:    timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const idxRegistrations = pgTable('idx_registrations', {
+  id:          serial('id').primaryKey(),
+  chainId:     integer('chain_id').notNull(),
+  txHash:      text('tx_hash').notNull(),
+  logIndex:    integer('log_index').notNull(),
+  asset:       text('asset').notNull(),
+  creator:     text('creator').notNull(),
+  router:      text('router').notNull(),
+  poolId:      text('pool_id').notNull(),
+  blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
+  timestamp:   bigint('timestamp', { mode: 'bigint' }).notNull(),
+}, (t) => [
+  uniqueIndex('idx_registrations_unique').on(t.chainId, t.txHash, t.logIndex),
+]);
+
+export const idxUsdcTransfers = pgTable('idx_usdc_transfers', {
+  id:                    serial('id').primaryKey(),
+  chainId:               integer('chain_id').notNull(),
+  txHash:                text('tx_hash').notNull(),
+  logIndex:              integer('log_index').notNull(),
+  fromAddr:              text('from_addr').notNull(),
+  toAddr:                text('to_addr').notNull(),
+  value:                 numeric('value', { precision: 78 }).notNull(),
+  txFrom:                text('tx_from').notNull().default(''),
+  isFacilitatorSettled:  boolean('is_facilitator_settled').notNull().default(false),
+  blockNumber:           bigint('block_number', { mode: 'bigint' }).notNull(),
+  timestamp:             bigint('timestamp', { mode: 'bigint' }).notNull(),
+}, (t) => [
+  uniqueIndex('idx_usdc_transfers_unique').on(t.chainId, t.txHash, t.logIndex),
+]);
+
+export const idxDistributions = pgTable('idx_distributions', {
+  id:          serial('id').primaryKey(),
+  chainId:     integer('chain_id').notNull(),
+  txHash:      text('tx_hash').notNull(),
+  logIndex:    integer('log_index').notNull(),
+  asset:       text('asset').notNull(),
+  total:       numeric('total', { precision: 78 }).notNull(),
+  providerAmt: numeric('provider_amt', { precision: 78 }).notNull(),
+  costAmt:     numeric('cost_amt', { precision: 78 }).notNull(),
+  buybackAmt:  numeric('buyback_amt', { precision: 78 }).notNull(),
+  treasuryAmt: numeric('treasury_amt', { precision: 78 }).notNull(),
+  blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
+  timestamp:   bigint('timestamp', { mode: 'bigint' }).notNull(),
+}, (t) => [
+  uniqueIndex('idx_distributions_unique').on(t.chainId, t.txHash, t.logIndex),
+]);
+
+export const idxFeeCollections = pgTable('idx_fee_collections', {
+  id:          serial('id').primaryKey(),
+  chainId:     integer('chain_id').notNull(),
+  txHash:      text('tx_hash').notNull(),
+  logIndex:    integer('log_index').notNull(),
+  contract:    text('contract').notNull(),
+  asset:       text('asset').notNull(),
+  usdcDelta:   numeric('usdc_delta', { precision: 78 }).notNull(),
+  tokenDelta:  numeric('token_delta', { precision: 78 }).notNull(),
+  blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
+  timestamp:   bigint('timestamp', { mode: 'bigint' }).notNull(),
+}, (t) => [
+  uniqueIndex('idx_fee_collections_unique').on(t.chainId, t.txHash, t.logIndex),
+]);
+
+export const idxRevenueRecorded = pgTable('idx_revenue_recorded', {
+  id:          serial('id').primaryKey(),
+  chainId:     integer('chain_id').notNull(),
+  txHash:      text('tx_hash').notNull(),
+  logIndex:    integer('log_index').notNull(),
+  asset:       text('asset').notNull(),
+  amount:      numeric('amount', { precision: 78 }).notNull(),
+  newTotal:    numeric('new_total', { precision: 78 }).notNull(),
+  blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
+  timestamp:   bigint('timestamp', { mode: 'bigint' }).notNull(),
+}, (t) => [
+  uniqueIndex('idx_revenue_recorded_unique').on(t.chainId, t.txHash, t.logIndex),
+]);
+
+export const idxEscrowClaims = pgTable('idx_escrow_claims', {
+  id:          serial('id').primaryKey(),
+  chainId:     integer('chain_id').notNull(),
+  txHash:      text('tx_hash').notNull(),
+  logIndex:    integer('log_index').notNull(),
+  asset:       text('asset').notNull(),
+  creator:     text('creator').notNull(),
+  amount:      numeric('amount', { precision: 78 }).notNull(),
+  blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
+  timestamp:   bigint('timestamp', { mode: 'bigint' }).notNull(),
+}, (t) => [
+  uniqueIndex('idx_escrow_claims_unique').on(t.chainId, t.txHash, t.logIndex),
+]);
+
+export const idxEscrowForfeits = pgTable('idx_escrow_forfeits', {
+  id:          serial('id').primaryKey(),
+  chainId:     integer('chain_id').notNull(),
+  txHash:      text('tx_hash').notNull(),
+  logIndex:    integer('log_index').notNull(),
+  asset:       text('asset').notNull(),
+  usdcMoved:   numeric('usdc_moved', { precision: 78 }).notNull(),
+  tokenMoved:  numeric('token_moved', { precision: 78 }).notNull(),
+  blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
+  timestamp:   bigint('timestamp', { mode: 'bigint' }).notNull(),
+}, (t) => [
+  uniqueIndex('idx_escrow_forfeits_unique').on(t.chainId, t.txHash, t.logIndex),
+]);
+
+export const idxBuybacks = pgTable('idx_buybacks', {
+  id:          serial('id').primaryKey(),
+  chainId:     integer('chain_id').notNull(),
+  txHash:      text('tx_hash').notNull(),
+  logIndex:    integer('log_index').notNull(),
+  asset:       text('asset').notNull(),
+  usdcIn:      numeric('usdc_in', { precision: 78 }).notNull(),
+  tokensBurned: numeric('tokens_burned', { precision: 78 }).notNull(),
+  sourceTag:   integer('source_tag').notNull(),
+  blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
+  timestamp:   bigint('timestamp', { mode: 'bigint' }).notNull(),
+}, (t) => [
+  uniqueIndex('idx_buybacks_unique').on(t.chainId, t.txHash, t.logIndex),
+]);
+
+export const idxBurns = pgTable('idx_burns', {
+  id:          serial('id').primaryKey(),
+  chainId:     integer('chain_id').notNull(),
+  txHash:      text('tx_hash').notNull(),
+  logIndex:    integer('log_index').notNull(),
+  asset:       text('asset').notNull(),
+  amount:      numeric('amount', { precision: 78 }).notNull(),
+  blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
+  timestamp:   bigint('timestamp', { mode: 'bigint' }).notNull(),
+}, (t) => [
+  uniqueIndex('idx_burns_unique').on(t.chainId, t.txHash, t.logIndex),
+]);
+
+export const idxPfrCollections = pgTable('idx_pfr_collections', {
+  id:          serial('id').primaryKey(),
+  chainId:     integer('chain_id').notNull(),
+  txHash:      text('tx_hash').notNull(),
+  logIndex:    integer('log_index').notNull(),
+  asset:       text('asset').notNull(),
+  usdcForwarded: numeric('usdc_forwarded', { precision: 78 }).notNull(),
+  tokenForwarded: numeric('token_forwarded', { precision: 78 }).notNull(),
+  blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
+  timestamp:   bigint('timestamp', { mode: 'bigint' }).notNull(),
+}, (t) => [
+  uniqueIndex('idx_pfr_collections_unique').on(t.chainId, t.txHash, t.logIndex),
+]);

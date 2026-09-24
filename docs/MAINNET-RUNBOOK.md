@@ -536,3 +536,65 @@ cast send $PFR "acceptTreasury()" \
 - Tokens launched and registered
 - Trades executed
 - Revenue distributed
+
+---
+
+## 11. Indexer (D24)
+
+The custom indexer replaces Envio. It reads on-chain events and writes to the same Postgres database using `idx_*` tables.
+
+### Environment variables
+
+| Var | Default | Description |
+|-----|---------|-------------|
+| `DATABASE_URL` | *(required)* | Same Postgres as server |
+| `MONAD_RPC_URL` | *(required)* | Monad mainnet RPC |
+| `MONAD_CHAIN_ID` | `143` | Chain ID |
+| `REVPAD_REGISTRY_ADDRESS` | *(required)* | RevpadRegistry contract |
+| `FEE_ESCROW_ADDRESS` | *(required)* | FeeEscrow contract |
+| `BUYBACK_VAULT_ADDRESS` | *(required)* | BuybackVault contract |
+| `PLATFORM_FEE_RECEIVER_ADDRESS` | *(required)* | PlatformFeeReceiver contract |
+| `INDEXER_START_BLOCK` | `107534868` | Deployment block |
+| `INDEXER_CHUNK_SIZE` | `10000` | Blocks per getLogs call |
+| `INDEXER_POLL_INTERVAL_S` | `10` | Follow mode poll interval |
+| `INDEXER_FINALITY_BLOCKS` | `0` | Monad has instant finality |
+
+### Backfill (one-time, run to head and exit)
+
+```bash
+cd apps/indexer
+DATABASE_URL=$MAINNET_DB \
+MONAD_RPC_URL=https://rpc.monad.xyz \
+  pnpm start --backfill
+```
+
+Expected: processes all blocks from 107534868 to head, writes events to `idx_*` tables, exits.
+
+### Follow mode (long-running service)
+
+```bash
+cd apps/indexer
+DATABASE_URL=$MAINNET_DB \
+MONAD_RPC_URL=https://rpc.monad.xyz \
+  pnpm start --follow
+```
+
+Deploy as a Coolify service alongside server and keeper.
+
+### Health check
+
+Query `idx_checkpoints` for staleness:
+
+```sql
+SELECT contract_set, block_number, updated_at,
+       NOW() - updated_at AS lag
+FROM idx_checkpoints;
+```
+
+Alert if `lag > 5 minutes` in follow mode.
+
+### Expected block processing rate
+
+- Backfill: ~5,000-10,000 blocks/second (most blocks have no relevant events)
+- Follow: real-time, ~10s poll interval
+- At current event volume (~1 event/10 min), each poll processes 0-1 events
