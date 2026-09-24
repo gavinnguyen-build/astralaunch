@@ -41,7 +41,7 @@
 | O5 | Verified badge thresholds | Hackathon: ≥20 USDC clean revenue from ≥5 clean payers; mainnet: ≥100 USDC / ≥10 |
 | O6 | Keep 2% total fee on mainnet? | Keep for hackathon; re-evaluate vs Monad launchpad fees |
 | O7 | Can the creator change the provider payout address? | Yes, creator-only, emits event |
-| O8 | Facilitator submitter addresses (clean-revenue signal) | Observed: `0x7f6a2850669202519f0FE8aa912451238820Db86`. Maintain a list; never assume a single address (§13) |
+| ~~O8~~ | ~~Facilitator submitter addresses~~ | **Locked.** `0x7f6a2850669202519f0FE8aa912451238820Db86` recorded in `addresses.ts` and `.env.example`. Server reads via `FACILITATOR_SUBMITTER_ADDRESSES` env var for clean-revenue filtering (§13). |
 | O9 | Payers with EIP-7702-delegated wallets (ERC-1271 path in the facilitator) | Not yet tested on real Monad; add one payment test before mainnet |
 | O10 | Multi-asset quote pairs (forex stablecoins such as EURC, then tokenised stocks) | EURC is not natively deployed on Monad as of 2026-09; no liquid USDC pool exists. Deferred until Revpad v1 ships and a liquid quote token appears on Monad. See §21 for scope. |
 | O11 | Keeper and server availability SLA | Single-instance confirmed acceptable for hackathon (23 Sep — keeper verified collect/distribute/buyback in one tick). Mainnet requires dual-region or decentralised keeper; deferred to §21. |
@@ -555,7 +555,7 @@ Explicit gas limits on every tx (`estimate × 1.1`; Monad bills the gas limit). 
 - [ ] DopplerERC20V1 `burn` semantics (caller's own balance).
 - [ ] Contract-driven collect + buyback via `PoolManager.unlock` + burn on the fork.
 - [ ] EIP-7702-delegated payer through the official facilitator (O9).
-- [ ] Full facilitator submitter address(es) recorded (O8).
+- [x] Full facilitator submitter address(es) recorded (O8). Locked 2026-09-24.
 - [ ] Rehype hook (O2) — deferred.
 
 ## 18. Milestones
