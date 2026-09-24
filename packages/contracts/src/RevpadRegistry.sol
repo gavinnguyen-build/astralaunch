@@ -8,6 +8,7 @@ import {IInitializer, PoolKey} from "./interfaces/IInitializer.sol";
 import {IDopplerERC20V1} from "./interfaces/IDopplerERC20V1.sol";
 import {IFeeEscrow} from "./interfaces/IFeeEscrow.sol";
 import {IBuybackVault} from "./interfaces/IBuybackVault.sol";
+import {IPlatformFeeReceiver} from "./interfaces/IPlatformFeeReceiver.sol";
 import {RevenueRouter} from "./RevenueRouter.sol";
 
 /// @title  RevpadRegistry
@@ -39,7 +40,7 @@ contract RevpadRegistry {
     address      constant DOPPLER_HOOK = 0x580ca49389d83b019d07E17e99454f2F218e2dc0;
 
     // ── Mutable singletons ────────────────────────────────────────────────────
-    address       public treasury;
+    IPlatformFeeReceiver public platformFeeReceiver;
     IFeeEscrow    public feeEscrow;
     IBuybackVault public buybackVault;
     address       public routerImplementation;
@@ -90,18 +91,17 @@ contract RevpadRegistry {
         bytes32 poolId,
         uint256 timestamp
     );
-    event TreasurySet(address oldTreasury, address newTreasury);
     event PauseSet(bool paused);
 
     // ── Constructor ───────────────────────────────────────────────────────────
     constructor(
-        address _treasury,
+        address _platformFeeReceiver,
         address _feeEscrow,
         address _buybackVault,
         address _routerImpl,
         address _admin
     ) {
-        treasury             = _treasury;
+        platformFeeReceiver  = IPlatformFeeReceiver(_platformFeeReceiver);
         feeEscrow            = IFeeEscrow(_feeEscrow);
         buybackVault         = IBuybackVault(_buybackVault);
         routerImplementation = _routerImpl;
@@ -142,7 +142,7 @@ contract RevpadRegistry {
         if (numeraire       != USDC)                 revert WrongNumeraire(numeraire, USDC);
         if (totalSupply     != C.TOTAL_SUPPLY)       revert WrongTotalSupply(totalSupply, C.TOTAL_SUPPLY);
         if (numTokensToSell != C.POOL_TOKENS_NUM)    revert WrongNumTokensToSell(numTokensToSell, C.POOL_TOKENS_NUM);
-        if (integrator      != treasury)             revert WrongIntegrator(integrator, treasury);
+        if (integrator      != address(platformFeeReceiver)) revert WrongIntegrator(integrator, address(platformFeeReceiver));
 
         // ── 2. Pool key from getState (Fix 1: getState takes asset, not poolId) ─
         // This eliminates the poolId caller parameter — poolId is now derived on-chain.
@@ -165,7 +165,7 @@ contract RevpadRegistry {
         _checkShare(poolId, creator,              C.CREATOR_SHARE_WAD,  1);
         _checkShare(poolId, address(feeEscrow),   C.ESCROW_SHARE_WAD,   2);
         _checkShare(poolId, address(buybackVault),C.BUYBACK_SHARE_WAD,  3);
-        _checkShare(poolId, treasury,             C.TREASURY_SHARE_WAD, 4);
+        _checkShare(poolId, address(platformFeeReceiver), C.TREASURY_SHARE_WAD, 4);
 
         // ── 4. Token vesting + balance cap ────────────────────────────────────
         IDopplerERC20V1 tok = IDopplerERC20V1(asset);
@@ -204,7 +204,7 @@ contract RevpadRegistry {
             address(this),
             address(feeEscrow),
             address(buybackVault),
-            treasury
+            address(platformFeeReceiver)
         );
 
         // ── 6. Register in singletons ─────────────────────────────────────────
@@ -214,6 +214,7 @@ contract RevpadRegistry {
         buybackVault.registerAsset(asset, poolKey, poolId);
         buybackVault.authorize(router);
         buybackVault.authorize(address(feeEscrow));
+        platformFeeReceiver.registerAsset(asset, poolId);
 
         routers[asset] = router;
 
@@ -225,13 +226,13 @@ contract RevpadRegistry {
         return routers[asset] != address(0);
     }
 
-    // ── Admin ─────────────────────────────────────────────────────────────────
-    function setTreasury(address newTreasury) external {
-        if (msg.sender != admin) revert NotAdmin();
-        emit TreasurySet(treasury, newTreasury);
-        treasury = newTreasury;
+    // ── Backward-compatible treasury getter ────────────────────────────────────
+    /// @notice Returns the PlatformFeeReceiver address (used as treasury destination).
+    function treasury() external view returns (address) {
+        return address(platformFeeReceiver);
     }
 
+    // ── Admin ─────────────────────────────────────────────────────────────────
     function setPause(bool _paused) external {
         if (msg.sender != admin) revert NotAdmin();
         paused = _paused;

@@ -6,6 +6,7 @@ import {RevpadRegistry} from "../../src/RevpadRegistry.sol";
 import {RevenueRouter} from "../../src/RevenueRouter.sol";
 import {FeeEscrow} from "../../src/FeeEscrow.sol";
 import {BuybackVault} from "../../src/BuybackVault.sol";
+import {PlatformFeeReceiver} from "../../src/PlatformFeeReceiver.sol";
 import {RevpadConstants as C} from "../../src/RevpadConstants.sol";
 import {PoolKey} from "../../src/interfaces/IInitializer.sol";
 
@@ -148,15 +149,16 @@ contract RevpadRegistryTest is Test {
     // Fix 1: Doppler hook constant (confirmed constant across all Revpad launches, D16)
     address constant DOPPLER_HOOK     = 0x580ca49389d83b019d07E17e99454f2F218e2dc0;
 
-    RevpadRegistry     registry;
-    MockAirlock        airlock;
-    MockInitializerReg init_;
-    MockPoolManagerReg pm;
-    MockToken          token;
+    RevpadRegistry      registry;
+    MockAirlock         airlock;
+    MockInitializerReg  init_;
+    MockPoolManagerReg  pm;
+    MockToken           token;
 
-    RevenueRouter  routerImpl;
-    FeeEscrow      escrow;
-    BuybackVault   vault;
+    RevenueRouter       routerImpl;
+    FeeEscrow           escrow;
+    BuybackVault        vault;
+    PlatformFeeReceiver pfr;
 
     address admin    = address(0xAD);
     address treasury = address(0x7AEA5);
@@ -170,9 +172,9 @@ contract RevpadRegistryTest is Test {
         // ── Pre-compute registry address ──────────────────────────────────────
         // Deployments before registry:
         //   +0 token, +1 tmpUsdc, +2 tmpAirlock, +3 tmpInit, +4 pm,
-        //   +5 escrow, +6 vault, +7 routerImpl → +8 = registry
+        //   +5 escrow, +6 vault, +7 pfr, +8 routerImpl → +9 = registry
         uint256 startNonce = vm.getNonce(address(this));
-        address futureRegistry = vm.computeCreateAddress(address(this), startNonce + 8);
+        address futureRegistry = vm.computeCreateAddress(address(this), startNonce + 9);
 
         token = new MockToken();  // +0
 
@@ -196,9 +198,10 @@ contract RevpadRegistryTest is Test {
         pm         = new MockPoolManagerReg();  // +4
         escrow     = new FeeEscrow(futureRegistry, address(0), INITIALIZER_ADDR);  // +5
         vault      = new BuybackVault(futureRegistry, INITIALIZER_ADDR, address(pm));  // +6
-        routerImpl = new RevenueRouter();  // +7
-        registry   = new RevpadRegistry(  // +8
-            treasury, address(escrow), address(vault), address(routerImpl), admin
+        pfr        = new PlatformFeeReceiver(futureRegistry, INITIALIZER_ADDR, treasury, admin); // +7
+        routerImpl = new RevenueRouter();  // +8
+        registry   = new RevpadRegistry(  // +9
+            address(pfr), address(escrow), address(vault), address(routerImpl), admin
         );
         require(address(registry) == futureRegistry, "nonce offset wrong");
 
@@ -219,17 +222,17 @@ contract RevpadRegistryTest is Test {
         token.setBalanceLimitEnd(uint48(block.timestamp + C.BALANCE_CAP_WINDOW + 1));
         token.setTotalAllocated(C.VESTED_TOKENS_NUM);
 
-        // Configure airlock at canonical address (integrator must equal treasury, D17)
+        // Configure airlock at canonical address (integrator must equal PFR address)
         airlock.setConfig(asset, _goodAirlockCfg());
 
         // Configure initializer at canonical address
         // Fix 1: setAssetKey for getState(asset); poolId auto-computed on-chain
         init_.setAssetKey(asset, poolKey);
-        init_.setShare(poolId, AIRLOCK_OWNER,   C.DOPPLER_SHARE_WAD);
-        init_.setShare(poolId, creator,         C.CREATOR_SHARE_WAD);
-        init_.setShare(poolId, address(escrow), C.ESCROW_SHARE_WAD);
-        init_.setShare(poolId, address(vault),  C.BUYBACK_SHARE_WAD);
-        init_.setShare(poolId, treasury,        C.TREASURY_SHARE_WAD);
+        init_.setShare(poolId, AIRLOCK_OWNER,    C.DOPPLER_SHARE_WAD);
+        init_.setShare(poolId, creator,          C.CREATOR_SHARE_WAD);
+        init_.setShare(poolId, address(escrow),  C.ESCROW_SHARE_WAD);
+        init_.setShare(poolId, address(vault),   C.BUYBACK_SHARE_WAD);
+        init_.setShare(poolId, address(pfr),     C.TREASURY_SHARE_WAD);
     }
 
     // ── register: happy path ──────────────────────────────────────────────────
@@ -245,7 +248,7 @@ contract RevpadRegistryTest is Test {
         assertEq(rr.registry(),     address(registry));
         assertEq(rr.feeEscrow(),    address(escrow));
         assertEq(rr.buybackVault(), address(vault));
-        assertEq(rr.treasury(),     treasury);
+        assertEq(rr.treasury(),     address(pfr));
     }
 
     function test_register_emitsEvent() public {
@@ -316,12 +319,12 @@ contract RevpadRegistryTest is Test {
         registry.register(asset, creator);
     }
 
-    // Fix 1-integrator: reject wrong integrator (D17)
+    // Fix 1-integrator: reject wrong integrator (must equal PFR address)
     function test_register_revertsWrongIntegrator() public {
         MockAirlock.AssetConfig memory cfg = _goodAirlockCfg();
         cfg.integrator = address(0xBAD);
         airlock.setConfig(asset, cfg);
-        vm.expectRevert(abi.encodeWithSelector(RevpadRegistry.WrongIntegrator.selector, address(0xBAD), treasury));
+        vm.expectRevert(abi.encodeWithSelector(RevpadRegistry.WrongIntegrator.selector, address(0xBAD), address(pfr)));
         registry.register(asset, creator);
     }
 
@@ -392,7 +395,7 @@ contract RevpadRegistryTest is Test {
     }
 
     function test_register_revertsWrongTreasuryShare() public {
-        init_.setShare(poolId, treasury, C.TREASURY_SHARE_WAD + 1);
+        init_.setShare(poolId, address(pfr), C.TREASURY_SHARE_WAD + 1);
         vm.expectRevert(abi.encodeWithSelector(RevpadRegistry.WrongTreasuryShare.selector, C.TREASURY_SHARE_WAD + 1, C.TREASURY_SHARE_WAD));
         registry.register(asset, creator);
     }
@@ -468,19 +471,12 @@ contract RevpadRegistryTest is Test {
         registry.register(asset, creator);
     }
 
+    // ── treasury getter ───────────────────────────────────────────────────────
+    function test_treasury_returnsPFRAddress() public view {
+        assertEq(registry.treasury(), address(pfr));
+    }
+
     // ── admin ─────────────────────────────────────────────────────────────────
-    function test_setTreasury_byAdmin() public {
-        address newT = address(0xBEEF);
-        vm.prank(admin);
-        registry.setTreasury(newT);
-        assertEq(registry.treasury(), newT);
-    }
-
-    function test_setTreasury_revertsIfNotAdmin() public {
-        vm.expectRevert(RevpadRegistry.NotAdmin.selector);
-        registry.setTreasury(address(0xBEEF));
-    }
-
     function test_setPause_byAdmin() public {
         vm.prank(admin);
         registry.setPause(true);
@@ -495,6 +491,12 @@ contract RevpadRegistryTest is Test {
         registry.setPause(true);
     }
 
+    // ── PlatformFeeReceiver wiring ────────────────────────────────────────────
+    function test_register_registersPFRAsset() public {
+        registry.register(asset, creator);
+        assertEq(pfr.assetPoolIds(asset), poolId);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
     function _goodAirlockCfg() internal view returns (MockAirlock.AssetConfig memory) {
         return MockAirlock.AssetConfig({
@@ -507,7 +509,7 @@ contract RevpadRegistryTest is Test {
             migrationPool:   address(0),
             numTokensToSell: 850_000_000 * 1e18,  // C.POOL_TOKENS_NUM
             totalSupply:     1_000_000_000 * 1e18, // C.TOTAL_SUPPLY
-            integrator:      treasury              // Fix 2-integrator: must equal registry.treasury()
+            integrator:      address(pfr)          // must equal registry.platformFeeReceiver
         });
     }
 }

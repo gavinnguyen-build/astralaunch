@@ -29,6 +29,7 @@
 | D16 | **`DOPPLER_HOOK` is constant across launches.** The V4ScheduledMulticurveInitializer's hook address (`0x580ca49389d83b019d07E17e99454f2F218e2dc0`) is the same for every token launched through it on Monad mainnet. Confirmed across 4+ distinct token launches in testing. `RevpadRegistry.register` now takes `(address asset, address creator)` — `poolId` is computed on-chain from `INITIALIZER.getState(asset).poolKey`. The registry adds `WrongPool` error when the pool's hook ≠ `DOPPLER_HOOK`. |
 | D17 | **Integrator must equal the Revpad treasury.** `Airlock.getAssetData(asset).integrator` is recorded at launch time by the Doppler SDK. For every Revpad token, the integrator is the treasury address. `RevpadRegistry.register` now checks this and reverts with `WrongIntegrator` on mismatch. |
 | D18 | **Balance cap window: registry enforces [600, 900] s; launch script targets 720 s.** `DopplerERC20V1.vestingStart` = `block.timestamp` at deploy. On Monad (0.4 s blocks) the tx lands ~1 s after `startTime`, giving `window ≈ 721 s`. On Anvil (1 s blocks + SDK lag ~26 s) `window ≈ 696 s`. Both inside [600, 900]. Using 900 caused `WrongBalanceCap` on Monad because the window was 901 s (decisions.md D20). |
+| D21 | **PlatformFeeReceiver replaces treasury wallet as beneficiary/integrator/router destination.** A singleton whose address is fixed forever; it forwards collected funds to a changeable `treasury` via a two-step 48h-delay pattern (`proposeTreasury → acceptTreasury`). Treasury changes are effective for ALL tokens (old and new) without touching existing contracts. RevpadRegistry no longer has `setTreasury()`; the treasury is managed through PlatformFeeReceiver. |
 
 ### Open
 | # | Question | Current default |
@@ -100,7 +101,7 @@ Positioning (internal, not a tagline): same launch ease as agent-token launchpad
 | Creator — liquid | 0.35 | 0.70% | Creator claims directly from Doppler |
 | Creator — escrow (FeeEscrow) | 0.20 | 0.40% | Unlocks by revenue (§4.3) |
 | BuybackVault | 0.10 | 0.20% | Buy + burn (§6.4) |
-| Platform treasury | 0.30 | 0.60% | Treasury multisig |
+| Platform treasury | 0.30 | 0.60% | PlatformFeeReceiver (singleton) → forwards to changeable treasury (48h delay, D21) |
 
 - Doppler on EVM takes 5% of trading fees; with lockable beneficiaries the Airlock owner **must** be a beneficiary with ≥ 5%. Get it via SDK `getAirlockOwner(publicClient)`.
 - Beneficiaries must be sorted by address ascending (SDK does this); shares must sum to 1e18.
@@ -210,7 +211,7 @@ Solidity ^0.8.24, Foundry. Custom errors, events on every state change, NatSpec 
 Why: re-implementing the Doppler multicurve encoding in Solidity is long and error-prone. The SDK launch path is already verified on the fork. The registry enforces the same guarantees by **checking** the result on-chain instead of **building** it.
 
 Flow:
-1. Frontend launches with the Doppler SDK using the fixed Revpad config (§4): scheduled multicurve, fee 20000, tick spacing 200, beneficiaries [Airlock owner 5%, creator 35%, FeeEscrow 20%, BuybackVault 10%, treasury 30%], supply 1e9 with 85/15, vesting 30d/365d, balance cap 1% for 12 min (720 s target; registry accepts 10–15 min), noOp governance and migration, numeraire USDC, integrator = treasury.
+1. Frontend launches with the Doppler SDK using the fixed Revpad config (§4): scheduled multicurve, fee 20000, tick spacing 200, beneficiaries [Airlock owner 5%, creator 35%, FeeEscrow 20%, BuybackVault 10%, PlatformFeeReceiver 30%], supply 1e9 with 85/15, vesting 30d/365d, balance cap 1% for 12 min (720 s target; registry accepts 10–15 min), noOp governance and migration, numeraire USDC, integrator = PlatformFeeReceiver.
 2. Anyone calls `register(asset, creator)`. No `poolId` parameter — it is derived on-chain (D16).
 
 ```solidity
@@ -228,7 +229,7 @@ function isRegistered(address asset) external view returns (bool);
 | Airlock.getAssetData: numeraire == USDC | `WrongNumeraire` |
 | Airlock.getAssetData: totalSupply == 1e9×1e18 | `WrongTotalSupply` |
 | Airlock.getAssetData: numTokensToSell == 850M×1e18 | `WrongNumTokensToSell` |
-| Airlock.getAssetData: integrator == treasury (D17) | `WrongIntegrator` |
+| Airlock.getAssetData: integrator == PlatformFeeReceiver (D17, D21) | `WrongIntegrator` |
 | getState(asset).poolKey.hooks == DOPPLER_HOOK (D16) | `WrongPool` |
 | poolKey.fee == 20000 | `WrongFee` |
 | poolKey.tickSpacing == 200 | `WrongTickSpacing` |
@@ -237,7 +238,7 @@ function isRegistered(address asset) external view returns (bool);
 | getShares(poolId, creator) == 0.35e18 | `WrongCreatorShare` |
 | getShares(poolId, FeeEscrow) == 0.20e18 | `WrongEscrowShare` |
 | getShares(poolId, BuybackVault) == 0.10e18 | `WrongBuybackShare` |
-| getShares(poolId, treasury) == 0.30e18 | `WrongTreasuryShare` |
+| getShares(poolId, PlatformFeeReceiver) == 0.30e18 | `WrongTreasuryShare` |
 | vestingSchedules(0).cliff == 30 days | `WrongVestingCliff` |
 | vestingSchedules(0).duration == 365 days | `WrongVestingDuration` |
 | totalAllocatedOf(creator) == 150M×1e18 (Fix 2) | `WrongVestingAmount` |
@@ -250,7 +251,7 @@ Then: deploy `RevenueRouter` clone, register asset in FeeEscrow and BuybackVault
 
 Tokens that fail verification are never listed. Week-2 check: confirm every field above is readable from the initializer/token/Airlock (the SDK reads fee, tick spacing, status, pool key and pending fees from chain). If a field is not readable on-chain, document the fallback in `docs/decisions.md` (e.g. verify from the Airlock `Create` event data).
 
-Admin (multisig): `setTreasury`, `pause`. No power over registered assets' funds.
+Admin (multisig): `pause`. Treasury changes are managed through PlatformFeeReceiver (D21). No power over registered assets' funds.
 
 ### 6.2 `RevenueRouter` (clone per asset)
 
@@ -305,11 +306,27 @@ Rules in `execute`:
 - Known cost: the swap pays the 2% pool fee (≈1.75% net leakage after the vault's own share returns). Accept for v1.
 - During the balance cap window (first ~12 minutes; `balanceLimitEnd − vestingStart ∈ [600, 900] s`) `execute()` reverts with `CapWindowActive` (D19). Keeper waits until after `balanceLimitEnd`.
 
-### 6.5 `CreatorVesting`
+### 6.5 `PlatformFeeReceiver` (singleton, D21)
+
+```solidity
+function collect(address asset) external;                 // permissionless: collectFees + forward to treasury
+function proposeTreasury(address newTreasury) external;   // admin, 48h delay
+function acceptTreasury() external;                       // admin, after delay
+function cancelProposal() external;                       // admin
+function pendingTreasury() external view returns (address proposed, uint256 executableAt);
+function registerAsset(address asset, bytes32 poolId) external; // only RevpadRegistry
+```
+
+- Address is fixed forever as the 30% Doppler beneficiary, Airlock integrator, and RevenueRouter treasury destination.
+- `collect(asset)` calls `initializer.collectFees(poolId)`, then forwards ALL USDC and ALL asset-token balances to the current `treasury`.
+- Treasury changes use a two-step pattern: `proposeTreasury` sets a 48h timer; `acceptTreasury` applies the change after the delay. This makes treasury changes effective for ALL tokens (old and new) without touching existing contracts.
+- Keeper calls `collect()` per asset each tick and monitors `pendingTreasury()` for proposals (Telegram alerts).
+
+### 6.6 `CreatorVesting`
 
 Removed in v0.2. DopplerERC20V1 provides vesting with a cliff natively (§4.5).
 
-### 6.6 Tests (required before any deploy)
+### 6.7 Tests (required before any deploy)
 
 - Unit: every function, every revert path.
 - Fuzz: split sums equal input; `claimable ≤ min(allowance, accrued)`; forfeit only after 365d; buyback only reduces USDC and burns asset.
@@ -461,11 +478,14 @@ UI is **not decided**: the first mockup was set aside and Tun is sourcing a diff
 ## 15. Keeper (`apps/keeper`)
 
 Every 10 min (per asset with activity):
-1. `RevenueRouter.distribute()` if balance ≥ MIN_DISTRIBUTE.
-2. `FeeEscrow.collect(asset)`, `BuybackVault.collect(asset)` (each contract calls `collectFees` on the initializer itself).
-3. `FeeEscrow.swapTokenFees` in small batches with slippage cap.
-4. `BuybackVault.burnTokens(asset)`; `BuybackVault.execute(asset, min(balance, MAX_PER_CALL), minOut)` with jittered timing.
-5. `FeeEscrow.forfeit(asset)` when due.
+1. `FeeEscrow.collect(asset)`, `BuybackVault.collect(asset)` (each contract calls `collectFees` on the initializer itself).
+2. `PlatformFeeReceiver.collect(asset)` — collects platform's 30% trading-fee share and forwards to treasury (D21).
+3. `RevenueRouter.distribute()` if balance ≥ MIN_DISTRIBUTE.
+4. `FeeEscrow.swapTokenFees` in small batches with slippage cap.
+5. `BuybackVault.burnTokens(asset)`; `BuybackVault.execute(asset, min(balance, MAX_PER_CALL), minOut)` with jittered timing.
+6. `FeeEscrow.forfeit(asset)` when due.
+
+After all per-asset jobs: monitor `PlatformFeeReceiver.pendingTreasury()` and send Telegram alert if a treasury change proposal is detected or resolved.
 
 Explicit gas limits on every tx. Keeper wallet funded with MON; alert when low. All functions are permissionless, so anyone can run a keeper.
 

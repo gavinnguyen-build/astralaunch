@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Script, console} from "forge-std/Script.sol";
 import {FeeEscrow} from "../src/FeeEscrow.sol";
 import {BuybackVault} from "../src/BuybackVault.sol";
+import {PlatformFeeReceiver} from "../src/PlatformFeeReceiver.sol";
 import {RevenueRouter} from "../src/RevenueRouter.sol";
 import {RevpadRegistry} from "../src/RevpadRegistry.sol";
 
@@ -15,8 +16,8 @@ import {RevpadRegistry} from "../src/RevpadRegistry.sol";
 ///     --private-key $PRIVATE_KEY
 ///
 /// Env vars required:
-///   ADMIN_ADDRESS    — admin of RevpadRegistry (defaults to msg.sender)
-///   TREASURY_ADDRESS — treasury recipient (defaults to msg.sender)
+///   ADMIN_ADDRESS    — admin of RevpadRegistry + PlatformFeeReceiver (defaults to msg.sender)
+///   TREASURY_ADDRESS — initial treasury recipient (defaults to msg.sender)
 ///
 /// After broadcast the script writes deployed addresses to
 ///   ../../revpad-anvil/.anvil-state/contracts.json
@@ -26,10 +27,11 @@ import {RevpadRegistry} from "../src/RevpadRegistry.sol";
 /// from that JSON automatically when CONTRACTS_JSON_PATH is set.
 ///
 /// Deployment order (nonce offsets from start nonce N):
-///   N+0  FeeEscrow    — requires futureVault (N+1) and futureRegistry (N+3)
-///   N+1  BuybackVault — requires futureRegistry (N+3)
-///   N+2  RevenueRouter (implementation)
-///   N+3  RevpadRegistry
+///   N+0  FeeEscrow             — requires futureVault (N+1) and futureRegistry (N+4)
+///   N+1  BuybackVault          — requires futureRegistry (N+4)
+///   N+2  PlatformFeeReceiver   — requires futureRegistry (N+4)
+///   N+3  RevenueRouter (implementation)
+///   N+4  RevpadRegistry
 ///
 /// The Monad mainnet pool manager address is hardcoded.
 contract DeployRevpad is Script {
@@ -47,20 +49,23 @@ contract DeployRevpad is Script {
         vm.startBroadcast();
 
         // Pre-compute forward addresses so every constructor gets the correct immutables.
-        // Nonce layout: escrow=N+0, vault=N+1, routerImpl=N+2, registry=N+3
+        // Nonce layout: escrow=N+0, vault=N+1, pfr=N+2, routerImpl=N+3, registry=N+4
         uint256 nonce          = vm.getNonce(msg.sender);
         address futureVault    = vm.computeCreateAddress(msg.sender, nonce + 1);
-        address futureRegistry = vm.computeCreateAddress(msg.sender, nonce + 3);
+        address futurePFR      = vm.computeCreateAddress(msg.sender, nonce + 2);
+        address futureRegistry = vm.computeCreateAddress(msg.sender, nonce + 4);
 
-        FeeEscrow     escrow     = new FeeEscrow(futureRegistry, futureVault, INITIALIZER); // N+0
-        BuybackVault  vault      = new BuybackVault(futureRegistry, INITIALIZER, POOL_MANAGER); // N+1
-        RevenueRouter routerImpl = new RevenueRouter();                                     // N+2
+        FeeEscrow     escrow     = new FeeEscrow(futureRegistry, futureVault, INITIALIZER);         // N+0
+        BuybackVault  vault      = new BuybackVault(futureRegistry, INITIALIZER, POOL_MANAGER);     // N+1
+        PlatformFeeReceiver pfr  = new PlatformFeeReceiver(futureRegistry, INITIALIZER, treasury, admin); // N+2
+        RevenueRouter routerImpl = new RevenueRouter();                                              // N+3
         RevpadRegistry registry  = new RevpadRegistry(
-            treasury, address(escrow), address(vault), address(routerImpl), admin
-        );                                                                                   // N+3
+            address(pfr), address(escrow), address(vault), address(routerImpl), admin
+        );                                                                                           // N+4
 
         require(address(registry) == futureRegistry, "nonce mismatch: registry");
         require(address(vault)    == futureVault,    "nonce mismatch: vault");
+        require(address(pfr)      == futurePFR,      "nonce mismatch: pfr");
 
         vm.stopBroadcast();
 
@@ -72,16 +77,19 @@ contract DeployRevpad is Script {
         require(address(vault.poolManager()) != address(0),         "vault.poolManager is zero");
         require(address(vault.initializer()) != address(0),         "vault.initializer is zero");
         require(address(escrow.initializer())!= address(0),         "escrow.initializer is zero");
+        require(pfr.registry()               == address(registry),  "pfr.registry != registry");
+        require(pfr.treasury()               == treasury,           "pfr.treasury != treasury");
 
         // ── Console output ─────────────────────────────────────────────────────
-        console.log("FeeEscrow    :", address(escrow));
-        console.log("BuybackVault :", address(vault));
-        console.log("RouterImpl   :", address(routerImpl));
-        console.log("Registry     :", address(registry));
-        console.log("Treasury     :", treasury);
-        console.log("Admin        :", admin);
-        console.log("Deployer     :", msg.sender);
-        console.log("StartNonce   :", nonce);
+        console.log("FeeEscrow           :", address(escrow));
+        console.log("BuybackVault        :", address(vault));
+        console.log("PlatformFeeReceiver :", address(pfr));
+        console.log("RouterImpl          :", address(routerImpl));
+        console.log("Registry            :", address(registry));
+        console.log("Treasury            :", treasury);
+        console.log("Admin               :", admin);
+        console.log("Deployer            :", msg.sender);
+        console.log("StartNonce          :", nonce);
 
         // ── Write contracts.json for fork tests and launch script ──────────────
         // IMPORTANT: vm.serializeXxx(objectKey, ...) uses the FIRST argument as a fixed
@@ -89,13 +97,14 @@ contract DeployRevpad is Script {
         // literal string so Foundry accumulates them into one object.  The LAST call's
         // return value is the complete JSON; that is what we write to disk.
         string memory obj = "contracts";
-        vm.serializeAddress(obj, "deployer",          msg.sender);
-        vm.serializeUint(obj,    "deployerStartNonce", nonce);
-        vm.serializeAddress(obj, "escrow",            address(escrow));
-        vm.serializeAddress(obj, "vault",             address(vault));
-        vm.serializeAddress(obj, "routerImpl",        address(routerImpl));
-        vm.serializeAddress(obj, "registry",          address(registry));
-        vm.serializeAddress(obj, "treasury",          treasury);
+        vm.serializeAddress(obj, "deployer",             msg.sender);
+        vm.serializeUint(obj,    "deployerStartNonce",   nonce);
+        vm.serializeAddress(obj, "escrow",               address(escrow));
+        vm.serializeAddress(obj, "vault",                address(vault));
+        vm.serializeAddress(obj, "platformFeeReceiver",  address(pfr));
+        vm.serializeAddress(obj, "routerImpl",           address(routerImpl));
+        vm.serializeAddress(obj, "registry",             address(registry));
+        vm.serializeAddress(obj, "treasury",             treasury);
         string memory finalJson = vm.serializeAddress(obj, "admin", admin); // last → full object
         vm.writeFile(CONTRACTS_JSON, finalJson);
         console.log("contracts.json:", finalJson);

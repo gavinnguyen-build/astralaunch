@@ -44,6 +44,10 @@ export const VESTING_DURATION_S = 365 * 86_400; // 365 days
 // ── Launch pricing (open O1 — verified 2026-09-23) ────────────────────────────
 export const START_MCAP_USD = 10_000; // $10,000 FDV at launch
 
+// ── Treasury change delay ──────────────────────────────────────────────────────
+/** Two-step treasury change delay in seconds (48 hours). */
+export const TREASURY_CHANGE_DELAY_S = 48 * 3600;
+
 // ── Keeper ─────────────────────────────────────────────────────────────────────
 /** Gas estimate multiplier (Monad bills gas limit). */
 export const GAS_BUFFER_BPS = 11_000n; // ×1.1

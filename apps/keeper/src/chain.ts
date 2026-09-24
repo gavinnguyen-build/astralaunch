@@ -23,6 +23,7 @@ export const CHAIN_ID  = Number(process.env.MONAD_CHAIN_ID ?? 143);
 export const REGISTRY  = need('REVPAD_REGISTRY_ADDRESS') as Address;
 export const ESCROW    = need('FEE_ESCROW_ADDRESS') as Address;
 export const VAULT     = need('BUYBACK_VAULT_ADDRESS') as Address;
+export const PLATFORM_FEE_RECEIVER = need('PLATFORM_FEE_RECEIVER_ADDRESS') as Address;
 
 const monad = defineChain({
   id: CHAIN_ID,

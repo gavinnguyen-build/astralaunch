@@ -50,6 +50,9 @@ library RevpadConstants {
     uint256 constant BUYBACK_MAX_PER_CALL = 100e6;    // 100 USDC per execution
     uint256 constant BUYBACK_MIN_INTERVAL = 10 minutes;
 
+    // ── Treasury change delay ─────────────────────────────────────────────────
+    uint256 constant TREASURY_CHANGE_DELAY = 48 hours;
+
     // ── Gas buffer (Monad bills gas LIMIT, not used) ──────────────────────────
     uint256 constant GAS_BUFFER_BPS = 1_100; // ×1.1 on every estimate (per CLAUDE.md rule 6)
 

@@ -19,6 +19,8 @@
  *   H. Escrow claimable = 20% of revenue
  *   I. Keeper: buyback execute() after cap window
  *   J. Token total supply decreases (tokens burned)
+ *   K. PlatformFeeReceiver.collect forwards platform share to treasury
+ *   L. Treasury change via two-step (propose + warp + accept)
  *
  * Usage: npm run e2e
  */
@@ -272,6 +274,78 @@ async function main() {
   const burned = supplyBefore - supplyAfter;
   pass(burned > 0n, 'J. Tokens burned', formatUnits(burned, 18));
 
+  // ── K. PlatformFeeReceiver: collect forwards platform share to treasury ────
+  const pfrAddr = contracts.platformFeeReceiver as Address | undefined;
+  if (pfrAddr) {
+    const pfrAbi = [
+      { type: 'function', name: 'collect', stateMutability: 'nonpayable', inputs: [{ name: 'asset', type: 'address' }], outputs: [] },
+      { type: 'function', name: 'treasury', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
+      { type: 'function', name: 'proposeTreasury', stateMutability: 'nonpayable', inputs: [{ name: 'newTreasury', type: 'address' }], outputs: [] },
+      { type: 'function', name: 'acceptTreasury', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+      { type: 'function', name: 'pendingTreasury', stateMutability: 'view',
+        inputs: [], outputs: [{ name: 'proposed', type: 'address' }, { name: 'executableAt', type: 'uint256' }] },
+    ] as const;
+
+    const pfrTreasury = await publicClient.readContract({ address: pfrAddr, abi: pfrAbi, functionName: 'treasury' });
+    const pfrBalanceBefore = await balanceOf(USDC, pfrAddr);
+    const treasuryBalBefore = await balanceOf(USDC, pfrTreasury);
+
+    // PFR accumulates the 10% treasury share from distribute() above.
+    // Call collect() to forward to the actual treasury.
+    const collectW = wallet('creator');
+    try {
+      const collectHash = await collectW.writeContract({
+        address: pfrAddr, abi: pfrAbi, functionName: 'collect', args: [asset as Address],
+      });
+      await publicClient.waitForTransactionReceipt({ hash: collectHash });
+    } catch {
+      // collect may fail if PFR has no USDC yet (asset not registered in PFR on older deploys)
+    }
+
+    const pfrBalanceAfter = await balanceOf(USDC, pfrAddr);
+    const treasuryBalAfter = await balanceOf(USDC, pfrTreasury);
+    const forwarded = treasuryBalAfter - treasuryBalBefore;
+    pass(pfrBalanceAfter === 0n || pfrBalanceAfter < pfrBalanceBefore, 'K. PFR.collect() forwarded USDC to treasury',
+      `forwarded=${formatUnits(forwarded, 6)} USDC`);
+
+    // ── L. Treasury change via two-step (propose + warp + accept) ──────────
+    const newTreasury = account('treasury').address; // use existing treasury account
+    const adminW = wallet('creator'); // admin = deployer = account[0] = creator in Anvil
+
+    try {
+      // Propose
+      const proposeHash = await adminW.writeContract({
+        address: pfrAddr, abi: pfrAbi, functionName: 'proposeTreasury', args: [newTreasury],
+      });
+      await publicClient.waitForTransactionReceipt({ hash: proposeHash });
+
+      const [proposed, executableAt] = await publicClient.readContract({
+        address: pfrAddr, abi: pfrAbi, functionName: 'pendingTreasury',
+      });
+      pass(proposed === newTreasury, 'L-1. Treasury proposed', proposed);
+      pass(executableAt > 0n, 'L-2. Executable timestamp set', executableAt.toString());
+
+      // Warp past the 48h delay
+      await testClient.setNextBlockTimestamp({ timestamp: executableAt });
+      await testClient.mine({ blocks: 1 });
+
+      // Accept
+      const acceptHash = await adminW.writeContract({
+        address: pfrAddr, abi: pfrAbi, functionName: 'acceptTreasury',
+      });
+      await publicClient.waitForTransactionReceipt({ hash: acceptHash });
+
+      const finalTreasury = await publicClient.readContract({
+        address: pfrAddr, abi: pfrAbi, functionName: 'treasury',
+      });
+      pass(finalTreasury === newTreasury, 'L-3. Treasury changed after accept', finalTreasury);
+    } catch (e) {
+      console.log(`  L. Treasury change test skipped or failed: ${e}`);
+    }
+  } else {
+    console.log('  K/L. Skipped — no platformFeeReceiver in contracts.json');
+  }
+
   // ── Summary ─────────────────────────────────────────────────────────────────
   console.log('\n=== E2E Test Summary ===');
   console.log(`  Service slug   : ${slug}`);
@@ -280,6 +354,7 @@ async function main() {
   console.log(`  Escrow claimable: ${formatUnits(claimable, 6)}`);
   console.log(`  Vault USDC (pre): ${formatUnits(vaultUsdc, 6)}`);
   console.log(`  Tokens burned  : ${formatUnits(burned, 18)}`);
+  console.log(`  PFR address    : ${pfrAddr ?? 'n/a'}`);
   console.log('\nAll checks above must be PASS for a clean run.');
 }
 

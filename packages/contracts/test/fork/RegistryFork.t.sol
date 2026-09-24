@@ -7,6 +7,7 @@ import {FeeEscrow} from "../../src/FeeEscrow.sol";
 import {BuybackVault} from "../../src/BuybackVault.sol";
 import {RevenueRouter} from "../../src/RevenueRouter.sol";
 import {RevpadRegistry} from "../../src/RevpadRegistry.sol";
+import {PlatformFeeReceiver} from "../../src/PlatformFeeReceiver.sol";
 import {RevpadConstants as C} from "../../src/RevpadConstants.sol";
 import {PoolKey, IInitializer} from "../../src/interfaces/IInitializer.sol";
 import {IPoolManager, IUnlockCallback, SwapParams, BalanceDelta, BalanceDeltaLib} from "../../src/interfaces/IPoolManager.sol";
@@ -54,10 +55,11 @@ contract RegistryForkTest is Test {
     string constant CONTRACTS_JSON_DEFAULT = "../../revpad-anvil/.anvil-state/contracts.json";
     string constant STATE_JSON_DEFAULT     = "../../revpad-anvil/.anvil-state/state.json";
 
-    FeeEscrow      escrow;
-    BuybackVault   vault;
-    RevpadRegistry registry;
-    ForkTrader     forkTrader;
+    FeeEscrow           escrow;
+    BuybackVault        vault;
+    PlatformFeeReceiver pfr;
+    RevpadRegistry      registry;
+    ForkTrader          forkTrader;
 
     address asset; // launched token (from state.json)
 
@@ -70,6 +72,7 @@ contract RegistryForkTest is Test {
 
         escrow   = FeeEscrow(vm.parseJsonAddress(cJson, ".escrow"));
         vault    = BuybackVault(vm.parseJsonAddress(cJson, ".vault"));
+        pfr      = PlatformFeeReceiver(vm.parseJsonAddress(cJson, ".platformFeeReceiver"));
         registry = RevpadRegistry(vm.parseJsonAddress(cJson, ".registry"));
 
         // ── Read launched token from state.json ────────────────────────────────
@@ -90,6 +93,7 @@ contract RegistryForkTest is Test {
         _dealUsdc(TREASURY,         0);
         _dealUsdc(address(escrow),  0);
         _dealUsdc(address(vault),   0);
+        _dealUsdc(address(pfr),     0);
 
         // ── Clear pre-registration from npm run launch ─────────────────────────
         // npm run launch now calls registry.register() as the final step so that
@@ -109,10 +113,13 @@ contract RegistryForkTest is Test {
 
     // ── A. Deployment sanity ──────────────────────────────────────────────────
     function test_deploy_addresses() public view {
-        assertEq(registry.treasury(),              TREASURY,          "treasury");
+        assertEq(registry.treasury(),              address(pfr),      "treasury == pfr");
+        assertEq(address(registry.platformFeeReceiver()), address(pfr), "platformFeeReceiver");
         assertEq(registry.admin(),                 ADMIN,             "admin");
         assertEq(address(registry.feeEscrow()),    address(escrow),   "feeEscrow");
         assertEq(address(registry.buybackVault()), address(vault),    "buybackVault");
+        assertEq(pfr.treasury(),                   TREASURY,          "pfr.treasury");
+        assertEq(pfr.registry(),                   address(registry), "pfr.registry");
     }
 
     /// @notice Verifies the Deploy.s.sol immutable wiring on the real deployed contracts.
@@ -140,7 +147,7 @@ contract RegistryForkTest is Test {
         assertEq(rr.registry(),     address(registry));
         assertEq(rr.feeEscrow(),    address(escrow));
         assertEq(rr.buybackVault(), address(vault));
-        assertEq(rr.treasury(),     TREASURY);
+        assertEq(rr.treasury(),     address(pfr));
 
         FeeEscrow.TokenData memory td = escrow.tokenData(asset);
         assertEq(td.creator, CREATOR);
@@ -194,7 +201,7 @@ contract RegistryForkTest is Test {
             )
         );
         vm.expectRevert(abi.encodeWithSelector(
-            RevpadRegistry.WrongIntegrator.selector, wrongIntegrator, TREASURY
+            RevpadRegistry.WrongIntegrator.selector, wrongIntegrator, address(pfr)
         ));
         registry.register(asset, CREATOR);
     }
@@ -258,7 +265,7 @@ contract RegistryForkTest is Test {
         _dealUsdc(address(rr), total);
 
         uint256 creatorBefore  = IERC20(USDC).balanceOf(CREATOR);
-        uint256 treasuryBefore = IERC20(USDC).balanceOf(TREASURY);
+        uint256 pfrBefore      = IERC20(USDC).balanceOf(address(pfr));
 
         rr.distribute();
 
@@ -272,7 +279,7 @@ contract RegistryForkTest is Test {
         console.log("treasury (10%):", treasuryExpected);
 
         assertEq(IERC20(USDC).balanceOf(CREATOR)  - creatorBefore,  providerExpected, "provider");
-        assertEq(IERC20(USDC).balanceOf(TREASURY) - treasuryBefore, treasuryExpected, "treasury");
+        assertEq(IERC20(USDC).balanceOf(address(pfr)) - pfrBefore, treasuryExpected, "treasury to pfr");
         assertEq(vault.assetData(asset).balanceUSDC,      buybackExpected, "vault USDC");
         assertEq(escrow.tokenData(asset).recordedRevenue, total,           "recordedRevenue");
     }
@@ -460,6 +467,79 @@ contract RegistryForkTest is Test {
         assertApproxEqAbs(E * 10, V * 20, 20, "escrow:vault ratio is 20%:10%");
     }
 
+    // ── W. PlatformFeeReceiver: collect forwards to treasury ──────────────────
+    function test_platformFeeReceiver_collectAfterTrades() public {
+        registry.register(asset, CREATOR);
+
+        // Warp past balance-cap window
+        IDopplerERC20V1 tok = IDopplerERC20V1(asset);
+        uint256 capEnd = uint256(tok.balanceLimitEnd());
+        if (block.timestamp <= capEnd) vm.warp(capEnd + 1);
+
+        (, , PoolKey memory key, ) = IInitializer(INITIALIZER).getState(asset);
+
+        // Deal USDC to ForkTrader and swap to generate trading fees
+        uint256 swapAmt = 10_000_000; // 10 USDC
+        _dealUsdc(address(forkTrader), swapAmt);
+
+        uint256 treasuryBefore = IERC20(USDC).balanceOf(TREASURY);
+
+        forkTrader.swapUSDCForToken(asset, key, swapAmt);
+
+        // PFR collects its 30% share from Doppler and forwards to treasury
+        pfr.collect(asset);
+
+        uint256 pfrBalance = IERC20(USDC).balanceOf(address(pfr));
+        uint256 treasuryReceived = IERC20(USDC).balanceOf(TREASURY) - treasuryBefore;
+
+        console.log("--- PFR collect after trades ---");
+        console.log("PFR remaining USDC:", pfrBalance);
+        console.log("Treasury received :", treasuryReceived);
+
+        assertEq(pfrBalance, 0, "PFR should have zero USDC after collect");
+        assertGt(treasuryReceived, 0, "treasury received platform fees");
+    }
+
+    // ── X. PlatformFeeReceiver: treasury change takes effect for all tokens ──
+    function test_platformFeeReceiver_treasuryChange() public {
+        registry.register(asset, CREATOR);
+
+        address newTreasury = address(0xBEEF);
+
+        // Propose new treasury
+        vm.prank(ADMIN);
+        pfr.proposeTreasury(newTreasury);
+
+        // Warp past 48h delay
+        vm.warp(block.timestamp + C.TREASURY_CHANGE_DELAY);
+
+        // Accept
+        vm.prank(ADMIN);
+        pfr.acceptTreasury();
+        assertEq(pfr.treasury(), newTreasury, "treasury changed");
+
+        // Warp past cap window
+        IDopplerERC20V1 tok = IDopplerERC20V1(asset);
+        uint256 capEnd = uint256(tok.balanceLimitEnd());
+        if (block.timestamp <= capEnd) vm.warp(capEnd + 1);
+
+        (, , PoolKey memory key, ) = IInitializer(INITIALIZER).getState(asset);
+
+        // Trade to generate fees
+        uint256 swapAmt = 10_000_000;
+        _dealUsdc(address(forkTrader), swapAmt);
+        _dealUsdc(newTreasury, 0); // pre-seed slot
+
+        forkTrader.swapUSDCForToken(asset, key, swapAmt);
+
+        // Collect and verify fees go to NEW treasury
+        pfr.collect(asset);
+        uint256 newTreasuryBal = IERC20(USDC).balanceOf(newTreasury);
+        console.log("--- Treasury change + collect ---");
+        console.log("New treasury received:", newTreasuryBal);
+        assertGt(newTreasuryBal, 0, "new treasury received fees");
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /// @dev Clear all registration state for `a` so that register() can be called
@@ -468,7 +548,7 @@ contract RegistryForkTest is Test {
     ///      Storage layout (verified against source + Solady ReentrancyGuard namespaced slot):
     ///
     ///      RevpadRegistry:
-    ///        treasury (slot0), feeEscrow (slot1), buybackVault (slot2),
+    ///        platformFeeReceiver (slot0), feeEscrow (slot1), buybackVault (slot2),
     ///        routerImplementation (slot3), admin+paused (slot4, packed),
     ///        routers mapping (slot5)
     ///
@@ -481,7 +561,7 @@ contract RegistryForkTest is Test {
     ///        PoolKey fields: currency0 (base+0), currency1+fee+tickSpacing (base+1), hooks (base+2)
     ///        poolId (base+3), registered+balanceUSDC packed (base+4)
     function _clearRegistration(address a) internal {
-        // 1. RevpadRegistry.routers[a]
+        // 1. RevpadRegistry.routers[a] — mapping at slot 5
         vm.store(address(registry), keccak256(abi.encode(a, uint256(5))), bytes32(0));
 
         // 2. FeeEscrow._data[a] base+0 (clears launchTime, passing AlreadyRegistered guard)
@@ -491,6 +571,11 @@ contract RegistryForkTest is Test {
         // 3. BuybackVault._assets[a] base+4 (clears registered flag and balanceUSDC)
         bytes32 vBase = keccak256(abi.encode(a, uint256(0)));
         vm.store(address(vault), bytes32(uint256(vBase) + 4), bytes32(0));
+
+        // 4. PlatformFeeReceiver.assetPoolIds[a] — mapping at slot 4
+        //    Storage layout: admin(0), treasury(1), proposedTreasury(2), proposalExecutableAt(3),
+        //    assetPoolIds mapping(4).  Immutables (registry, initializer, USDC) are not in storage.
+        vm.store(address(pfr), keccak256(abi.encode(a, uint256(4))), bytes32(0));
     }
 
     /// @dev Set a USDC balance via vm.store (slot 9 = USDC balance mapping on Monad).

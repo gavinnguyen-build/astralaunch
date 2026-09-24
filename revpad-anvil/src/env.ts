@@ -109,6 +109,7 @@ export type ContractsState = {
   deployerStartNonce?: number;
   escrow?: Address;
   vault?: Address;
+  platformFeeReceiver?: Address;
   routerImpl?: Address;
   registry?: Address;
   treasury?: Address;

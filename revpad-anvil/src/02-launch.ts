@@ -37,23 +37,25 @@ async function main() {
   // Never silently fall back to stub addresses — a wrong beneficiary means trading fees
   // go to an uncontrolled wallet and can never be recovered.
   const contracts = loadContracts();
-  if (!contracts.escrow || !contracts.vault) {
+  if (!contracts.escrow || !contracts.vault || !contracts.platformFeeReceiver) {
     throw new Error(
-      `contracts.json is missing escrow and/or vault addresses.\n` +
+      `contracts.json is missing required addresses (escrow, vault, and/or platformFeeReceiver).\n` +
       `Run: forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --private-key $PRIVATE_KEY\n` +
-      `Expected file: .anvil-state/contracts.json`
+      `Expected file: .anvil-state/contracts.json\n` +
+      `Got: escrow=${contracts.escrow ?? 'MISSING'}, vault=${contracts.vault ?? 'MISSING'}, platformFeeReceiver=${contracts.platformFeeReceiver ?? 'MISSING'}`
     );
   }
-  const escrowAddr   = contracts.escrow   as Address;
-  const buybackAddr  = contracts.vault    as Address;
-  const treasuryAddr = (contracts.treasury ?? process.env.TREASURY_ADDRESS ?? account('treasury').address) as Address;
+  const escrowAddr   = contracts.escrow              as Address;
+  const buybackAddr  = contracts.vault               as Address;
+  const treasuryAddr = contracts.platformFeeReceiver as Address;
 
   console.log('Beneficiary addresses (from contracts.json):');
-  console.log(`  escrow   (FeeEscrow)    : ${escrowAddr}`);
-  console.log(`  vault    (BuybackVault) : ${buybackAddr}`);
-  console.log(`  treasury                : ${treasuryAddr}`);
-  pass(escrowAddr  === contracts.escrow,   'escrow  matches contracts.json', escrowAddr);
-  pass(buybackAddr === contracts.vault,    'vault   matches contracts.json', buybackAddr);
+  console.log(`  escrow                (FeeEscrow)           : ${escrowAddr}`);
+  console.log(`  vault                 (BuybackVault)        : ${buybackAddr}`);
+  console.log(`  platformFeeReceiver   (30% treasury share)  : ${treasuryAddr}`);
+  pass(escrowAddr   === contracts.escrow,              'escrow  matches contracts.json', escrowAddr);
+  pass(buybackAddr  === contracts.vault,               'vault   matches contracts.json', buybackAddr);
+  pass(treasuryAddr === contracts.platformFeeReceiver, '30% beneficiary == platformFeeReceiver', treasuryAddr);
   const beneficiaries = sortBeneficiaries([
     { beneficiary: airlockOwner, shares: SHARES.doppler },
     { beneficiary: creator, shares: SHARES.creator },

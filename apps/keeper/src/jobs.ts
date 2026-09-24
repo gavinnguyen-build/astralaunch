@@ -11,7 +11,7 @@
  * Tx hashes are logged to stdout as JSON for easy ingestion.
  */
 import { formatUnits, type Address } from 'viem';
-import { publicClient, ESCROW, VAULT, sendTx } from './chain.js';
+import { publicClient, ESCROW, VAULT, PLATFORM_FEE_RECEIVER, sendTx } from './chain.js';
 import {
   MIN_BUYBACK_USDC,
   MAX_BUYBACK_PER_CALL_USDC,
@@ -185,6 +185,28 @@ export async function jobForfeit(asset: Address): Promise<void> {
     logError(tag, 'forfeit', e);
   }
 }
+
+// ── PlatformFeeReceiver ABI ──────────────────────────────────────────────────
+
+const pfrAbi = [
+  { type: 'function', name: 'collect', stateMutability: 'nonpayable', inputs: [{ name: 'asset', type: 'address' }], outputs: [] },
+  { type: 'function', name: 'pendingTreasury', stateMutability: 'view', inputs: [],
+    outputs: [{ name: 'proposed', type: 'address' }, { name: 'executableAt', type: 'uint256' }] },
+] as const;
+
+/** Collect platform trading-fee share via PlatformFeeReceiver and forward to treasury. */
+export async function jobCollectPlatformFee(asset: Address): Promise<void> {
+  const tag = `collectPFR:${asset}`;
+  try {
+    const hash = await sendTx({ address: PLATFORM_FEE_RECEIVER, abi: pfrAbi, functionName: 'collect', args: [asset] });
+    log(tag, 'pfr', hash);
+    await publicClient.waitForTransactionReceipt({ hash });
+  } catch (e) {
+    logError(tag, 'pfr', e);
+  }
+}
+
+export { pfrAbi };
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 

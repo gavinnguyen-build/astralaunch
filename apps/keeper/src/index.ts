@@ -5,19 +5,25 @@
  * the server database (DATABASE_URL) and runs jobs every POLL_INTERVAL_S seconds.
  *
  * Jobs per asset (in order):
- *   1. collect   — pull Doppler trading fees
- *   2. distribute — forward revenue from routers
- *   3. buyback   — swap + burn (rate-limited by contract)
- *   4. forfeit   — redirect abandoned escrow to vault
+ *   1. collect   — pull Doppler trading fees (escrow + vault)
+ *   2. collectPFR — pull platform trading fees via PlatformFeeReceiver
+ *   3. distribute — forward revenue from routers
+ *   4. buyback   — swap + burn (rate-limited by contract)
+ *   5. forfeit   — redirect abandoned escrow to vault
+ *
+ * After the per-asset loop: monitor PlatformFeeReceiver for treasury proposals.
  *
  * Usage:
  *   ASSETS=0xToken1,0xToken2 ROUTERS=0xRouter1,0xRouter2 tsx src/index.ts
+ *   --telegram-test  — send a dry-run Telegram alert and exit
  *
  * Or with DATABASE_URL set, assets/routers are loaded from Postgres.
  */
 import { config } from 'dotenv';
 import { isAddress, type Address } from 'viem';
-import { jobCollect, jobDistribute, jobBuyback, jobForfeit } from './jobs.js';
+import { jobCollect, jobDistribute, jobBuyback, jobForfeit, jobCollectPlatformFee } from './jobs.js';
+import { PLATFORM_FEE_RECEIVER, publicClient } from './chain.js';
+import { monitorTreasuryProposal, dryRunTelegramAlert } from './telegram.js';
 
 config({ path: '../../.env' });
 config({ path: '.env', override: false });
@@ -36,13 +42,22 @@ async function runOnce(pairs: Array<{ asset: Address; router: Address }>) {
   console.log(`[keeper] tick — ${pairs.length} asset(s)  ${new Date().toISOString()}`);
   for (const { asset, router } of pairs) {
     await jobCollect(asset);
+    await jobCollectPlatformFee(asset);
     await jobDistribute(router);
     await jobBuyback(asset);
     await jobForfeit(asset);
   }
+  // Monitor treasury proposals after all per-asset jobs
+  await monitorTreasuryProposal(PLATFORM_FEE_RECEIVER, publicClient);
 }
 
 async function main() {
+  // Handle --telegram-test flag
+  if (process.argv.includes('--telegram-test')) {
+    await dryRunTelegramAlert();
+    process.exit(0);
+  }
+
   const pairs = loadFromEnv();
   if (pairs.length === 0) {
     console.warn('[keeper] No assets configured. Set ASSETS and ROUTERS env vars.');
