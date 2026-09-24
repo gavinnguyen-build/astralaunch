@@ -26,8 +26,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         background: 'var(--color-bg)',
         zIndex: 100,
       }}>
-        <Link to="/" style={{ color: 'var(--color-accent)', fontWeight: 700, fontSize: '16px', textDecoration: 'none' }}>
-          Revpad
+        <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}>
+          <img src="/astralaunch-logo.png" alt="Astralaunch" style={{ height: '28px', width: '28px' }} />
+          <span style={{ color: 'var(--color-accent)', fontWeight: 700, fontSize: '16px' }}>Astralaunch</span>
         </Link>
 
         <nav style={{ display: 'flex', gap: '1.25rem', flex: 1 }}>

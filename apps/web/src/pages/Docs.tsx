@@ -2,14 +2,14 @@ export default function Docs() {
   return (
     <div style={{ maxWidth: '700px', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       <div>
-        <h1 style={{ margin: '0 0 8px', fontSize: '22px', fontWeight: 700 }}>How Revpad works</h1>
+        <h1 style={{ margin: '0 0 8px', fontSize: '22px', fontWeight: 700 }}>How Astralaunch works</h1>
         <p style={{ color: 'var(--color-muted)', margin: 0 }}>
           Usage-backed tokens on Monad — the token's buyback is funded by real API revenue, not just trading.
         </p>
       </div>
 
       <Section title="Two money flows">
-        <p>Every Revpad token has two revenue streams:</p>
+        <p>Every Astralaunch token has two revenue streams:</p>
         <ol style={{ paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <li><strong className="trade">Trading fees (2% of volume)</strong> — split between Doppler, the creator (part liquid, part escrowed), the buyback vault, and the platform.</li>
           <li><strong className="usage">Service revenue (x402 API payments)</strong> — agents pay per API call in USDC; split 60% provider / 30% buyback / 10% platform. Every $1 of service revenue also unlocks $0.20 of the creator's escrowed trading fees.</li>
@@ -78,7 +78,7 @@ export default function Docs() {
       </Section>
 
       <Section title="x402 payments">
-        <p>Revpad services use the <a href="https://x402.org" target="_blank" rel="noreferrer">x402 protocol</a> — an HTTP-native payment standard. Agents call an API endpoint; if no payment is attached, they receive a 402 with payment requirements. They attach a signed USDC authorization and retry; the gateway verifies, forwards the request, and settles on success.</p>
+        <p>Astralaunch services use the <a href="https://x402.org" target="_blank" rel="noreferrer">x402 protocol</a> — an HTTP-native payment standard. Agents call an API endpoint; if no payment is attached, they receive a 402 with payment requirements. They attach a signed USDC authorization and retry; the gateway verifies, forwards the request, and settles on success.</p>
         <p>The facilitator (Monad official: <code>x402-facilitator.molandak.org</code>) submits the on-chain USDC transfer. Settlement happens only after the upstream returns a successful response.</p>
       </Section>
 

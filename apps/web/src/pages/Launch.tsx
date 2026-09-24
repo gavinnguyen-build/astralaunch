@@ -222,7 +222,7 @@ export default function Launch() {
       <div className="card" style={{ alignSelf: 'start' }}>
         <h3 style={{ margin: '0 0 1rem', fontSize: '14px', fontWeight: 600 }}>Fixed economics</h3>
         <p style={{ color: 'var(--color-muted)', fontSize: '11px', margin: '0 0 1rem' }}>
-          These are not configurable. This is how Revpad works.
+          These are not configurable. This is how Astralaunch works.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           {ECONOMICS.map(({ label, value }) => (
