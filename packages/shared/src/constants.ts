@@ -48,15 +48,47 @@ export const START_MCAP_USD = 10_000; // $10,000 FDV at launch
 /** Two-step treasury change delay in seconds (48 hours). */
 export const TREASURY_CHANGE_DELAY_S = 48 * 3600;
 
-// ── Keeper ─────────────────────────────────────────────────────────────────────
+// ── Keeper — gas ──────────────────────────────────────────────────────────────
 /** Gas estimate multiplier (Monad bills gas limit). */
 export const GAS_BUFFER_BPS = 11_000n; // ×1.1
-/** Minimum USDC to trigger a buyback execute() call (6 dec). */
-export const MIN_BUYBACK_USDC = 1_000_000n; // 1 USDC
+
+// ── Keeper — contract constants (mirrored, do not change without Solidity update) ──
 /** Maximum USDC per buyback execute() call (6 dec). */
 export const MAX_BUYBACK_PER_CALL_USDC = 1_000_000_000n; // 1000 USDC
-/** Minimum seconds between consecutive execute() calls per asset. */
-export const BUYBACK_MIN_INTERVAL_S = 60; // 1 minute cooldown
+/** Minimum seconds between consecutive execute() calls per asset (Solidity: BUYBACK_MIN_INTERVAL). */
+export const BUYBACK_MIN_INTERVAL_S = 600; // 10 minutes
+
+// ── Keeper — economic thresholds (gas-saving, env-configurable) ──────────────
+// These are keeper-side thresholds to avoid sending txs for dust amounts.
+// On-chain contracts have their own minimums (RevenueRouter MIN_DISTRIBUTE = 0.5 USDC).
+// Keeper thresholds should be >= contract thresholds to avoid wasted gas.
+// Origin: chosen so gas cost (~0.1 MON ≈ $0.03 at 100 gwei) is a small fraction
+// of the USDC value being processed.  1 USDC ≈ 33× the gas cost.
+/** Skip collect if pending USDC for that beneficiary < this (6 dec, env: MIN_COLLECT_USDC). */
+export const KEEPER_MIN_COLLECT_USDC = 1_000_000n; // 1 USDC
+/** Skip distribute if router USDC balance < this (6 dec, env: MIN_DISTRIBUTE_USDC). */
+export const KEEPER_MIN_DISTRIBUTE_USDC = 1_000_000n; // 1 USDC
+/** Skip buyback if vault USDC balance < this (6 dec, env: MIN_BUYBACK_USDC). */
+export const KEEPER_MIN_BUYBACK_USDC = 1_000_000n; // 1 USDC
+
+// ── Keeper — collect cadence ─────────────────────────────────────────────────
+/** Min seconds between collect calls per beneficiary per asset (env: COLLECT_INTERVAL_S). */
+export const COLLECT_INTERVAL_S = 21_600; // 6 hours
+
+// ── Keeper — poll intervals ──────────────────────────────────────────────────
+/** Default poll interval for keeper (SPEC §15). */
+export const KEEPER_DEFAULT_INTERVAL_S = 600; // 10 minutes
+/** Minimum poll interval on non-localhost RPC. */
+export const KEEPER_MIN_INTERVAL_S = 300; // 5 minutes
+
+// ── Keeper — spend guards ────────────────────────────────────────────────────
+const MON = 10n ** 18n;
+/** Maximum MON the keeper may spend in a rolling 24h window. */
+export const MAX_MON_PER_DAY_WEI  = (MON * 2n) / 10n; // 0.2 MON
+/** Minimum wallet balance before keeper refuses to send txs. */
+export const MIN_MON_BALANCE_WEI  = (MON * 2n) / 10n; // 0.2 MON
+/** Single tx cost above this triggers a Telegram warning. */
+export const SINGLE_TX_ALERT_WEI  = (MON * 5n) / 100n; // 0.05 MON
 
 export function withBuffer(gas: bigint): bigint {
   return (gas * GAS_BUFFER_BPS) / 10_000n;

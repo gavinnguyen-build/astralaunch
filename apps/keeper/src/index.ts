@@ -4,31 +4,58 @@
  * Reads the list of registered assets from env (comma-separated ASSETS) or from
  * the server database (DATABASE_URL) and runs jobs every POLL_INTERVAL_S seconds.
  *
- * Jobs per asset (in order):
- *   1. collect   — pull Doppler trading fees (escrow + vault)
- *   2. collectPFR — pull platform trading fees via PlatformFeeReceiver
- *   3. distribute — forward revenue from routers
- *   4. buyback   — swap + burn (rate-limited by contract)
- *   5. forfeit   — redirect abandoned escrow to vault
+ * Jobs per asset (ordered by usefulness — high-value first):
+ *   1. distribute — forward revenue from routers
+ *   2. buyback   — swap + burn (rate-limited by contract)
+ *   3. collect   — pull Doppler trading fees (escrow + vault + PFR), gated by pending fee check + cadence
+ *   4. forfeit   — redirect abandoned escrow to vault
  *
  * After the per-asset loop: monitor PlatformFeeReceiver for treasury proposals.
  *
  * Usage:
  *   ASSETS=0xToken1,0xToken2 ROUTERS=0xRouter1,0xRouter2 tsx src/index.ts
  *   --telegram-test  — send a dry-run Telegram alert and exit
+ *   --dry-run        — estimate gas but send no transactions
  *
  * Or with DATABASE_URL set, assets/routers are loaded from Postgres.
  */
 import { config } from 'dotenv';
-import { isAddress, type Address } from 'viem';
-import { jobCollect, jobDistribute, jobBuyback, jobForfeit, jobCollectPlatformFee } from './jobs.js';
-import { PLATFORM_FEE_RECEIVER, REGISTRY, publicClient, verifyContracts } from './chain.js';
+import { formatEther, isAddress, type Address } from 'viem';
+import { runAssetJobs } from './jobs.js';
+import {
+  PLATFORM_FEE_RECEIVER,
+  REGISTRY,
+  RPC_URL,
+  DRY_RUN,
+  publicClient,
+  refreshGasPrice,
+  refreshWalletBalance,
+  verifyContracts,
+} from './chain.js';
 import { monitorTreasuryProposal, monitorAdminTransfers, dryRunTelegramAlert } from './telegram.js';
+import { SpendGuardError } from './spend.js';
+import { KEEPER_DEFAULT_INTERVAL_S, KEEPER_MIN_INTERVAL_S } from '@revpad/shared';
 
 config({ path: '../../.env' });
 config({ path: '.env', override: false });
 
-const POLL_INTERVAL_S = Number(process.env.POLL_INTERVAL_S ?? 30);
+// ── Interval guard ──────────────────────────────────────────────────────────
+
+function resolveInterval(): number {
+  const configured = Number(process.env.POLL_INTERVAL_S ?? KEEPER_DEFAULT_INTERVAL_S);
+  const isLocal = /localhost|127\.0\.0\.1/.test(RPC_URL);
+
+  if (!isLocal && configured < KEEPER_MIN_INTERVAL_S) {
+    console.warn(
+      `[keeper] POLL_INTERVAL_S=${configured} is below minimum ${KEEPER_MIN_INTERVAL_S}s for non-localhost RPC. Clamping to ${KEEPER_MIN_INTERVAL_S}s.`,
+    );
+    return KEEPER_MIN_INTERVAL_S;
+  }
+
+  return configured;
+}
+
+const POLL_INTERVAL_S = resolveInterval();
 
 /** Load asset+router pairs from env vars (for simple/fork usage without Postgres). */
 function loadFromEnv(): Array<{ asset: Address; router: Address }> {
@@ -39,14 +66,27 @@ function loadFromEnv(): Array<{ asset: Address; router: Address }> {
 }
 
 async function runOnce(pairs: Array<{ asset: Address; router: Address }>) {
-  console.log(`[keeper] tick — ${pairs.length} asset(s)  ${new Date().toISOString()}`);
-  for (const { asset, router } of pairs) {
-    await jobCollect(asset);
-    await jobCollectPlatformFee(asset);
-    await jobDistribute(router);
-    await jobBuyback(asset);
-    await jobForfeit(asset);
+  // Refresh gas price and wallet balance at the start of each tick
+  await refreshGasPrice();
+  const balance = await refreshWalletBalance();
+
+  console.log(
+    `[keeper] tick — ${pairs.length} asset(s)  balance=${formatEther(balance)} MON  ${new Date().toISOString()}`,
+  );
+
+  try {
+    for (const { asset, router } of pairs) {
+      // Order: distribute, buyback (high value) before collect (expensive, may have nothing)
+      await runAssetJobs(asset, router);
+    }
+  } catch (e) {
+    if (e instanceof SpendGuardError) {
+      console.warn(`[keeper] Spend guard triggered — aborting remaining jobs: ${e.message}`);
+      return;
+    }
+    throw e;
   }
+
   // Monitor treasury proposals and admin transfers after all per-asset jobs
   await monitorTreasuryProposal(PLATFORM_FEE_RECEIVER, publicClient);
   await monitorAdminTransfers(PLATFORM_FEE_RECEIVER, REGISTRY, publicClient);
@@ -59,6 +99,10 @@ async function main() {
     process.exit(0);
   }
 
+  if (DRY_RUN) {
+    console.log('[keeper] DRY RUN MODE — no transactions will be sent');
+  }
+
   // Verify contract addresses have code and admin wiring before starting jobs.
   await verifyContracts();
 
@@ -66,7 +110,10 @@ async function main() {
   if (pairs.length === 0) {
     console.warn('[keeper] No assets configured. Set ASSETS and ROUTERS env vars.');
   }
-  console.log(`[keeper] starting — poll every ${POLL_INTERVAL_S}s  assets=${pairs.map(p => p.asset).join(',')}`);
+  console.log(
+    `[keeper] starting — poll every ${POLL_INTERVAL_S}s  assets=${pairs.map(p => p.asset).join(',')}` +
+    (DRY_RUN ? '  [DRY-RUN]' : ''),
+  );
 
   // Run immediately on start, then on schedule
   await runOnce(pairs);

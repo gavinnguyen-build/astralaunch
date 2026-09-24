@@ -1,24 +1,48 @@
 /**
- * Keeper on-chain jobs (SPEC §11, CLAUDE.md Task 3).
+ * Keeper on-chain jobs (SPEC §15).
  *
- * Jobs run per registered asset:
- *   collect   — pull trading fees (escrow + vault share) from Doppler initializer.
- *   distribute — call RevenueRouter.distribute() on routers with pending USDC.
- *   buyback   — swap accumulated USDC → token and burn (after cap window, cooldown).
- *   forfeit   — move unclaimed escrow to vault after 365 days.
+ * Job order per asset (by usefulness — distribute/buyback first so a spend
+ * guard hit from expensive collects never blocks them):
+ *   1. distribute — forward revenue from routers
+ *   2. buyback   — swap accumulated USDC → token and burn
+ *   3. collect   — pull Doppler trading fees (escrow + vault + PFR)
+ *   4. forfeit   — move unclaimed escrow to vault after 365 days
  *
- * Idempotent: each job checks preconditions on-chain before sending a tx.
- * Tx hashes are logged to stdout as JSON for easy ingestion.
+ * Collects are gated by:
+ *   - Pending fee pre-check (simulateContract on initializer.collectFees)
+ *   - Cadence limit: at most once per COLLECT_INTERVAL_S per beneficiary per asset
+ *   - Threshold: pending USDC must be >= MIN_COLLECT_USDC
  */
-import { formatUnits, type Address } from 'viem';
-import { publicClient, ESCROW, VAULT, PLATFORM_FEE_RECEIVER, sendTx } from './chain.js';
+import { formatUnits, parseUnits, type Address } from 'viem';
 import {
-  MIN_BUYBACK_USDC,
+  publicClient, ESCROW, VAULT, PLATFORM_FEE_RECEIVER,
+  sendTx, DRY_RUN, simulatePendingFees,
+} from './chain.js';
+import {
+  KEEPER_MIN_COLLECT_USDC,
+  KEEPER_MIN_DISTRIBUTE_USDC,
+  KEEPER_MIN_BUYBACK_USDC,
   MAX_BUYBACK_PER_CALL_USDC,
   FORFEIT_DELAY_S,
+  COLLECT_INTERVAL_S as DEFAULT_COLLECT_INTERVAL_S,
+  USDC as USDC_ADDR,
 } from '@revpad/shared';
+import { SpendGuardError } from './spend.js';
 
-// ── ABIs (minimal, sourced from compiled contracts) ───────────────────────────
+// ── Env-configurable thresholds ─────────────────────────────────────────────
+
+function envUsdc(key: string, fallback: bigint): bigint {
+  const v = process.env[key];
+  if (!v) return fallback;
+  return parseUnits(v, 6);
+}
+
+const minCollectUsdc    = envUsdc('MIN_COLLECT_USDC',    KEEPER_MIN_COLLECT_USDC);
+const minDistributeUsdc = envUsdc('MIN_DISTRIBUTE_USDC', KEEPER_MIN_DISTRIBUTE_USDC);
+const minBuybackUsdc    = envUsdc('MIN_BUYBACK_USDC',    KEEPER_MIN_BUYBACK_USDC);
+const collectIntervalS  = Number(process.env.COLLECT_INTERVAL_S ?? DEFAULT_COLLECT_INTERVAL_S);
+
+// ── ABIs ────────────────────────────────────────────────────────────────────
 
 const escrowAbi = [
   { type: 'function', name: 'collect',  stateMutability: 'nonpayable', inputs: [{ name: 'asset', type: 'address' }], outputs: [] },
@@ -74,62 +98,119 @@ const erc20Abi = [
   { type: 'function', name: 'balanceOf', stateMutability: 'view', inputs: [{ name: '', type: 'address' }], outputs: [{ type: 'uint256' }] },
 ] as const;
 
-const USDC = '0x754704Bc059F8C67012fEd69BC8A327a5aafb603' as Address;
+const collectAbi = [
+  { type: 'function', name: 'collect', stateMutability: 'nonpayable', inputs: [{ name: 'asset', type: 'address' }], outputs: [] },
+] as const;
 
-// ── Job runners ────────────────────────────────────────────────────────────────
+const USDC = USDC_ADDR as Address;
 
-/** Pull Doppler trading fees into escrow and vault for this asset. */
-export async function jobCollect(asset: Address): Promise<void> {
-  const tag = `collect:${asset}`;
-  // Collect escrow share
-  try {
-    const hash = await sendTx({ address: ESCROW, abi: escrowAbi, functionName: 'collect', args: [asset] });
-    log(tag, 'escrow', hash);
-    await publicClient.waitForTransactionReceipt({ hash });
-  } catch (e) {
-    logError(tag, 'escrow', e);
-  }
-  // Collect vault share
-  try {
-    const hash = await sendTx({ address: VAULT, abi: vaultAbi, functionName: 'collect', args: [asset] });
-    log(tag, 'vault', hash);
-    await publicClient.waitForTransactionReceipt({ hash });
-  } catch (e) {
-    logError(tag, 'vault', e);
-  }
+// ── Asset metadata cache ────────────────────────────────────────────────────
+
+interface AssetMeta {
+  poolId: `0x${string}`;
+  isUsdcCurrency0: boolean;
 }
 
-/** Call distribute() on the RevenueRouter for this asset if it holds USDC. */
+const metaCache = new Map<string, AssetMeta>();
+
+async function getAssetMeta(asset: Address): Promise<AssetMeta> {
+  const key = asset.toLowerCase();
+  const cached = metaCache.get(key);
+  if (cached) return cached;
+
+  const data = await publicClient.readContract({
+    address: VAULT, abi: vaultAbi, functionName: 'assetData', args: [asset],
+  });
+  const meta: AssetMeta = {
+    poolId: data.poolId as `0x${string}`,
+    isUsdcCurrency0: data.poolKey.currency0.toLowerCase() === USDC.toLowerCase(),
+  };
+  metaCache.set(key, meta);
+  return meta;
+}
+
+// ── Pending fee helper ──────────────────────────────────────────────────────
+
+async function getPendingUsdc(asset: Address, beneficiary: Address): Promise<bigint> {
+  const meta = await getAssetMeta(asset);
+  const { fees0, fees1 } = await simulatePendingFees(meta.poolId, beneficiary);
+  return meta.isUsdcCurrency0 ? fees0 : fees1;
+}
+
+// ── Collect cadence tracker ─────────────────────────────────────────────────
+
+const lastCollectTime = new Map<string, number>();
+
+/**
+ * Pure decision: should we collect for this beneficiary?
+ * Exported for testing.
+ */
+export function shouldCollect(
+  pendingUsdc: bigint,
+  lastTs: number,
+  nowS: number,
+  threshold: bigint,
+  intervalS: number,
+): { send: boolean; reason: string } {
+  if (lastTs > 0) {
+    const elapsed = nowS - lastTs;
+    if (elapsed < intervalS) {
+      return {
+        send: false,
+        reason: `cadence: ${elapsed}s elapsed < ${intervalS}s interval`,
+      };
+    }
+  }
+  if (pendingUsdc < threshold) {
+    return {
+      send: false,
+      reason: `pending ${formatUnits(pendingUsdc, 6)} USDC < min ${formatUnits(threshold, 6)}`,
+    };
+  }
+  return {
+    send: true,
+    reason: `pending ${formatUnits(pendingUsdc, 6)} USDC >= min ${formatUnits(threshold, 6)}`,
+  };
+}
+
+// ── Job: distribute ─────────────────────────────────────────────────────────
+
+/** Call distribute() on the RevenueRouter if it holds USDC above threshold. */
 export async function jobDistribute(router: Address): Promise<void> {
   const tag = `distribute:${router}`;
-  const balance = await publicClient.readContract({ address: USDC, abi: erc20Abi, functionName: 'balanceOf', args: [router] });
-  if (balance === 0n) { console.log(`[${tag}] skip — no USDC`); return; }
+  const balance = await publicClient.readContract({
+    address: USDC, abi: erc20Abi, functionName: 'balanceOf', args: [router],
+  });
+  if (balance < minDistributeUsdc) {
+    console.log(`[${tag}] SKIP — ${formatUnits(balance, 6)} USDC < min ${formatUnits(minDistributeUsdc, 6)}`);
+    return;
+  }
+  console.log(`[${tag}] SEND — ${formatUnits(balance, 6)} USDC`);
   try {
-    const hash = await sendTx({ address: router, abi: routerAbi, functionName: 'distribute', args: [] });
+    const { hash } = await sendTx({ address: router, abi: routerAbi, functionName: 'distribute', args: [] });
     log(tag, `${formatUnits(balance, 6)} USDC`, hash);
-    await publicClient.waitForTransactionReceipt({ hash });
+    if (!DRY_RUN) await publicClient.waitForTransactionReceipt({ hash });
   } catch (e) {
+    if (e instanceof SpendGuardError) throw e;
     logError(tag, 'distribute', e);
   }
 }
 
+// ── Job: buyback ────────────────────────────────────────────────────────────
+
 /**
  * Execute buyback for `asset`.
- * Skips if:
- *   - balance < MIN_BUYBACK_USDC
- *   - balance cap window still active (CapWindowActive)
- *   - min interval not elapsed (CooldownActive)
- *
- * usdcIn = min(balance, MAX_BUYBACK_PER_CALL_USDC).
- * minTokenOut = 0 for now (TODO: use v4 Quoter for slippage protection).
+ * Skips if balance < threshold, cap window active, or cooldown not elapsed.
  */
 export async function jobBuyback(asset: Address): Promise<void> {
   const tag = `buyback:${asset}`;
-  const data = await publicClient.readContract({ address: VAULT, abi: vaultAbi, functionName: 'assetData', args: [asset] });
+  const data = await publicClient.readContract({
+    address: VAULT, abi: vaultAbi, functionName: 'assetData', args: [asset],
+  });
   const balance = data.balanceUSDC;
 
-  if (balance < MIN_BUYBACK_USDC) {
-    console.log(`[${tag}] skip — only ${formatUnits(balance, 6)} USDC (< min ${formatUnits(MIN_BUYBACK_USDC, 6)})`);
+  if (balance < minBuybackUsdc) {
+    console.log(`[${tag}] SKIP — ${formatUnits(balance, 6)} USDC < min ${formatUnits(minBuybackUsdc, 6)}`);
     return;
   }
 
@@ -140,53 +221,117 @@ export async function jobBuyback(asset: Address): Promise<void> {
     functionName: 'balanceLimitEnd',
   });
   if (block.timestamp < capEnd) {
-    console.log(`[${tag}] skip — balance cap window active until ${capEnd}`);
+    console.log(`[${tag}] SKIP — cap window active until ${capEnd}`);
     return;
   }
 
   const lastExecute = data.lastExecuteTime;
   const COOLDOWN_S  = 600n; // 10 minutes (matches RevpadConstants.BUYBACK_MIN_INTERVAL)
   if (block.timestamp < lastExecute + COOLDOWN_S) {
-    console.log(`[${tag}] skip — cooldown, next at ${lastExecute + COOLDOWN_S}`);
+    console.log(`[${tag}] SKIP — cooldown, next at ${lastExecute + COOLDOWN_S}`);
     return;
   }
 
   const usdcIn = balance > MAX_BUYBACK_PER_CALL_USDC ? MAX_BUYBACK_PER_CALL_USDC : balance;
+  console.log(`[${tag}] SEND — ${formatUnits(usdcIn, 6)} USDC`);
   try {
-    const hash = await sendTx({ address: VAULT, abi: vaultAbi, functionName: 'execute', args: [asset, usdcIn, 0n] });
+    const { hash } = await sendTx({ address: VAULT, abi: vaultAbi, functionName: 'execute', args: [asset, usdcIn, 0n] });
     log(tag, `${formatUnits(usdcIn, 6)} USDC`, hash);
-    await publicClient.waitForTransactionReceipt({ hash });
+    if (!DRY_RUN) await publicClient.waitForTransactionReceipt({ hash });
   } catch (e) {
+    if (e instanceof SpendGuardError) throw e;
     logError(tag, 'execute', e);
   }
 }
 
+// ── Job: collect (all three beneficiaries) ──────────────────────────────────
+
+async function collectBeneficiary(
+  asset: Address,
+  beneficiary: Address,
+  name: string,
+): Promise<void> {
+  const tag = `collect:${name}:${asset}`;
+  const cadenceKey = `${beneficiary}:${asset}`.toLowerCase();
+  const nowS = Math.floor(Date.now() / 1000);
+  const lastTs = lastCollectTime.get(cadenceKey) ?? 0;
+
+  const pendingUsdc = await getPendingUsdc(asset, beneficiary);
+  const decision = shouldCollect(pendingUsdc, lastTs, nowS, minCollectUsdc, collectIntervalS);
+
+  if (!decision.send) {
+    console.log(`[${tag}] SKIP — ${decision.reason}`);
+    return;
+  }
+
+  console.log(`[${tag}] SEND — ${decision.reason}`);
+  try {
+    const { hash } = await sendTx({ address: beneficiary, abi: collectAbi, functionName: 'collect', args: [asset] });
+    log(tag, `${formatUnits(pendingUsdc, 6)} USDC`, hash);
+    if (!DRY_RUN) {
+      await publicClient.waitForTransactionReceipt({ hash });
+      lastCollectTime.set(cadenceKey, nowS);
+    }
+  } catch (e) {
+    if (e instanceof SpendGuardError) throw e;
+    logError(tag, name, e);
+  }
+}
+
+/** Collect trading fees for all three beneficiaries (with pre-checks). */
+export async function jobCollectAll(asset: Address): Promise<void> {
+  await collectBeneficiary(asset, ESCROW, 'escrow');
+  await collectBeneficiary(asset, VAULT, 'vault');
+  await collectBeneficiary(asset, PLATFORM_FEE_RECEIVER, 'pfr');
+}
+
+// ── Job: forfeit ────────────────────────────────────────────────────────────
+
 /** Forfeit unclaimed escrow for `asset` if past the 365-day window. */
 export async function jobForfeit(asset: Address): Promise<void> {
   const tag = `forfeit:${asset}`;
-  const data = await publicClient.readContract({ address: ESCROW, abi: escrowAbi, functionName: 'tokenData', args: [asset] });
-  if (data.forfeited) { console.log(`[${tag}] skip — already forfeited`); return; }
+  const data = await publicClient.readContract({
+    address: ESCROW, abi: escrowAbi, functionName: 'tokenData', args: [asset],
+  });
+  if (data.forfeited) { console.log(`[${tag}] SKIP — already forfeited`); return; }
 
   const block = await publicClient.getBlock();
   const forfeitAt = BigInt(data.launchTime) + BigInt(FORFEIT_DELAY_S);
   if (block.timestamp < forfeitAt) {
-    console.log(`[${tag}] skip — forfeit window opens at ${forfeitAt} (now ${block.timestamp})`);
+    console.log(`[${tag}] SKIP — window opens at ${forfeitAt} (now ${block.timestamp})`);
     return;
   }
 
   const unclaimed = data.usdcAccrued - data.usdcClaimed;
-  if (unclaimed === 0n) { console.log(`[${tag}] skip — nothing to forfeit`); return; }
+  if (unclaimed === 0n) { console.log(`[${tag}] SKIP — nothing to forfeit`); return; }
 
+  console.log(`[${tag}] SEND — ${formatUnits(unclaimed, 6)} USDC to vault`);
   try {
-    const hash = await sendTx({ address: ESCROW, abi: escrowAbi, functionName: 'forfeit', args: [asset] });
+    const { hash } = await sendTx({ address: ESCROW, abi: escrowAbi, functionName: 'forfeit', args: [asset] });
     log(tag, `${formatUnits(unclaimed, 6)} USDC forfeited to vault`, hash);
-    await publicClient.waitForTransactionReceipt({ hash });
+    if (!DRY_RUN) await publicClient.waitForTransactionReceipt({ hash });
   } catch (e) {
+    if (e instanceof SpendGuardError) throw e;
     logError(tag, 'forfeit', e);
   }
 }
 
-// ── PlatformFeeReceiver ABI ──────────────────────────────────────────────────
+// ── Orchestrator ────────────────────────────────────────────────────────────
+
+/**
+ * Run all jobs for one asset in priority order:
+ *   distribute, buyback (high value, use existing USDC) →
+ *   collect (expensive, may have nothing) →
+ *   forfeit (rare)
+ */
+export async function runAssetJobs(asset: Address, router: Address): Promise<void> {
+  await jobDistribute(router);
+  await jobBuyback(asset);
+  await jobCollectAll(asset);
+  await jobForfeit(asset);
+}
+
+// ── PlatformFeeReceiver ABI (for telegram monitors) ────────────────────────
 
 const pfrAbi = [
   { type: 'function', name: 'collect', stateMutability: 'nonpayable', inputs: [{ name: 'asset', type: 'address' }], outputs: [] },
@@ -199,21 +344,24 @@ const registryAdminAbi = [
   { type: 'function', name: 'pendingAdmin', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
 ] as const;
 
-/** Collect platform trading-fee share via PlatformFeeReceiver and forward to treasury. */
-export async function jobCollectPlatformFee(asset: Address): Promise<void> {
-  const tag = `collectPFR:${asset}`;
-  try {
-    const hash = await sendTx({ address: PLATFORM_FEE_RECEIVER, abi: pfrAbi, functionName: 'collect', args: [asset] });
-    log(tag, 'pfr', hash);
-    await publicClient.waitForTransactionReceipt({ hash });
-  } catch (e) {
-    logError(tag, 'pfr', e);
-  }
-}
-
 export { pfrAbi, registryAdminAbi };
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// ── Test helpers ────────────────────────────────────────────────────────────
+
+export function _resetCadenceForTest(): void {
+  lastCollectTime.clear();
+  metaCache.clear();
+}
+
+export function _setCadenceForTest(beneficiary: string, asset: string, ts: number): void {
+  lastCollectTime.set(`${beneficiary}:${asset}`.toLowerCase(), ts);
+}
+
+export function _getConfig() {
+  return { minCollectUsdc, minDistributeUsdc, minBuybackUsdc, collectIntervalS };
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 function log(tag: string, detail: string, hash: string) {
   console.log(JSON.stringify({ tag, detail, hash, ts: new Date().toISOString() }));

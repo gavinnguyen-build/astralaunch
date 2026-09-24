@@ -271,15 +271,75 @@ cp .env.mainnet.example .env.mainnet
 #       ASSETS, ROUTERS, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 ```
 
-```bash
-# Set keeper key without shell history
-read -s KEEPER_PRIVATE_KEY && export KEEPER_PRIVATE_KEY
+### Keeper env vars (optional, defaults are safe)
 
-pnpm -F keeper start:mainnet -- --telegram-test  # test alerts first
-pnpm -F keeper start:mainnet                     # start polling
+**Intervals:**
+
+| Var | Default | Description |
+|-----|---------|-------------|
+| `POLL_INTERVAL_S` | `600` (10 min) | Poll interval. Clamped to min 300s on non-localhost RPC. |
+| `COLLECT_INTERVAL_S` | `21600` (6h) | Min seconds between collects per beneficiary per asset. |
+
+**Economic thresholds** (keeper-side gas-saving, independent of on-chain minimums):
+
+| Var | Default | Origin |
+|-----|---------|--------|
+| `MIN_COLLECT_USDC` | `1` | Skip collect if pending USDC < this. At ~0.1 MON/collect, 1 USDC ≈ 33× gas cost. |
+| `MIN_DISTRIBUTE_USDC` | `1` | Skip distribute if router USDC < this. On-chain `MIN_DISTRIBUTE = 0.5 USDC`. |
+| `MIN_BUYBACK_USDC` | `1` | Skip buyback if vault USDC < this. No on-chain minimum. |
+
+**Spend guards:**
+
+| Var | Default | Description |
+|-----|---------|-------------|
+| `MAX_MON_PER_DAY` | `0.2` | Maximum MON spend in a rolling 24h window. |
+| `MIN_MON_BALANCE` | `0.2` | Minimum wallet balance; keeper stops sending if below. |
+| `SINGLE_TX_ALERT` | `0.05` | Single tx cost above this triggers a Telegram warning. |
+| `DRY_RUN` | `false` | Set `true` to estimate gas without sending transactions. |
+
+### Step 1: Test Telegram alerts
+
+```bash
+read -s KEEPER_PRIVATE_KEY && export KEEPER_PRIVATE_KEY
+pnpm -F keeper start:mainnet -- --telegram-test
 ```
 
-The keeper runs immediately on start, then every `POLL_INTERVAL_S` seconds.
+### Step 2: Dry run (required before first live run)
+
+```bash
+pnpm -F keeper start:mainnet -- --dry-run
+```
+
+Expected output per tick:
+```
+[keeper] DRY RUN MODE — no transactions will be sent
+[keeper] tick — 1 asset(s)  balance=X.XX MON  <timestamp>
+[distribute:0xRouter] SKIP — 0 USDC < min 1
+[buyback:0xAsset]     SKIP — 0 USDC < min 1
+[collect:escrow:0xAsset] SKIP — pending 0 USDC < min 1
+[collect:vault:0xAsset]  SKIP — pending 0 USDC < min 1
+[collect:pfr:0xAsset]    SKIP — pending 0 USDC < min 1
+[forfeit:0xAsset]     SKIP — window opens at ...
+```
+
+If fees exist, the job shows `SEND` and logs gas estimate as JSON:
+```
+[collect:escrow:0xAsset] SEND — pending 5.12 USDC >= min 1
+{"dryRun":true,"fn":"collect","to":"0xEscrow","gas":"1020901","gasBuffered":"1122991","monCost":"0.112"}
+```
+
+Job order: distribute, buyback (high value, use existing USDC) BEFORE collect (expensive, may have nothing). A spend guard hit from collects never blocks useful work.
+
+### Step 3: Start live
+
+```bash
+pnpm -F keeper start:mainnet
+```
+
+The keeper runs immediately on start, then every `POLL_INTERVAL_S` seconds (default 600s).
+Each tick logs wallet balance and SEND/SKIP per job with amounts and reasons.
+Collects are gated: pending fee pre-check via `eth_call` + 6h cadence per beneficiary.
+If spend guards trigger (24h budget exceeded or balance too low), remaining jobs are skipped and a Telegram alert is sent.
 
 ---
 

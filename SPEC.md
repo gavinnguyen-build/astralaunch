@@ -481,17 +481,45 @@ UI is **not decided**: the first mockup was set aside and Tun is sourcing a diff
 
 ## 15. Keeper (`apps/keeper`)
 
-Every 10 min (per asset with activity):
-1. `FeeEscrow.collect(asset)`, `BuybackVault.collect(asset)` (each contract calls `collectFees` on the initializer itself).
-2. `PlatformFeeReceiver.collect(asset)` — collects platform's 30% trading-fee share and forwards to treasury (D21).
-3. `RevenueRouter.distribute()` if balance ≥ MIN_DISTRIBUTE.
-4. `FeeEscrow.swapTokenFees` in small batches with slippage cap.
-5. `BuybackVault.burnTokens(asset)`; `BuybackVault.execute(asset, min(balance, MAX_PER_CALL), minOut)` with jittered timing.
-6. `FeeEscrow.forfeit(asset)` when due.
+Default poll interval: **10 minutes** (`POLL_INTERVAL_S=600`). Minimum on non-localhost RPC: **5 minutes**.
+
+### Job order per asset (by usefulness — high-value first)
+
+1. `RevenueRouter.distribute()` — if router USDC balance ≥ `MIN_DISTRIBUTE_USDC` (default 1 USDC).
+2. `BuybackVault.execute(asset, …)` — if vault USDC balance ≥ `MIN_BUYBACK_USDC` (default 1 USDC), cap window ended, and cooldown elapsed.
+3. `FeeEscrow.collect(asset)`, `BuybackVault.collect(asset)`, `PlatformFeeReceiver.collect(asset)` — each gated by:
+   - **Pending fee pre-check:** simulates `initializer.collectFees(poolId)` via `eth_call` from the beneficiary's address. Skips if pending USDC < `MIN_COLLECT_USDC` (default 1 USDC).
+   - **Cadence:** at most once per `COLLECT_INTERVAL_S` (default 6 hours) per beneficiary per asset.
+4. `FeeEscrow.forfeit(asset)` when due (365 days).
+
+Distribute and buyback run before collect so a spend-guard block from expensive collects never prevents useful work.
+
+### Economic thresholds
+
+All are keeper-side gas-saving thresholds, independent of on-chain contract minimums (e.g. `RevenueRouter.MIN_DISTRIBUTE = 0.5 USDC`). Origin: each collect/distribute costs ~0.1 MON ≈ $0.03 at 100 gwei; 1 USDC ≈ 33× the gas cost, so the threshold ensures txs are economically justified.
+
+| Env var | Default | Purpose |
+|---------|---------|---------|
+| `MIN_COLLECT_USDC` | 1 | Skip collect if pending USDC for that beneficiary < this |
+| `MIN_DISTRIBUTE_USDC` | 1 | Skip distribute if router USDC balance < this |
+| `MIN_BUYBACK_USDC` | 1 | Skip buyback if vault USDC balance < this |
+| `COLLECT_INTERVAL_S` | 21600 (6h) | Min seconds between collects per beneficiary per asset |
+
+### Spend guards
+
+| Env var | Default | Purpose |
+|---------|---------|---------|
+| `MAX_MON_PER_DAY` | 0.2 | Maximum MON spend in rolling 24h window |
+| `MIN_MON_BALANCE` | 0.2 | Minimum wallet balance; keeper stops if below |
+| `SINGLE_TX_ALERT` | 0.05 | Telegram warning if single tx costs more |
+
+### Dry-run mode
+
+`--dry-run` or `DRY_RUN=true`: estimates gas for every job, logs SEND/SKIP per job with pending amounts and reasons, sends zero transactions. Required before first mainnet run.
 
 After all per-asset jobs: monitor `PlatformFeeReceiver.pendingTreasury()` and `pendingAdmin()` on both RevpadRegistry and PlatformFeeReceiver; send Telegram alert if a treasury change proposal or admin transfer is detected or resolved (D22).
 
-Explicit gas limits on every tx. Keeper wallet funded with MON; alert when low. All functions are permissionless, so anyone can run a keeper.
+Explicit gas limits on every tx (`estimate × 1.1`; Monad bills the gas limit). Keeper wallet funded with MON; Telegram alert when low. All functions are permissionless, so anyone can run a keeper.
 
 ---
 
