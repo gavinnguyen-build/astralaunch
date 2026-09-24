@@ -3,6 +3,7 @@ import {
   createPublicClient,
   createWalletClient,
   defineChain,
+  getAddress,
   http,
   type Address,
 } from 'viem';
@@ -41,6 +42,45 @@ const baseWallet = createWalletClient({ account, chain: monad, transport: http(R
 export async function sendTx(args: Parameters<typeof baseWallet.writeContract>[0]): Promise<`0x${string}`> {
   const gas = await publicClient.estimateContractGas({ account, ...args } as any);
   return baseWallet.writeContract({ ...args, gas: withBuffer(gas) } as any);
+}
+
+// ── Startup contract verification ──────────────────────────────────────────
+const adminAbi = [{ type: 'function', name: 'admin', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] }] as const;
+
+/** Verify all contract addresses have code and admin wiring matches ADMIN_ADDRESS (if set). */
+export async function verifyContracts(): Promise<void> {
+  const addrs: Array<{ name: string; addr: Address }> = [
+    { name: 'RevpadRegistry', addr: REGISTRY },
+    { name: 'FeeEscrow', addr: ESCROW },
+    { name: 'BuybackVault', addr: VAULT },
+    { name: 'PlatformFeeReceiver', addr: PLATFORM_FEE_RECEIVER },
+  ];
+
+  for (const { name, addr } of addrs) {
+    const code = await publicClient.getCode({ address: addr });
+    if (!code || code === '0x') {
+      throw new Error(`FATAL: ${name} (${addr}) has no bytecode on chain ${CHAIN_ID}. Wrong address or network.`);
+    }
+  }
+
+  const expectedAdmin = process.env.ADMIN_ADDRESS;
+  if (expectedAdmin) {
+    const expected = getAddress(expectedAdmin);
+    for (const { name, addr } of [
+      { name: 'RevpadRegistry', addr: REGISTRY },
+      { name: 'PlatformFeeReceiver', addr: PLATFORM_FEE_RECEIVER },
+    ]) {
+      const actual = await publicClient.readContract({ address: addr, abi: adminAbi, functionName: 'admin' });
+      if (getAddress(actual) !== expected) {
+        throw new Error(
+          `FATAL: ${name}.admin() = ${actual}, expected ADMIN_ADDRESS = ${expected}. Wrong deployment or network.`
+        );
+      }
+    }
+    console.log(`[keeper] Admin wiring verified: ${expected}`);
+  }
+
+  console.log(`[keeper] Contract addresses verified on chain ${CHAIN_ID}`);
 }
 
 export { account };

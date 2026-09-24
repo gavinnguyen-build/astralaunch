@@ -12,7 +12,7 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
-import { PORT, RPC_URL, PAYMENT_TIMEOUT_S } from './env.js';
+import { PORT, RPC_URL, PAYMENT_TIMEOUT_S, verifyContracts } from './env.js';
 
 // Refuse to start with a dangerously wide payment window on a non-local RPC.
 // PAYMENT_TIMEOUT_SECONDS > 300 is only safe on a local Anvil fork where block
@@ -56,8 +56,14 @@ app.onError((err, c) => {
   return c.json({ error: 'Internal server error' }, 500);
 });
 
-serve({ fetch: app.fetch, port: PORT }, () => {
-  console.log(`Revpad server listening on http://0.0.0.0:${PORT}`);
+// Verify contract addresses before accepting traffic.
+verifyContracts().then(() => {
+  serve({ fetch: app.fetch, port: PORT }, () => {
+    console.log(`Revpad server listening on http://0.0.0.0:${PORT}`);
+  });
+}).catch((e) => {
+  console.error(e.message);
+  process.exit(1);
 });
 
 export default app;

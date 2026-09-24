@@ -14,6 +14,30 @@
 
 ---
 
+## Output file separation
+
+Fork and mainnet both use chain id 143. To prevent address collision:
+
+| Context | `DEPLOY_OUTPUT` | Output file |
+|---------|-----------------|-------------|
+| **Fork (default)** | *(unset)* | `revpad-anvil/.anvil-state/contracts.json` |
+| **Mainnet** | `deployments/monad-mainnet.json` | `packages/contracts/deployments/monad-mainnet.json` |
+
+`Deploy.s.sol` includes safety guards:
+- Non-localhost RPC + `.anvil-state` output path → **revert**
+- Localhost RPC + `deployments/monad-mainnet.json` → **revert**
+
+Broadcast logs: Forge writes to `broadcast/Deploy.s.sol/143/`. After a mainnet deploy, copy `run-latest.json` to `deployments/` for archival:
+
+```bash
+cp packages/contracts/broadcast/Deploy.s.sol/143/run-latest.json \
+   packages/contracts/deployments/broadcast-mainnet.json
+```
+
+All consumers (`02-launch.ts`, server, keeper) read addresses from `CONTRACTS_JSON_PATH` env var. No silent fallback.
+
+---
+
 ## 1. Prerequisites
 
 ### MON balance
@@ -32,7 +56,7 @@ Dry-run results (2026-09-24):
 
 Per-contract gas (simulated on Monad mainnet):
 
-| # | Contract | Gas Used | Gas Limit (×1.1) |
+| # | Contract | Gas Used | Gas Limit (x1.1) |
 |---|----------|----------|-------------------|
 | 1 | FeeEscrow | 801,058 | 1,020,901 |
 | 2 | BuybackVault | 1,051,189 | 1,320,650 |
@@ -49,11 +73,12 @@ cast wallet import revpad-deployer --interactive
 
 ### Environment variables
 
-Set in shell or `.env` before deploy:
+Set in shell before deploy:
 
 ```bash
 export ADMIN_ADDRESS=0xe89f19D370F496520803e7ABb30c1A20B04B0f7f
 export TREASURY_ADDRESS=0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C
+export DEPLOY_OUTPUT=deployments/monad-mainnet.json
 ```
 
 ### Verify hardcoded addresses
@@ -95,6 +120,7 @@ cd packages/contracts
 
 ADMIN_ADDRESS=0xe89f19D370F496520803e7ABb30c1A20B04B0f7f \
 TREASURY_ADDRESS=0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C \
+DEPLOY_OUTPUT=deployments/monad-mainnet.json \
 forge script script/Deploy.s.sol \
   --rpc-url https://rpc.monad.xyz \
   --broadcast \
@@ -102,7 +128,14 @@ forge script script/Deploy.s.sol \
   --gas-estimate-multiplier 110
 ```
 
-The script deploys 5 contracts in nonce order and writes `contracts.json`.
+The script deploys 5 contracts and writes `deployments/monad-mainnet.json` with:
+`chainId`, `blockNumber`, `deployer`, `admin`, `treasury`, `escrow`, `vault`, `platformFeeReceiver`, `routerImpl`, `registry`.
+
+After broadcast, archive the broadcast log:
+
+```bash
+cp broadcast/Deploy.s.sol/143/run-latest.json deployments/broadcast-mainnet.json
+```
 
 **Expected output** (assuming deployer nonce = 0):
 
@@ -114,7 +147,7 @@ The script deploys 5 contracts in nonce order and writes `contracts.json`.
 | RevenueRouter (impl) | `0x2bcee60E8a8BD4b2c52aAfA8B57d47D427dACb09` |
 | RevpadRegistry | `0x25845Cee2b0E6dF0DA40bb9B60A84D162eabd00B` |
 
-> Addresses depend on deployer nonce. If deployer has sent any previous txs, addresses will differ. Check deployer nonce first: `cast nonce 0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6 --rpc-url https://rpc.monad.xyz`
+> Addresses depend on deployer nonce. Check first: `cast nonce 0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6 --rpc-url https://rpc.monad.xyz`
 
 ---
 
@@ -125,9 +158,9 @@ After broadcast, verify admin and treasury are NOT the deployer:
 ```bash
 RPC=https://rpc.monad.xyz
 
-# Read addresses from deploy output / contracts.json
-REGISTRY=<RevpadRegistry address>
-PFR=<PlatformFeeReceiver address>
+# Read addresses from deployments/monad-mainnet.json
+REGISTRY=$(jq -r .registry packages/contracts/deployments/monad-mainnet.json)
+PFR=$(jq -r .platformFeeReceiver packages/contracts/deployments/monad-mainnet.json)
 
 # Registry admin
 cast call $REGISTRY "admin()(address)" --rpc-url $RPC
@@ -141,7 +174,7 @@ cast call $PFR "admin()(address)" --rpc-url $RPC
 cast call $PFR "treasury()(address)" --rpc-url $RPC
 # Expected: 0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C
 
-# Registry → PFR cross-ref
+# Registry -> PFR cross-ref
 cast call $REGISTRY "platformFeeReceiver()(address)" --rpc-url $RPC
 # Expected: $PFR address
 
@@ -150,40 +183,28 @@ cast call $REGISTRY "paused()(bool)" --rpc-url $RPC
 # Expected: false
 ```
 
-**Admin/treasury wiring in `Deploy.s.sol`:**
-- Line 46: `admin = vm.envOr("ADMIN_ADDRESS", msg.sender)` — env var overrides deployer
-- Line 47: `treasury = vm.envOr("TREASURY_ADDRESS", msg.sender)` — env var overrides deployer
-- Line 60: `PlatformFeeReceiver(futureRegistry, INITIALIZER, treasury, admin)` — gets both from env
-- Lines 62-63: `RevpadRegistry(address(pfr), ..., admin)` — gets admin from env
-
-Deployer address is never stored as admin or treasury when env vars are set.
-
 ---
 
 ## 4. Launch first token
 
-Use the Doppler SDK launch script with `creator = deployer` (or a separate creator wallet):
-
 ```bash
 cd revpad-anvil
 
-# Set CONTRACTS_JSON_PATH to the mainnet contracts.json
-export CONTRACTS_JSON_PATH=../packages/contracts/broadcast/Deploy.s.sol/143/run-latest.json
+# Point to mainnet contracts
+export CONTRACTS_JSON_PATH=../packages/contracts/deployments/monad-mainnet.json
 
-# Or manually set:
-export ESCROW_ADDRESS=<FeeEscrow>
-export BUYBACK_ADDRESS=<BuybackVault>
-export PLATFORM_FEE_RECEIVER_ADDRESS=<PFR>
-export REGISTRY_ADDRESS=<RevpadRegistry>
-
-# Launch (adapts 02-launch.ts for mainnet — creator needs MON for gas)
+# Launch (creator needs MON for gas + USDC for liquidity)
 npx tsx src/02-launch.ts
 ```
+
+The launch script reads `escrow`, `vault`, `platformFeeReceiver` from the JSON file. It refuses to start if the file is missing or addresses are absent.
 
 After launch, register the asset:
 
 ```bash
-# The register call is done by the launch script or manually:
+RPC=https://rpc.monad.xyz
+REGISTRY=$(jq -r .registry $CONTRACTS_JSON_PATH)
+
 cast send $REGISTRY "register(address,address)(address)" \
   <ASSET_ADDRESS> <CREATOR_ADDRESS> \
   --rpc-url $RPC \
@@ -205,7 +226,13 @@ cast call $REGISTRY "routers(address)(address)" <ASSET_ADDRESS> --rpc-url $RPC
 
 ## 5. Start server
 
-Set environment variables in `apps/server/.env` (or Coolify env):
+Set environment variables in `apps/server/.env` (or Coolify env).
+
+Read addresses from `deployments/monad-mainnet.json`:
+
+```bash
+jq -r 'to_entries[] | "\(.key)=\(.value)"' packages/contracts/deployments/monad-mainnet.json
+```
 
 ```bash
 # Chain
@@ -216,13 +243,15 @@ MONAD_CHAIN_ID=143
 X402_FACILITATOR_URL=https://x402-facilitator.molandak.org
 FACILITATOR_SUBMITTER_ADDRESSES=0x7f6a2850669202519f0FE8aa912451238820Db86
 
-# Contracts (from deploy output)
+# Contracts (from deployments/monad-mainnet.json)
 USDC_ADDRESS=0x754704Bc059F8C67012fEd69BC8A327a5aafb603
-PLATFORM_FEE_RECEIVER_ADDRESS=<PFR>
-REVPAD_REGISTRY_ADDRESS=<Registry>
-FEE_ESCROW_ADDRESS=<Escrow>
-BUYBACK_VAULT_ADDRESS=<Vault>
-TREASURY_ADDRESS=0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C
+PLATFORM_FEE_RECEIVER_ADDRESS=<from JSON: platformFeeReceiver>
+REVPAD_REGISTRY_ADDRESS=<from JSON: registry>
+FEE_ESCROW_ADDRESS=<from JSON: escrow>
+BUYBACK_VAULT_ADDRESS=<from JSON: vault>
+
+# Admin verification (server verifies .admin() on startup)
+ADMIN_ADDRESS=0xe89f19D370F496520803e7ABb30c1A20B04B0f7f
 
 # Gateway — mainnet values
 PAYMENT_TIMEOUT_SECONDS=60
@@ -241,6 +270,8 @@ LITELLM_BASE_URL=<url>
 LITELLM_API_KEY=<key>
 ```
 
+The server verifies all contract addresses have bytecode and, if `ADMIN_ADDRESS` is set, checks `RevpadRegistry.admin()` and `PlatformFeeReceiver.admin()` match. It refuses to start on mismatch.
+
 ```bash
 pnpm -F server dev   # or production start via Coolify
 ```
@@ -249,19 +280,20 @@ pnpm -F server dev   # or production start via Coolify
 
 ## 6. Start keeper
 
-Set environment variables in `apps/keeper/.env`:
-
 ```bash
 MONAD_RPC_URL=https://rpc.monad.xyz
 KEEPER_PRIVATE_KEY=<funded keeper wallet — NOT deployer, NOT admin>
 ASSETS=<comma-separated asset addresses>
 ROUTERS=<comma-separated router addresses, same order as ASSETS>
 
-# Contracts
-PLATFORM_FEE_RECEIVER_ADDRESS=<PFR>
-REVPAD_REGISTRY_ADDRESS=<Registry>
-FEE_ESCROW_ADDRESS=<Escrow>
-BUYBACK_VAULT_ADDRESS=<Vault>
+# Contracts (from deployments/monad-mainnet.json)
+PLATFORM_FEE_RECEIVER_ADDRESS=<from JSON: platformFeeReceiver>
+REVPAD_REGISTRY_ADDRESS=<from JSON: registry>
+FEE_ESCROW_ADDRESS=<from JSON: escrow>
+BUYBACK_VAULT_ADDRESS=<from JSON: vault>
+
+# Admin verification (keeper verifies .admin() on startup)
+ADMIN_ADDRESS=0xe89f19D370F496520803e7ABb30c1A20B04B0f7f
 
 # Optional: Telegram alerts for treasury proposals + admin transfers
 TELEGRAM_BOT_TOKEN=<bot token>
@@ -269,6 +301,8 @@ TELEGRAM_CHAT_ID=<chat id>
 
 POLL_INTERVAL_S=30
 ```
+
+The keeper verifies all 4 contract addresses have bytecode and, if `ADMIN_ADDRESS` is set, checks admin wiring. It refuses to start on mismatch.
 
 ```bash
 # Test Telegram alerts first
@@ -278,47 +312,26 @@ pnpm -F keeper dev -- --telegram-test
 pnpm -F keeper dev
 ```
 
-The keeper runs 5 jobs per asset every `POLL_INTERVAL_S`:
-1. `collect` — pull Doppler trading fees (escrow + vault)
-2. `collectPFR` — pull platform trading fees
-3. `distribute` — forward revenue from routers
-4. `buyback` — swap + burn
-5. `forfeit` — redirect abandoned escrow to vault (after 365 days)
-
-**Keeper wallet balance alert:** monitor the keeper wallet MON balance. Top up when it drops below 0.5 MON.
-
 ---
 
 ## 7. First paid call
 
-Use `real-02-pay.ts` to send a 0.02 USDC payment through the x402 gateway:
-
 ```bash
 cd revpad-anvil
-
-# Create .env.real with a funded wallet (NOT an Anvil dev key)
 echo "REAL_PRIVATE_KEY=<private key with USDC balance>" > .env.real
-
 npx tsx src/real-02-pay.ts
 ```
-
-The script:
-1. Sends a payment of 0.02 USDC via x402 to the Monad official facilitator
-2. Requires interactive "yes" confirmation
-3. Reports settlement tx hash
 
 ---
 
 ## 8. Verify each step
 
-After the first paid call, verify on-chain state:
-
 ```bash
 RPC=https://rpc.monad.xyz
 ROUTER=<router address from registration>
-ESCROW=<FeeEscrow address>
-VAULT=<BuybackVault address>
-PFR=<PlatformFeeReceiver address>
+ESCROW=$(jq -r .escrow packages/contracts/deployments/monad-mainnet.json)
+VAULT=$(jq -r .vault packages/contracts/deployments/monad-mainnet.json)
+PFR=$(jq -r .platformFeeReceiver packages/contracts/deployments/monad-mainnet.json)
 
 # Check router USDC balance (should have received payment)
 cast call 0x754704Bc059F8C67012fEd69BC8A327a5aafb603 \
@@ -333,9 +346,6 @@ cast call 0x754704Bc059F8C67012fEd69BC8A327a5aafb603 \
 
 cast call 0x754704Bc059F8C67012fEd69BC8A327a5aafb603 \
   "balanceOf(address)(uint256)" $PFR --rpc-url $RPC
-
-# Check Doppler trading fee events (after trades)
-cast logs --from-block latest --address $ESCROW --rpc-url $RPC
 ```
 
 ---
@@ -351,16 +361,13 @@ cast send $REGISTRY "setPause(bool)" true \
   --rpc-url $RPC --account <admin-keystore>
 ```
 
-This prevents new `register()` calls. Existing tokens continue to function.
-
 ### Transfer admin (two-step)
 
 ```bash
-# Step 1: current admin initiates
 cast send $REGISTRY "transferAdmin(address)" <NEW_ADMIN> \
   --rpc-url $RPC --account <admin-keystore>
 
-# Step 2: new admin accepts
+# New admin accepts
 cast send $REGISTRY "acceptAdmin()" \
   --rpc-url $RPC --account <new-admin-keystore>
 
@@ -374,25 +381,16 @@ Same two-step pattern applies to PlatformFeeReceiver admin.
 ### Change treasury (48h delay)
 
 ```bash
-# Step 1: admin proposes
 cast send $PFR "proposeTreasury(address)" <NEW_TREASURY> \
   --rpc-url $RPC --account <admin-keystore>
 
-# Step 2: wait 48 hours, then admin accepts
+# Wait 48 hours, then:
 cast send $PFR "acceptTreasury()" \
   --rpc-url $RPC --account <admin-keystore>
 
 # Cancel if needed
 cast send $PFR "cancelProposal()" \
   --rpc-url $RPC --account <admin-keystore>
-```
-
-### Stop server / keeper
-
-```bash
-# Server: stop the Coolify service or kill the process
-# Keeper: stop the Coolify service or kill the process
-# Existing contracts remain functional — users can interact directly
 ```
 
 ### What cannot be rolled back

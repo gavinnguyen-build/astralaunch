@@ -22,7 +22,7 @@
 import { config } from 'dotenv';
 import { isAddress, type Address } from 'viem';
 import { jobCollect, jobDistribute, jobBuyback, jobForfeit, jobCollectPlatformFee } from './jobs.js';
-import { PLATFORM_FEE_RECEIVER, REGISTRY, publicClient } from './chain.js';
+import { PLATFORM_FEE_RECEIVER, REGISTRY, publicClient, verifyContracts } from './chain.js';
 import { monitorTreasuryProposal, monitorAdminTransfers, dryRunTelegramAlert } from './telegram.js';
 
 config({ path: '../../.env' });
@@ -58,6 +58,9 @@ async function main() {
     await dryRunTelegramAlert();
     process.exit(0);
   }
+
+  // Verify contract addresses have code and admin wiring before starting jobs.
+  await verifyContracts();
 
   const pairs = loadFromEnv();
   if (pairs.length === 0) {

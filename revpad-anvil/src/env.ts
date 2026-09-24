@@ -87,7 +87,9 @@ export function withBuffer(gas: bigint): bigint {
 // ---- tiny state stores shared between scripts ----
 const STATE_DIR       = '.anvil-state';
 const STATE_FILE      = `${STATE_DIR}/state.json`;
-const CONTRACTS_FILE  = `${STATE_DIR}/contracts.json`;
+const DEFAULT_CONTRACTS_FILE = `${STATE_DIR}/contracts.json`;
+/** Override with CONTRACTS_JSON_PATH env var for mainnet or custom paths. */
+const CONTRACTS_FILE  = process.env.CONTRACTS_JSON_PATH ?? DEFAULT_CONTRACTS_FILE;
 
 export type KitState = {
   token?: Address;
@@ -117,7 +119,14 @@ export type ContractsState = {
 };
 
 export function loadContracts(): ContractsState {
-  if (!existsSync(CONTRACTS_FILE)) return {};
+  if (!existsSync(CONTRACTS_FILE)) {
+    throw new Error(
+      `Contracts file not found: ${CONTRACTS_FILE}\n` +
+      `Set CONTRACTS_JSON_PATH env var or run Deploy.s.sol first.\n` +
+      `  Fork:    forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --private-key $PRIVATE_KEY\n` +
+      `  Mainnet: DEPLOY_OUTPUT=deployments/monad-mainnet.json forge script ...`
+    );
+  }
   return JSON.parse(readFileSync(CONTRACTS_FILE, 'utf8'));
 }
 

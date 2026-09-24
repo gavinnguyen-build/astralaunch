@@ -1,4 +1,5 @@
 import { config } from 'dotenv';
+import { createPublicClient, defineChain, getAddress, http } from 'viem';
 import { USDC, X402_FACILITATOR_URL_DEFAULT } from '@revpad/shared';
 
 config({ path: '../../.env' });
@@ -27,3 +28,47 @@ export const SUBMITTERS         = (process.env.FACILITATOR_SUBMITTER_ADDRESSES ?
 /** Payment authorization window in seconds. Default 60; set higher on a test fork when
  *  block time may have been advanced past wall-clock time (e.g. after keeper cooldown warp). */
 export const PAYMENT_TIMEOUT_S  = Number(process.env.PAYMENT_TIMEOUT_SECONDS ?? 60);
+
+// ── Startup contract verification ──────────────────────────────────────────
+const adminAbi = [{ type: 'function', name: 'admin', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] }] as const;
+
+/** Verify all contract addresses have code and admin wiring matches ADMIN_ADDRESS (if set). */
+export async function verifyContracts(): Promise<void> {
+  const chain = defineChain({
+    id: CHAIN_ID,
+    name: 'Monad',
+    nativeCurrency: { name: 'MON', symbol: 'MON', decimals: 18 },
+    rpcUrls: { default: { http: [RPC_URL] } },
+  });
+  const client = createPublicClient({ chain, transport: http(RPC_URL) });
+
+  const addrs: Array<{ name: string; addr: `0x${string}` }> = [
+    { name: 'RevpadRegistry', addr: REGISTRY_ADDR },
+    { name: 'FeeEscrow', addr: ESCROW_ADDR },
+    { name: 'BuybackVault', addr: VAULT_ADDR },
+  ];
+
+  for (const { name, addr } of addrs) {
+    const code = await client.getCode({ address: addr });
+    if (!code || code === '0x') {
+      throw new Error(`FATAL: ${name} (${addr}) has no bytecode on chain ${CHAIN_ID}. Wrong address or network.`);
+    }
+  }
+
+  const expectedAdmin = process.env.ADMIN_ADDRESS;
+  if (expectedAdmin) {
+    const expected = getAddress(expectedAdmin);
+    for (const contract of ['RevpadRegistry', 'PlatformFeeReceiver'] as const) {
+      const addr = contract === 'RevpadRegistry' ? REGISTRY_ADDR : need('PLATFORM_FEE_RECEIVER_ADDRESS') as `0x${string}`;
+      const actual = await client.readContract({ address: addr, abi: adminAbi, functionName: 'admin' });
+      if (getAddress(actual) !== expected) {
+        throw new Error(
+          `FATAL: ${contract}.admin() = ${actual}, expected ADMIN_ADDRESS = ${expected}. Wrong deployment or network.`
+        );
+      }
+    }
+    console.log(`[server] Admin wiring verified: ${expected}`);
+  }
+
+  console.log(`[server] Contract addresses verified on chain ${CHAIN_ID}`);
+}
