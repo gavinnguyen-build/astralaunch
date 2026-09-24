@@ -21,6 +21,7 @@
  *   J. Token total supply decreases (tokens burned)
  *   K. PlatformFeeReceiver.collect forwards platform share to treasury
  *   L. Treasury change via two-step (propose + warp + accept)
+ *   M. Admin transfer via two-step (transferAdmin + acceptAdmin)
  *
  * Usage: npm run e2e
  */
@@ -344,6 +345,74 @@ async function main() {
     }
   } else {
     console.log('  K/L. Skipped — no platformFeeReceiver in contracts.json');
+  }
+
+  // ── M. Admin transfer via two-step ────────────────────────────────────────
+  {
+    const adminAbi = [
+      { type: 'function', name: 'admin', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
+      { type: 'function', name: 'pendingAdmin', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
+      { type: 'function', name: 'transferAdmin', stateMutability: 'nonpayable', inputs: [{ name: 'newAdmin', type: 'address' }], outputs: [] },
+      { type: 'function', name: 'acceptAdmin', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+      { type: 'function', name: 'cancelAdminTransfer', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+      { type: 'function', name: 'setPause', stateMutability: 'nonpayable', inputs: [{ name: 'paused', type: 'bool' }], outputs: [] },
+    ] as const;
+
+    const adminW = wallet('creator');       // account[0] = admin
+    const newAdminAcct = account('treasury'); // account[1] = new admin
+    const newAdminW = wallet('treasury');
+
+    try {
+      // M-1: transferAdmin
+      const transferHash = await adminW.writeContract({
+        address: registry, abi: adminAbi, functionName: 'transferAdmin', args: [newAdminAcct.address],
+      });
+      await publicClient.waitForTransactionReceipt({ hash: transferHash });
+      const pending = await publicClient.readContract({ address: registry, abi: adminAbi, functionName: 'pendingAdmin' });
+      pass(pending === newAdminAcct.address, 'M-1. transferAdmin sets pendingAdmin', pending);
+
+      // M-2: acceptAdmin
+      const acceptHash = await newAdminW.writeContract({
+        address: registry, abi: adminAbi, functionName: 'acceptAdmin',
+      });
+      await publicClient.waitForTransactionReceipt({ hash: acceptHash });
+      const newAdmin = await publicClient.readContract({ address: registry, abi: adminAbi, functionName: 'admin' });
+      pass(newAdmin === newAdminAcct.address, 'M-2. acceptAdmin changes admin', newAdmin);
+
+      // M-3: old admin cannot setPause
+      let oldAdminBlocked = false;
+      try {
+        await adminW.writeContract({ address: registry, abi: adminAbi, functionName: 'setPause', args: [true] });
+      } catch {
+        oldAdminBlocked = true;
+      }
+      pass(oldAdminBlocked, 'M-3. Old admin cannot setPause');
+
+      // M-4: new admin can setPause
+      const pauseHash = await newAdminW.writeContract({
+        address: registry, abi: adminAbi, functionName: 'setPause', args: [true],
+      });
+      await publicClient.waitForTransactionReceipt({ hash: pauseHash });
+      const unpauseHash = await newAdminW.writeContract({
+        address: registry, abi: adminAbi, functionName: 'setPause', args: [false],
+      });
+      await publicClient.waitForTransactionReceipt({ hash: unpauseHash });
+      pass(true, 'M-4. New admin can setPause');
+
+      // Restore: transfer back to original admin
+      const restoreHash = await newAdminW.writeContract({
+        address: registry, abi: adminAbi, functionName: 'transferAdmin', args: [adminW.account.address],
+      });
+      await publicClient.waitForTransactionReceipt({ hash: restoreHash });
+      const restoreAcceptHash = await adminW.writeContract({
+        address: registry, abi: adminAbi, functionName: 'acceptAdmin',
+      });
+      await publicClient.waitForTransactionReceipt({ hash: restoreAcceptHash });
+      const restoredAdmin = await publicClient.readContract({ address: registry, abi: adminAbi, functionName: 'admin' });
+      pass(restoredAdmin === adminW.account.address, 'M-5. Admin restored to original');
+    } catch (e) {
+      console.log(`  M. Admin transfer test failed: ${e}`);
+    }
   }
 
   // ── Summary ─────────────────────────────────────────────────────────────────
