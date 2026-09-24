@@ -1,4 +1,5 @@
 import { config } from 'dotenv';
+import { existsSync, readFileSync } from 'node:fs';
 import { createPublicClient, defineChain, getAddress, http } from 'viem';
 import { USDC, X402_FACILITATOR_URL_DEFAULT } from '@revpad/shared';
 
@@ -32,8 +33,21 @@ export const PAYMENT_TIMEOUT_S  = Number(process.env.PAYMENT_TIMEOUT_SECONDS ?? 
 // ── Startup contract verification ──────────────────────────────────────────
 const adminAbi = [{ type: 'function', name: 'admin', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] }] as const;
 
-/** Verify all contract addresses have code and admin wiring matches ADMIN_ADDRESS (if set). */
+/** Verify all contract addresses have code, admin wiring, and dryRun flag. */
 export async function verifyContracts(): Promise<void> {
+  // Check dryRun flag in contracts JSON if CONTRACTS_JSON_PATH is set.
+  const contractsPath = process.env.CONTRACTS_JSON_PATH;
+  if (contractsPath && existsSync(contractsPath)) {
+    const contracts = JSON.parse(readFileSync(contractsPath, 'utf8'));
+    if (contracts.dryRun === true) {
+      throw new Error(
+        `FATAL: ${contractsPath} has "dryRun": true. ` +
+        `These addresses are from a simulation, not a real deployment. ` +
+        `Re-run Deploy.s.sol with --broadcast to produce a real deployment.`
+      );
+    }
+  }
+
   const chain = defineChain({
     id: CHAIN_ID,
     name: 'Monad',

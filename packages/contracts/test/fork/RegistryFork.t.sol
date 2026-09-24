@@ -18,7 +18,8 @@ import {IAirlock} from "../../src/interfaces/IAirlock.sol";
 ///
 ///         Required setup:
 ///           1. anvil/start-fork.sh
-///           2. forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 \
+///           2. DEPLOY_OUTPUT=../../revpad-anvil/.anvil-state/contracts.json \
+///              forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 \
 ///                --broadcast --private-key $PRIVATE_KEY
 ///           3. npm run launch
 ///

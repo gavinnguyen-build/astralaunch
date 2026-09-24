@@ -107,6 +107,9 @@ export function loadState(): KitState {
 }
 
 export type ContractsState = {
+  dryRun?: boolean;
+  chainId?: number;
+  blockNumber?: number;
   deployer?: Address;
   deployerStartNonce?: number;
   escrow?: Address;
@@ -123,7 +126,7 @@ export function loadContracts(): ContractsState {
     throw new Error(
       `Contracts file not found: ${CONTRACTS_FILE}\n` +
       `Set CONTRACTS_JSON_PATH env var or run Deploy.s.sol first.\n` +
-      `  Fork:    forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --private-key $PRIVATE_KEY\n` +
+      `  Fork:    DEPLOY_OUTPUT=../../revpad-anvil/.anvil-state/contracts.json forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --private-key $PRIVATE_KEY\n` +
       `  Mainnet: DEPLOY_OUTPUT=deployments/monad-mainnet.json forge script ...`
     );
   }

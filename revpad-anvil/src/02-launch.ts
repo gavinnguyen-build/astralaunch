@@ -40,7 +40,7 @@ async function main() {
   if (!contracts.escrow || !contracts.vault || !contracts.platformFeeReceiver) {
     throw new Error(
       `contracts.json is missing required addresses (escrow, vault, and/or platformFeeReceiver).\n` +
-      `Run: forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --private-key $PRIVATE_KEY\n` +
+      `Run: DEPLOY_OUTPUT=../../revpad-anvil/.anvil-state/contracts.json forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --private-key $PRIVATE_KEY\n` +
       `Expected file: .anvil-state/contracts.json\n` +
       `Got: escrow=${contracts.escrow ?? 'MISSING'}, vault=${contracts.vault ?? 'MISSING'}, platformFeeReceiver=${contracts.platformFeeReceiver ?? 'MISSING'}`
     );

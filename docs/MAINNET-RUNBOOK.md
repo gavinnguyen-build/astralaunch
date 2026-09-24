@@ -16,25 +16,19 @@
 
 ## Output file separation
 
-Fork and mainnet both use chain id 143. To prevent address collision:
+Fork and mainnet both use chain id 143. `DEPLOY_OUTPUT` is **mandatory** (no default).
 
-| Context | `DEPLOY_OUTPUT` | Output file |
-|---------|-----------------|-------------|
-| **Fork (default)** | *(unset)* | `revpad-anvil/.anvil-state/contracts.json` |
-| **Mainnet** | `deployments/monad-mainnet.json` | `packages/contracts/deployments/monad-mainnet.json` |
+| Context | `DEPLOY_OUTPUT` | `FOUNDRY_BROADCAST` |
+|---------|-----------------|---------------------|
+| **Fork** | `../../revpad-anvil/.anvil-state/contracts.json` | *(unset, uses default `broadcast/`)* |
+| **Mainnet** | `deployments/monad-mainnet.json` | `broadcast-mainnet` |
 
-`Deploy.s.sol` includes safety guards:
-- Non-localhost RPC + `.anvil-state` output path → **revert**
-- Localhost RPC + `deployments/monad-mainnet.json` → **revert**
+Safety guards in `Deploy.s.sol`:
+- `DEPLOY_OUTPUT` unset -> **revert** with usage message listing both valid values
+- Mainnet output + `ADMIN_ADDRESS` not set (would use deployer) -> **revert**
 
-Broadcast logs: Forge writes to `broadcast/Deploy.s.sol/143/`. After a mainnet deploy, copy `run-latest.json` to `deployments/` for archival:
-
-```bash
-cp packages/contracts/broadcast/Deploy.s.sol/143/run-latest.json \
-   packages/contracts/deployments/broadcast-mainnet.json
-```
-
-All consumers (`02-launch.ts`, server, keeper) read addresses from `CONTRACTS_JSON_PATH` env var. No silent fallback.
+The output JSON includes `"dryRun": true` for simulations (no `--broadcast`),
+`"dryRun": false` after a real broadcast. Server and keeper refuse to start if `dryRun` is true.
 
 ---
 
@@ -67,33 +61,22 @@ Per-contract gas (simulated on Monad mainnet):
 ### Keystore setup
 
 ```bash
-# Import deployer key (one-time)
 cast wallet import revpad-deployer --interactive
-```
-
-### Environment variables
-
-Set in shell before deploy:
-
-```bash
-export ADMIN_ADDRESS=0xe89f19D370F496520803e7ABb30c1A20B04B0f7f
-export TREASURY_ADDRESS=0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C
-export DEPLOY_OUTPUT=deployments/monad-mainnet.json
 ```
 
 ### Verify hardcoded addresses
 
-All 7 hardcoded addresses were verified to have bytecode on Monad mainnet (2026-09-24):
+All 7 verified on Monad mainnet (2026-09-24):
 
 | Address | Purpose | Status |
 |---------|---------|--------|
-| `0x188d586Ddcf52439676Ca21A244753fA19F9Ea8e` | PoolManager | PASS (48,020 chars) |
-| `0xCe3099B2F07029b086E5e92a1573C5f5A3071783` | Initializer | PASS (30,228 chars) |
-| `0x660eAaEdEBc968f8f3694354FA8EC0b4c5Ba8D12` | Airlock | PASS (11,416 chars) |
-| `0x5F3bA43D44375286296Cb85F1EA2EBfa25dde731` | NoMigrator | PASS (1,076 chars) |
-| `0x580ca49389d83b019d07E17e99454f2F218e2dc0` | DopplerHook | PASS (6,632 chars) |
-| `0x754704Bc059F8C67012fEd69BC8A327a5aafb603` | USDC | PASS (3,598 chars) |
-| `0x21E2ce70511e4FE542a97708e89520471DAa7A66` | Airlock owner | PASS (344 chars) |
+| `0x188d586Ddcf52439676Ca21A244753fA19F9Ea8e` | PoolManager | PASS |
+| `0xCe3099B2F07029b086E5e92a1573C5f5A3071783` | Initializer | PASS |
+| `0x660eAaEdEBc968f8f3694354FA8EC0b4c5Ba8D12` | Airlock | PASS |
+| `0x5F3bA43D44375286296Cb85F1EA2EBfa25dde731` | NoMigrator | PASS |
+| `0x580ca49389d83b019d07E17e99454f2F218e2dc0` | DopplerHook | PASS |
+| `0x754704Bc059F8C67012fEd69BC8A327a5aafb603` | USDC | PASS |
+| `0x21E2ce70511e4FE542a97708e89520471DAa7A66` | Airlock owner | PASS |
 
 Re-check before deploy:
 
@@ -118,9 +101,10 @@ done
 ```bash
 cd packages/contracts
 
+DEPLOY_OUTPUT=deployments/monad-mainnet.json \
+FOUNDRY_BROADCAST=broadcast-mainnet \
 ADMIN_ADDRESS=0xe89f19D370F496520803e7ABb30c1A20B04B0f7f \
 TREASURY_ADDRESS=0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C \
-DEPLOY_OUTPUT=deployments/monad-mainnet.json \
 forge script script/Deploy.s.sol \
   --rpc-url https://rpc.monad.xyz \
   --broadcast \
@@ -128,16 +112,23 @@ forge script script/Deploy.s.sol \
   --gas-estimate-multiplier 110
 ```
 
-The script deploys 5 contracts and writes `deployments/monad-mainnet.json` with:
-`chainId`, `blockNumber`, `deployer`, `admin`, `treasury`, `escrow`, `vault`, `platformFeeReceiver`, `routerImpl`, `registry`.
+This writes:
+- `deployments/monad-mainnet.json` with `"dryRun": false`, all contract addresses, `chainId`, `blockNumber`
+- `broadcast-mainnet/Deploy.s.sol/143/run-latest.json` (Forge broadcast log)
 
-After broadcast, archive the broadcast log:
+### 2a. Archive broadcast log and commit
 
 ```bash
-cp broadcast/Deploy.s.sol/143/run-latest.json deployments/broadcast-mainnet.json
+cp broadcast-mainnet/Deploy.s.sol/143/run-latest.json \
+   deployments/monad-mainnet-broadcast.json
+
+git add deployments/monad-mainnet.json deployments/monad-mainnet-broadcast.json
+git commit -m "deploy: mainnet contract addresses and broadcast log"
 ```
 
-**Expected output** (assuming deployer nonce = 0):
+Both files contain only public addresses and tx data, no secrets.
+
+### Expected output (deployer nonce = 0)
 
 | Contract | Predicted Address |
 |----------|-------------------|
@@ -147,20 +138,20 @@ cp broadcast/Deploy.s.sol/143/run-latest.json deployments/broadcast-mainnet.json
 | RevenueRouter (impl) | `0x2bcee60E8a8BD4b2c52aAfA8B57d47D427dACb09` |
 | RevpadRegistry | `0x25845Cee2b0E6dF0DA40bb9B60A84D162eabd00B` |
 
-> Addresses depend on deployer nonce. Check first: `cast nonce 0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6 --rpc-url https://rpc.monad.xyz`
+> Check nonce first: `cast nonce 0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6 --rpc-url https://rpc.monad.xyz`
 
 ---
 
 ## 3. Verify wiring
 
-After broadcast, verify admin and treasury are NOT the deployer:
-
 ```bash
 RPC=https://rpc.monad.xyz
+REGISTRY=$(jq -r .registry deployments/monad-mainnet.json)
+PFR=$(jq -r .platformFeeReceiver deployments/monad-mainnet.json)
 
-# Read addresses from deployments/monad-mainnet.json
-REGISTRY=$(jq -r .registry packages/contracts/deployments/monad-mainnet.json)
-PFR=$(jq -r .platformFeeReceiver packages/contracts/deployments/monad-mainnet.json)
+# Confirm dryRun is false
+jq .dryRun deployments/monad-mainnet.json
+# Expected: false
 
 # Registry admin
 cast call $REGISTRY "admin()(address)" --rpc-url $RPC
@@ -189,91 +180,58 @@ cast call $REGISTRY "paused()(bool)" --rpc-url $RPC
 
 ```bash
 cd revpad-anvil
-
-# Point to mainnet contracts
 export CONTRACTS_JSON_PATH=../packages/contracts/deployments/monad-mainnet.json
-
-# Launch (creator needs MON for gas + USDC for liquidity)
 npx tsx src/02-launch.ts
 ```
 
-The launch script reads `escrow`, `vault`, `platformFeeReceiver` from the JSON file. It refuses to start if the file is missing or addresses are absent.
-
-After launch, register the asset:
+After launch, register:
 
 ```bash
 RPC=https://rpc.monad.xyz
 REGISTRY=$(jq -r .registry $CONTRACTS_JSON_PATH)
-
 cast send $REGISTRY "register(address,address)(address)" \
   <ASSET_ADDRESS> <CREATOR_ADDRESS> \
-  --rpc-url $RPC \
-  --account revpad-deployer \
-  --gas-limit 500000
-```
-
-Verify registration:
-
-```bash
-cast call $REGISTRY "isRegistered(address)(bool)" <ASSET_ADDRESS> --rpc-url $RPC
-# Expected: true
-
-cast call $REGISTRY "routers(address)(address)" <ASSET_ADDRESS> --rpc-url $RPC
-# Returns the deployed RevenueRouter clone address
+  --rpc-url $RPC --account revpad-deployer --gas-limit 500000
 ```
 
 ---
 
 ## 5. Start server
 
-Set environment variables in `apps/server/.env` (or Coolify env).
-
-Read addresses from `deployments/monad-mainnet.json`:
-
 ```bash
-jq -r 'to_entries[] | "\(.key)=\(.value)"' packages/contracts/deployments/monad-mainnet.json
-```
-
-```bash
-# Chain
-MONAD_RPC_URL=https://rpc.monad.xyz
-MONAD_CHAIN_ID=143
-
-# x402
-X402_FACILITATOR_URL=https://x402-facilitator.molandak.org
-FACILITATOR_SUBMITTER_ADDRESSES=0x7f6a2850669202519f0FE8aa912451238820Db86
-
 # Contracts (from deployments/monad-mainnet.json)
 USDC_ADDRESS=0x754704Bc059F8C67012fEd69BC8A327a5aafb603
-PLATFORM_FEE_RECEIVER_ADDRESS=<from JSON: platformFeeReceiver>
-REVPAD_REGISTRY_ADDRESS=<from JSON: registry>
-FEE_ESCROW_ADDRESS=<from JSON: escrow>
-BUYBACK_VAULT_ADDRESS=<from JSON: vault>
+PLATFORM_FEE_RECEIVER_ADDRESS=$(jq -r .platformFeeReceiver deployments/monad-mainnet.json)
+REVPAD_REGISTRY_ADDRESS=$(jq -r .registry deployments/monad-mainnet.json)
+FEE_ESCROW_ADDRESS=$(jq -r .escrow deployments/monad-mainnet.json)
+BUYBACK_VAULT_ADDRESS=$(jq -r .vault deployments/monad-mainnet.json)
 
-# Admin verification (server verifies .admin() on startup)
+# Point to contracts JSON for dryRun check
+CONTRACTS_JSON_PATH=packages/contracts/deployments/monad-mainnet.json
+
+# Admin verification (server checks .admin() on startup)
 ADMIN_ADDRESS=0xe89f19D370F496520803e7ABb30c1A20B04B0f7f
 
-# Gateway — mainnet values
+MONAD_RPC_URL=https://rpc.monad.xyz
+MONAD_CHAIN_ID=143
+X402_FACILITATOR_URL=https://x402-facilitator.molandak.org
+FACILITATOR_SUBMITTER_ADDRESSES=0x7f6a2850669202519f0FE8aa912451238820Db86
 PAYMENT_TIMEOUT_SECONDS=60
 GATEWAY_HMAC_MASTER_KEY=<openssl rand -hex 32>
-# Do NOT set ALLOW_LOCAL_UPSTREAMS on mainnet
-
-# Auth
+DATABASE_URL=postgresql://revpad:<pw>@<host>:5432/revpad
 PRIVY_APP_ID=<app id>
 PRIVY_APP_SECRET=<app secret>
-
-# Database
-DATABASE_URL=postgresql://revpad:<pw>@<host>:5432/revpad
-
-# AI
 LITELLM_BASE_URL=<url>
 LITELLM_API_KEY=<key>
 ```
 
-The server verifies all contract addresses have bytecode and, if `ADMIN_ADDRESS` is set, checks `RevpadRegistry.admin()` and `PlatformFeeReceiver.admin()` match. It refuses to start on mismatch.
+The server:
+1. Checks `dryRun` flag in `CONTRACTS_JSON_PATH` -- refuses to start if `true`
+2. Verifies all contract addresses have bytecode on chain
+3. If `ADMIN_ADDRESS` is set, checks `RevpadRegistry.admin()` and `PlatformFeeReceiver.admin()` match
 
 ```bash
-pnpm -F server dev   # or production start via Coolify
+pnpm -F server dev
 ```
 
 ---
@@ -282,33 +240,22 @@ pnpm -F server dev   # or production start via Coolify
 
 ```bash
 MONAD_RPC_URL=https://rpc.monad.xyz
-KEEPER_PRIVATE_KEY=<funded keeper wallet — NOT deployer, NOT admin>
+KEEPER_PRIVATE_KEY=<funded keeper wallet>
 ASSETS=<comma-separated asset addresses>
-ROUTERS=<comma-separated router addresses, same order as ASSETS>
-
-# Contracts (from deployments/monad-mainnet.json)
-PLATFORM_FEE_RECEIVER_ADDRESS=<from JSON: platformFeeReceiver>
-REVPAD_REGISTRY_ADDRESS=<from JSON: registry>
-FEE_ESCROW_ADDRESS=<from JSON: escrow>
-BUYBACK_VAULT_ADDRESS=<from JSON: vault>
-
-# Admin verification (keeper verifies .admin() on startup)
+ROUTERS=<comma-separated router addresses>
+CONTRACTS_JSON_PATH=packages/contracts/deployments/monad-mainnet.json
+PLATFORM_FEE_RECEIVER_ADDRESS=$(jq -r .platformFeeReceiver deployments/monad-mainnet.json)
+REVPAD_REGISTRY_ADDRESS=$(jq -r .registry deployments/monad-mainnet.json)
+FEE_ESCROW_ADDRESS=$(jq -r .escrow deployments/monad-mainnet.json)
+BUYBACK_VAULT_ADDRESS=$(jq -r .vault deployments/monad-mainnet.json)
 ADMIN_ADDRESS=0xe89f19D370F496520803e7ABb30c1A20B04B0f7f
-
-# Optional: Telegram alerts for treasury proposals + admin transfers
 TELEGRAM_BOT_TOKEN=<bot token>
 TELEGRAM_CHAT_ID=<chat id>
-
 POLL_INTERVAL_S=30
 ```
 
-The keeper verifies all 4 contract addresses have bytecode and, if `ADMIN_ADDRESS` is set, checks admin wiring. It refuses to start on mismatch.
-
 ```bash
-# Test Telegram alerts first
-pnpm -F keeper dev -- --telegram-test
-
-# Start keeper
+pnpm -F keeper dev -- --telegram-test   # test alerts first
 pnpm -F keeper dev
 ```
 
@@ -329,21 +276,16 @@ npx tsx src/real-02-pay.ts
 ```bash
 RPC=https://rpc.monad.xyz
 ROUTER=<router address from registration>
-ESCROW=$(jq -r .escrow packages/contracts/deployments/monad-mainnet.json)
-VAULT=$(jq -r .vault packages/contracts/deployments/monad-mainnet.json)
-PFR=$(jq -r .platformFeeReceiver packages/contracts/deployments/monad-mainnet.json)
+ESCROW=$(jq -r .escrow deployments/monad-mainnet.json)
+VAULT=$(jq -r .vault deployments/monad-mainnet.json)
+PFR=$(jq -r .platformFeeReceiver deployments/monad-mainnet.json)
 
-# Check router USDC balance (should have received payment)
 cast call 0x754704Bc059F8C67012fEd69BC8A327a5aafb603 \
   "balanceOf(address)(uint256)" $ROUTER --rpc-url $RPC
-
-# After keeper distributes, check escrow/vault/PFR received their shares
 cast call 0x754704Bc059F8C67012fEd69BC8A327a5aafb603 \
   "balanceOf(address)(uint256)" $ESCROW --rpc-url $RPC
-
 cast call 0x754704Bc059F8C67012fEd69BC8A327a5aafb603 \
   "balanceOf(address)(uint256)" $VAULT --rpc-url $RPC
-
 cast call 0x754704Bc059F8C67012fEd69BC8A327a5aafb603 \
   "balanceOf(address)(uint256)" $PFR --rpc-url $RPC
 ```
@@ -351,8 +293,6 @@ cast call 0x754704Bc059F8C67012fEd69BC8A327a5aafb603 \
 ---
 
 ## 9. Rollback / stop
-
-Contracts are immutable once deployed. Available emergency controls:
 
 ### Pause new launches
 
@@ -366,36 +306,23 @@ cast send $REGISTRY "setPause(bool)" true \
 ```bash
 cast send $REGISTRY "transferAdmin(address)" <NEW_ADMIN> \
   --rpc-url $RPC --account <admin-keystore>
-
-# New admin accepts
 cast send $REGISTRY "acceptAdmin()" \
   --rpc-url $RPC --account <new-admin-keystore>
-
-# Cancel if needed
-cast send $REGISTRY "cancelAdminTransfer()" \
-  --rpc-url $RPC --account <admin-keystore>
 ```
-
-Same two-step pattern applies to PlatformFeeReceiver admin.
 
 ### Change treasury (48h delay)
 
 ```bash
 cast send $PFR "proposeTreasury(address)" <NEW_TREASURY> \
   --rpc-url $RPC --account <admin-keystore>
-
 # Wait 48 hours, then:
 cast send $PFR "acceptTreasury()" \
-  --rpc-url $RPC --account <admin-keystore>
-
-# Cancel if needed
-cast send $PFR "cancelProposal()" \
   --rpc-url $RPC --account <admin-keystore>
 ```
 
 ### What cannot be rolled back
 
-- Deployed contracts (no upgradeable proxies)
-- Tokens already launched and registered
-- Trades already executed
-- Revenue already distributed
+- Deployed contracts (immutable)
+- Tokens launched and registered
+- Trades executed
+- Revenue distributed

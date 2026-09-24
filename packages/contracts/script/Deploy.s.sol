@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Script, console} from "forge-std/Script.sol";
+import {VmSafe} from "forge-std/Vm.sol";
 import {FeeEscrow} from "../src/FeeEscrow.sol";
 import {BuybackVault} from "../src/BuybackVault.sol";
 import {PlatformFeeReceiver} from "../src/PlatformFeeReceiver.sol";
@@ -10,21 +11,37 @@ import {RevpadRegistry} from "../src/RevpadRegistry.sol";
 
 /// @notice Deploy all Revpad contracts.
 ///
-///   # Fork (default — writes to .anvil-state/contracts.json):
-///   forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --private-key $PRIVATE_KEY
+///   # Fork:
+///   DEPLOY_OUTPUT=../../revpad-anvil/.anvil-state/contracts.json \
+///     forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --private-key $PRIVATE_KEY
 ///
-///   # Mainnet dry-run (writes to deployments/monad-mainnet.json):
-///   DEPLOY_OUTPUT=deployments/monad-mainnet.json ADMIN_ADDRESS=0x... TREASURY_ADDRESS=0x... \
-///     forge script script/Deploy.s.sol --rpc-url https://rpc.monad.xyz --sender 0x... --gas-estimate-multiplier 110
+///   # Mainnet (dry-run):
+///   DEPLOY_OUTPUT=deployments/monad-mainnet.json \
+///   ADMIN_ADDRESS=0x... TREASURY_ADDRESS=0x... \
+///     forge script script/Deploy.s.sol --rpc-url https://rpc.monad.xyz --sender 0x...
 ///
-/// Env vars:
+///   # Mainnet (broadcast — use separate broadcast dir):
+///   DEPLOY_OUTPUT=deployments/monad-mainnet.json \
+///   FOUNDRY_BROADCAST=broadcast-mainnet \
+///   ADMIN_ADDRESS=0x... TREASURY_ADDRESS=0x... \
+///     forge script script/Deploy.s.sol --rpc-url https://rpc.monad.xyz --broadcast \
+///     --account revpad-deployer --gas-estimate-multiplier 110
+///
+/// Env vars (required):
+///   DEPLOY_OUTPUT    — JSON output path. No default; reverts if unset.
+///                      Fork: ../../revpad-anvil/.anvil-state/contracts.json
+///                      Mainnet: deployments/monad-mainnet.json
+///
+/// Env vars (optional):
 ///   ADMIN_ADDRESS    — admin of RevpadRegistry + PlatformFeeReceiver (defaults to msg.sender)
 ///   TREASURY_ADDRESS — initial treasury recipient (defaults to msg.sender)
-///   DEPLOY_OUTPUT    — JSON output path (default: ../../revpad-anvil/.anvil-state/contracts.json)
 ///
 /// Safety guards:
-///   - If RPC is NOT localhost and DEPLOY_OUTPUT points into .anvil-state → revert
-///   - If RPC IS localhost and DEPLOY_OUTPUT is deployments/monad-mainnet.json → revert
+///   - DEPLOY_OUTPUT unset → revert with usage message
+///   - Mainnet output + ADMIN_ADDRESS not set (would use deployer) → revert
+///
+/// The output JSON includes "dryRun": true when run without --broadcast,
+/// false after a real broadcast. Server and keeper refuse to start if dryRun is true.
 ///
 /// Deployment order (nonce offsets from start nonce N):
 ///   N+0  FeeEscrow             — requires futureVault (N+1) and futureRegistry (N+4)
@@ -39,39 +56,33 @@ contract DeployRevpad is Script {
     address constant POOL_MANAGER = 0x188d586Ddcf52439676Ca21A244753fA19F9Ea8e;
     address constant INITIALIZER  = 0xCe3099B2F07029b086E5e92a1573C5f5A3071783;
 
-    // Default output path (fork). Override with DEPLOY_OUTPUT env var.
-    string constant DEFAULT_OUTPUT = "../../revpad-anvil/.anvil-state/contracts.json";
+    string constant FORK_OUTPUT    = "../../revpad-anvil/.anvil-state/contracts.json";
     string constant MAINNET_OUTPUT = "deployments/monad-mainnet.json";
 
     function run() external {
         address admin    = vm.envOr("ADMIN_ADDRESS",    msg.sender);
         address treasury = vm.envOr("TREASURY_ADDRESS", msg.sender);
-        string memory outputPath = vm.envOr("DEPLOY_OUTPUT", DEFAULT_OUTPUT);
 
-        // ── Safety guards: prevent fork ↔ mainnet output collision ───────────
-        // Detect localhost by checking if the deployer is an Anvil dev address (nonce 0 + index 0).
-        // On a real fork with --sender, the deployer is a real wallet, not 0xf39F...
-        // Alternatively: check if DEPLOY_OUTPUT was explicitly set for mainnet.
-        bool pointsToAnvilState = _contains(outputPath, ".anvil-state");
-        bool pointsToMainnet    = _strEq(outputPath, MAINNET_OUTPUT);
+        // ── DEPLOY_OUTPUT is mandatory — no default ──────────────────────────
+        string memory outputPath = vm.envOr("DEPLOY_OUTPUT", string(""));
+        require(
+            bytes(outputPath).length > 0,
+            "DEPLOY_OUTPUT env var is required. Valid values:\n"
+            "  Fork:    DEPLOY_OUTPUT=../../revpad-anvil/.anvil-state/contracts.json\n"
+            "  Mainnet: DEPLOY_OUTPUT=deployments/monad-mainnet.json"
+        );
 
-        // If mainnet output is selected, require ADMIN_ADDRESS is set (not deployer).
-        // This prevents accidentally deploying to mainnet with deployer-as-admin.
-        if (pointsToMainnet) {
+        // ── Safety guard: mainnet output requires explicit admin ─────────────
+        if (_strEq(outputPath, MAINNET_OUTPUT)) {
             require(
                 admin != msg.sender,
-                "DEPLOY_OUTPUT=deployments/monad-mainnet.json but ADMIN_ADDRESS is not set (would use deployer)"
+                "DEPLOY_OUTPUT=deployments/monad-mainnet.json but ADMIN_ADDRESS is not set (would use deployer as admin)"
             );
         }
 
-        // If anvil-state output is selected but ADMIN_ADDRESS is a real external wallet,
-        // that's suspicious — probably meant to use mainnet output.
-        if (pointsToAnvilState && admin != msg.sender) {
-            require(
-                !_contains(vm.envOr("DEPLOY_OUTPUT", string("")), "monad-mainnet"),
-                "DEPLOY_OUTPUT points to .anvil-state but ADMIN is external -- did you mean deployments/monad-mainnet.json?"
-            );
-        }
+        // Detect whether this is a dry-run (simulation) or a real broadcast.
+        // vm.isContext(ForgeContext.ScriptBroadcast) is true only with --broadcast.
+        bool isDryRun = !vm.isContext(VmSafe.ForgeContext.ScriptBroadcast);
 
         vm.startBroadcast();
 
@@ -124,6 +135,7 @@ contract DeployRevpad is Script {
         // literal string so Foundry accumulates them into one object.  The LAST call's
         // return value is the complete JSON; that is what we write to disk.
         string memory obj = "contracts";
+        vm.serializeBool(obj,    "dryRun",               isDryRun);
         vm.serializeUint(obj,    "chainId",              block.chainid);
         vm.serializeUint(obj,    "blockNumber",          block.number);
         vm.serializeAddress(obj, "deployer",             msg.sender);
@@ -141,24 +153,6 @@ contract DeployRevpad is Script {
     }
 
     // ── String helpers (no external deps) ──────────────────────────────────
-    function _contains(string memory haystack, string memory needle) internal pure returns (bool) {
-        bytes memory h = bytes(haystack);
-        bytes memory n = bytes(needle);
-        if (n.length > h.length) return false;
-        for (uint256 i = 0; i <= h.length - n.length; i++) {
-            bool found = true;
-            for (uint256 j = 0; j < n.length; j++) {
-                if (h[i + j] != n[j]) { found = false; break; }
-            }
-            if (found) return true;
-        }
-        return false;
-    }
-
-    function _containsLocalhost(string memory url) internal pure returns (bool) {
-        return _contains(url, "127.0.0.1") || _contains(url, "localhost") || _contains(url, "0.0.0.0");
-    }
-
     function _strEq(string memory a, string memory b) internal pure returns (bool) {
         return keccak256(bytes(a)) == keccak256(bytes(b));
     }

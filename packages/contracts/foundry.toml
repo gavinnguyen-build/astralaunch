@@ -13,6 +13,8 @@ remappings       = [
 network = "monad"   # Foundry >=1.8: Monad execution model (opcode pricing, gas-limit billing)
 # Deploy.s.sol writes contracts.json; fork tests and launch script read it.
 # deployments/ is used for mainnet output (DEPLOY_OUTPUT=deployments/monad-mainnet.json).
+# Mainnet broadcast logs: set FOUNDRY_BROADCAST=broadcast-mainnet to avoid colliding
+# with fork logs in broadcast/ (which is gitignored).
 fs_permissions = [
     { access = "read-write", path = "../../revpad-anvil/.anvil-state/" },
     { access = "read-write", path = "deployments/" },
