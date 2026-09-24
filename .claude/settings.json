@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Edit", "Write", "Read",
+      "Bash(forge:*)", "Bash(anvil:*)", "Bash(cast call:*)", "Bash(cast chain-id:*)", "Bash(cast block-number:*)", "Bash(cast code:*)", "Bash(cast balance:*)", "Bash(cast rpc:*)",
+      "Bash(pnpm:*)", "Bash(npm:*)", "Bash(npx:*)", "Bash(node:*)", "Bash(tsx:*)",
+      "Bash(git status:*)", "Bash(git diff:*)", "Bash(git add:*)", "Bash(git commit:*)", "Bash(git checkout:*)", "Bash(git log:*)", "Bash(git branch:*)",
+      "Bash(ls:*)", "Bash(cat:*)", "Bash(grep:*)", "Bash(mkdir:*)", "Bash(cp:*)", "Bash(mv:*)", "Bash(sed:*)", "Bash(lsof:*)", "Bash(kill:*)", "Bash(pkill:*)",
+      "Bash(psql:*)", "Bash(createdb:*)", "Bash(dropdb:*)", "Bash(curl:*)", "Bash(./anvil/*)", "WebFetch", "WebSearch"
+    ],
+    "deny": [
+      "Bash(cast send:*)", "Bash(cast wallet:*)", "Bash(git push:*)", "Bash(rm -rf:*)",
+      "Read(./apps/server/.env.mainnet)", "Read(./apps/keeper/.env.mainnet)", "Read(./revpad-anvil/.env.real)",
+      "Bash(*--broadcast*rpc.monad.xyz*)", "Bash(*rpc.monad.xyz*--broadcast*)"
+    ]
+  }
+}
