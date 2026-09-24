@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, type TokenSummary } from '../lib/api.js';
-import { fmtUsdc, fmtDate, fmtAddr } from '../lib/format.js';
+import { fmtUsdc, fmtDate } from '../lib/format.js';
 
 const TABS = [
   { id: 'clean_revenue_30d', label: 'With revenue' },
