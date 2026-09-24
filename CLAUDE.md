@@ -53,7 +53,7 @@ These encode SPEC §3. Do not change them without an explicit instruction from T
    - Escrow unlock: 2000 bps of recorded revenue; forfeit after 365 days
    - Supply: 1e9; 85% pool; 15% creator vesting, 30-day cliff, 365 days total
 2. **Wash constraint:** `ESCROW_UNLOCK_BPS < 10000 - PROVIDER_BPS`. Add a compile-time/test assertion. Any change must keep SPEC §4.4 net result negative.
-3. **Never custody user funds.** No admin function may move router, escrow, or buyback balances to arbitrary addresses. Admin can only: set treasury, pause new launches, set capped hosted `costBps`.
+3. **Never custody user funds.** No admin function may move router, escrow, or buyback balances to arbitrary addresses. Admin can only: pause new launches, set capped hosted `costBps`, transfer admin (two-step, D22). Treasury via PlatformFeeReceiver (48h delay, D21).
 4. **Settle after success.** Gateway calls facilitator settle only after upstream 2xx + schema pass. Never charge failed calls.
 5. **Revenue counting:** contracts count all USDC inflows to a router. Wash filtering is display-only (SPEC §13). Never make contracts depend on off-chain "clean revenue".
 6. **Monad gas:** Monad bills the gas *limit*. Every tx sent by our code sets `gas = estimate × 1.1` (constant `GAS_BUFFER`), never wallet defaults.

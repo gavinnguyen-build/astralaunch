@@ -30,6 +30,7 @@
 | D17 | **Integrator must equal the Revpad treasury.** `Airlock.getAssetData(asset).integrator` is recorded at launch time by the Doppler SDK. For every Revpad token, the integrator is the treasury address. `RevpadRegistry.register` now checks this and reverts with `WrongIntegrator` on mismatch. |
 | D18 | **Balance cap window: registry enforces [600, 900] s; launch script targets 720 s.** `DopplerERC20V1.vestingStart` = `block.timestamp` at deploy. On Monad (0.4 s blocks) the tx lands ~1 s after `startTime`, giving `window ≈ 721 s`. On Anvil (1 s blocks + SDK lag ~26 s) `window ≈ 696 s`. Both inside [600, 900]. Using 900 caused `WrongBalanceCap` on Monad because the window was 901 s (decisions.md D20). |
 | D21 | **PlatformFeeReceiver replaces treasury wallet as beneficiary/integrator/router destination.** A singleton whose address is fixed forever; it forwards collected funds to a changeable `treasury` via a two-step 48h-delay pattern (`proposeTreasury → acceptTreasury`). Treasury changes are effective for ALL tokens (old and new) without touching existing contracts. RevpadRegistry no longer has `setTreasury()`; the treasury is managed through PlatformFeeReceiver. |
+| D22 | **Two-step admin transfer on RevpadRegistry and PlatformFeeReceiver.** `transferAdmin(newAdmin)` sets `pendingAdmin`; only `pendingAdmin` can call `acceptAdmin()` to finalize. `cancelAdminTransfer()` by current admin. No delay (admin transfer is already gated by the new admin accepting). FeeEscrow, BuybackVault, RevenueRouter have no admin. |
 
 ### Open
 | # | Question | Current default |
@@ -251,7 +252,7 @@ Then: deploy `RevenueRouter` clone, register asset in FeeEscrow and BuybackVault
 
 Tokens that fail verification are never listed. Week-2 check: confirm every field above is readable from the initializer/token/Airlock (the SDK reads fee, tick spacing, status, pool key and pending fees from chain). If a field is not readable on-chain, document the fallback in `docs/decisions.md` (e.g. verify from the Airlock `Create` event data).
 
-Admin (multisig): `pause`. Treasury changes are managed through PlatformFeeReceiver (D21). No power over registered assets' funds.
+Admin (multisig): `pause`, `transferAdmin` (two-step, D22). Treasury changes are managed through PlatformFeeReceiver (D21). No power over registered assets' funds.
 
 ### 6.2 `RevenueRouter` (clone per asset)
 
@@ -315,6 +316,9 @@ function acceptTreasury() external;                       // admin, after delay
 function cancelProposal() external;                       // admin
 function pendingTreasury() external view returns (address proposed, uint256 executableAt);
 function registerAsset(address asset, bytes32 poolId) external; // only RevpadRegistry
+function transferAdmin(address newAdmin) external;              // admin, two-step (D22)
+function acceptAdmin() external;                                // pendingAdmin only
+function cancelAdminTransfer() external;                        // admin
 ```
 
 - Address is fixed forever as the 30% Doppler beneficiary, Airlock integrator, and RevenueRouter treasury destination.
@@ -485,7 +489,7 @@ Every 10 min (per asset with activity):
 5. `BuybackVault.burnTokens(asset)`; `BuybackVault.execute(asset, min(balance, MAX_PER_CALL), minOut)` with jittered timing.
 6. `FeeEscrow.forfeit(asset)` when due.
 
-After all per-asset jobs: monitor `PlatformFeeReceiver.pendingTreasury()` and send Telegram alert if a treasury change proposal is detected or resolved.
+After all per-asset jobs: monitor `PlatformFeeReceiver.pendingTreasury()` and `pendingAdmin()` on both RevpadRegistry and PlatformFeeReceiver; send Telegram alert if a treasury change proposal or admin transfer is detected or resolved (D22).
 
 Explicit gas limits on every tx. Keeper wallet funded with MON; alert when low. All functions are permissionless, so anyone can run a keeper.
 
@@ -493,7 +497,7 @@ Explicit gas limits on every tx. Keeper wallet funded with MON; alert when low. 
 
 ## 16. Security & compliance
 
-- Admin powers: set treasury, pause new launches, set hosted `costBps` (capped). Nothing else. Admin = multisig on mainnet.
+- Admin powers: pause new launches, set hosted `costBps` (capped), transfer admin (two-step, D22). Treasury changes via PlatformFeeReceiver (48h delay, D21). Nothing else. Admin = multisig on mainnet.
 - Reentrancy guards on all external-transfer functions; checks-effects-interactions.
 - SSRF protection in gateway (§9.5). Secrets only in env; never log payment payloads in full.
 - Copy rules: use "usage-backed", "buyback", "revenue share to the pool". Never "profit", "dividend", "investment return", "yield" for tokens. Footer disclaimer: tokens are not investment products.
