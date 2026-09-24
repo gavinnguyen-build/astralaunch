@@ -31,6 +31,7 @@
 | D18 | **Balance cap window: registry enforces [600, 900] s; launch script targets 720 s.** `DopplerERC20V1.vestingStart` = `block.timestamp` at deploy. On Monad (0.4 s blocks) the tx lands ~1 s after `startTime`, giving `window ≈ 721 s`. On Anvil (1 s blocks + SDK lag ~26 s) `window ≈ 696 s`. Both inside [600, 900]. Using 900 caused `WrongBalanceCap` on Monad because the window was 901 s (decisions.md D20). |
 | D21 | **PlatformFeeReceiver replaces treasury wallet as beneficiary/integrator/router destination.** A singleton whose address is fixed forever; it forwards collected funds to a changeable `treasury` via a two-step 48h-delay pattern (`proposeTreasury → acceptTreasury`). Treasury changes are effective for ALL tokens (old and new) without touching existing contracts. RevpadRegistry no longer has `setTreasury()`; the treasury is managed through PlatformFeeReceiver. |
 | D22 | **Two-step admin transfer on RevpadRegistry and PlatformFeeReceiver.** `transferAdmin(newAdmin)` sets `pendingAdmin`; only `pendingAdmin` can call `acceptAdmin()` to finalize. `cancelAdminTransfer()` by current admin. No delay (admin transfer is already gated by the new admin accepting). FeeEscrow, BuybackVault, RevenueRouter have no admin. |
+| D23 | **Keeper safety: 10-min interval, per-beneficiary pre-check, 6h collect cadence, spend guards.** 24 Sep incident: keeper drained ~2.8 MON in ~4 min (30s poll, unconditional collect at ~1M gas each, Monad bills gas limit). Fix: default `POLL_INTERVAL_S=600`, min 300s on non-localhost; simulate `collectFees` + `getShares` for per-beneficiary pending, skip if < 1 USDC; 6h cadence per beneficiary per asset; rolling 24h spend guard (0.2 MON/day); `--dry-run` mode. Job order: distribute → buyback → collect → forfeit. |
 
 ### Open
 | # | Question | Current default |
@@ -550,10 +551,14 @@ Explicit gas limits on every tx (`estimate × 1.1`; Monad bills the gas limit). 
 | Launch gas on real Monad | 4,589,375 (~0.52 MON); fork within 0.9% |
 
 | RevpadRegistry reads all §6.1 fields from chain | ✅ 17/17 fork tests pass. DOPPLER_HOOK constant confirmed. Integrator == treasury confirmed. totalAllocatedOf + vestedTotalAmount confirmed 150M each. balanceLimitEnd − vestingStart window 696 s on Anvil fork (within [600, 900]). |
+| Mainnet deploy (5 contracts) | ✅ 2026-09-24. FeeEscrow, BuybackVault, PlatformFeeReceiver, RevenueRouter impl, RevpadRegistry. Admin wiring verified. Addresses in §23. |
+| First token launch + register | ✅ 2026-09-24. `nullsight` (0x13DB78…171d), router 0x95D381…0f7f, registered in RevpadRegistry. |
+| Mainnet paid call → distribute → PFR → treasury → buyback + burn | ✅ 2026-09-24. Full revenue loop verified end-to-end on mainnet. |
+| Keeper safety hardening (D23) | ✅ 2026-09-24. Pending fee pre-check with per-beneficiary shares, 6h cadence, spend guards, dry-run mode. |
 
 ### Still to verify
-- [ ] DopplerERC20V1 `burn` semantics (caller's own balance).
-- [ ] Contract-driven collect + buyback via `PoolManager.unlock` + burn on the fork.
+- [x] DopplerERC20V1 `burn` semantics (caller's own balance). Verified via mainnet buyback (2026-09-24).
+- [x] Contract-driven collect + buyback via `PoolManager.unlock` + burn on the fork. Verified on mainnet (2026-09-24).
 - [ ] EIP-7702-delegated payer through the official facilitator (O9).
 - [x] Full facilitator submitter address(es) recorded (O8). Locked 2026-09-24.
 - [ ] Rehype hook (O2) — deferred.
@@ -564,8 +569,9 @@ Explicit gas limits on every tx (`estimate × 1.1`; Monad bills the gas limit). 
 |---|---|
 | 22–23 Sep | ✅ Anvil-fork + real-Monad verification; SPEC v0.2; all contracts done with 93 tests (78 unit + 15 fork); Fix 1-3 + integrator check; SPEC v0.3 |
 | 23 Sep (cont.) | ✅ Backend running end-to-end on Anvil fork: server (Hono + Postgres + x402 gateway) + keeper all functional. E2E test suite 17/17 PASS (A–J: registry, service register, 402, paid call + settlement, replay reject, upstream-fail → 502 + no charge, distribute, escrow claimable, buyback execute, burn). Keeper ran collect/distribute/buyback with real tx hashes. Two fork environment fixes documented: (1) ERC-7702 delegation on Anvil mnemonic accounts requires `anvil_setCode` clearance; (2) USDC EIP-712 domain name is `"USDC"` not `"USD Coin"` (CLAUDE.md rule 14). |
-| 24–30 Sep | Envio indexer; deploy to mainnet with a fresh admin key and small amounts; one full real flow |
-| 1–5 Oct | Deploy to mainnet; one full real flow with official facilitator |
+| 24 Sep | ✅ Mainnet deploy (5 contracts), first token (nullsight), full paid-call loop verified (distribute → PFR → treasury → buyback + burn). Keeper incident D23 fixed: per-beneficiary pending fee pre-check, 6h cadence, spend guards, dry-run mode. Creator signature auth on service registration. DB migrations fixed. |
+| 25–30 Sep | Envio indexer; web app scaffolding |
+| 1–5 Oct | One full real flow with official facilitator; hosted Prompt template |
 | 6–12 Oct | Web app (new UI), hosted Prompt template, wash scoring + UCR, 2–3 demo services, demo agent, video |
 | 13 Oct | Submission |
 
@@ -647,3 +653,21 @@ Copy into `packages/shared/src/addresses.ts` with these sources.
 | Rehype hook (O2, not verified) | `0xe2AEbc987592593b667ec29178D0A83929Db78b6` | SDK only |
 | x402 facilitator | `https://x402-facilitator.molandak.org` | Monad docs; verified on real Monad |
 | Facilitator submitter (observed) | `0x7f6a2850669202519f0FE8aa912451238820Db86` | settle tx `0x6e7e1dc75f884a4891a025837738f133bbb4bea01189c23e923c647f0b609a40` |
+
+### Revpad contracts (deployed 2026-09-24)
+
+| Contract | Address | Source |
+|---|---|---|
+| FeeEscrow | `0x22523FeEA974939Fd6c94dAF7F9d112D667DeC3B` | Deploy.s.sol broadcast |
+| BuybackVault | `0xcBe741362a59943174f028a44A1b82722c24e7E7` | Deploy.s.sol broadcast |
+| PlatformFeeReceiver | `0x510cb102906a4bE9193B025620f6824ee8b4eC21` | Deploy.s.sol broadcast |
+| RevenueRouter (impl) | `0x2bcee60E8a8BD4b2c52aAfA8B57d47D427dACb09` | Deploy.s.sol broadcast |
+| RevpadRegistry | `0x25845Cee2b0E6dF0DA40bb9B60A84D162eabd00B` | Deploy.s.sol broadcast |
+
+### First token (nullsight, 2026-09-24)
+
+| Item | Value |
+|---|---|
+| Token (DopplerERC20V1) | `0x13DB78bd3F92382306a17d50dAC93Af1904e171d` |
+| RevenueRouter (clone) | `0x95D381aa54A2DA62C835Dd081D1D5a0f8700C722` |
+| Creator | `0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6` |
