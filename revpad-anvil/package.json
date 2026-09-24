@@ -17,6 +17,7 @@
     "e2e-setup": "tsx src/e2e-setup.ts",
     "keeper-prep": "tsx src/keeper-prep.ts",
     "mainnet-launch": "tsx src/mainnet-launch.ts",
+    "mainnet-register": "tsx src/mainnet-register.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

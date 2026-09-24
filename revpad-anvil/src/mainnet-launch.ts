@@ -9,7 +9,9 @@
 // Safety:
 //   - Refuses Anvil dev accounts on non-localhost RPC
 //   - Refuses dryRun:true contracts or missing bytecode
-//   - Prints full parameter summary and waits for "yes" before sending
+//   - Recomputes startTime from latest block after confirmation (not wall-clock)
+//   - Estimates register() gas on-chain after launch (no hardcoded guess)
+//   - If register fails, prints instructions to retry with mainnet-register.ts
 
 import { DopplerSDK, getAirlockOwner, sortBeneficiaries } from '@whetstone-research/doppler-sdk/evm';
 import { createInterface } from 'node:readline';
@@ -23,6 +25,7 @@ import {
   http,
   parseEther,
   type Address,
+  type PublicClient,
 } from 'viem';
 import { mnemonicToAccount, privateKeyToAccount } from 'viem/accounts';
 
@@ -44,6 +47,10 @@ const DAY = 86_400;
 const START_MCAP_USD = 10_000;
 const GAS_BUFFER_BPS = 11_000n;
 const USDC: Address = '0x754704Bc059F8C67012fEd69BC8A327a5aafb603'; // Monad mainnet USDC
+
+// Balance cap window bounds (from RevpadConstants.sol)
+const CAP_WINDOW_MIN = 600;  // 10 minutes
+const CAP_WINDOW_MAX = 900;  // 15 minutes
 
 function withBuffer(gas: bigint): bigint {
   return (gas * GAS_BUFFER_BPS) / 10_000n;
@@ -73,7 +80,7 @@ function askYes(question: string): Promise<boolean> {
   });
 }
 
-const registryAbi = [
+export const registryAbi = [
   {
     type: 'function' as const, name: 'register' as const, stateMutability: 'nonpayable' as const,
     inputs: [{ name: 'asset', type: 'address' }, { name: 'creator', type: 'address' }],
@@ -85,6 +92,81 @@ const registryAbi = [
     outputs: [{ name: '', type: 'address' }],
   },
 ] as const;
+
+const tokenCapAbi = [
+  { type: 'function' as const, name: 'vestingStart' as const, stateMutability: 'view' as const, inputs: [], outputs: [{ type: 'uint256' }] },
+  { type: 'function' as const, name: 'balanceLimitEnd' as const, stateMutability: 'view' as const, inputs: [], outputs: [{ type: 'uint48' }] },
+] as const;
+
+/** Build SDK launch params for a given startTime. */
+function buildParams(
+  sdk: DopplerSDK,
+  opts: {
+    tokenName: string; tokenSymbol: string; tokenURI: string;
+    startTime: number; beneficiaries: Array<{ beneficiary: Address; shares: bigint }>;
+    creator: Address; pfrAddr: Address;
+  },
+) {
+  return sdk
+    .buildMulticurveAuction()
+    .tokenConfig({
+      name: opts.tokenName,
+      symbol: opts.tokenSymbol,
+      tokenURI: opts.tokenURI,
+      maxBalanceLimit: SUPPLY / 100n,
+      balanceLimitEnd: opts.startTime + 720,
+    })
+    .saleConfig({ initialSupply: SUPPLY, numTokensToSell: POOL_TOKENS, numeraire: USDC })
+    .withCurves({
+      numerairePrice: 1,
+      numeraireDecimals: 6,
+      tokenDecimals: 18,
+      fee: POOL_FEE,
+      tickSpacing: TICK_SPACING,
+      beneficiaries: opts.beneficiaries,
+      curves: [
+        { marketCap: { start: START_MCAP_USD, end: START_MCAP_USD * 20 }, numPositions: 10, shares: 400_000_000_000_000_000n },
+        { marketCap: { start: START_MCAP_USD * 20, end: 'max' }, numPositions: 10, shares: 600_000_000_000_000_000n },
+      ],
+    })
+    .withSchedule({ startTime: opts.startTime })
+    .withVesting({
+      duration: BigInt(365 * DAY),
+      cliffDuration: 30 * DAY,
+      recipients: [opts.creator],
+      amounts: [VESTED_TOKENS],
+    })
+    .withGovernance({ type: 'noOp' })
+    .withMigration({ type: 'noOp' })
+    .withUserAddress(opts.creator)
+    .withIntegrator(opts.pfrAddr)
+    .build();
+}
+
+/** Read on-chain balance cap window and validate it is within [600, 900] s. */
+export async function checkCapWindow(
+  publicClient: PublicClient,
+  asset: Address,
+): Promise<{ vestingStart: bigint; balanceLimitEnd: bigint; window: bigint }> {
+  const vestStart = await publicClient.readContract({
+    address: asset, abi: tokenCapAbi, functionName: 'vestingStart',
+  });
+  const capEnd = await publicClient.readContract({
+    address: asset, abi: tokenCapAbi, functionName: 'balanceLimitEnd',
+  });
+  const capEndBig = BigInt(capEnd);
+  const window = capEndBig > vestStart ? capEndBig - vestStart : 0n;
+
+  if (window < BigInt(CAP_WINDOW_MIN) || window > BigInt(CAP_WINDOW_MAX)) {
+    throw new Error(
+      `Balance cap window ${window}s is outside [${CAP_WINDOW_MIN}, ${CAP_WINDOW_MAX}].\n` +
+      `vestingStart=${vestStart}, balanceLimitEnd=${capEndBig}.\n` +
+      `register() will revert with WrongBalanceCap. Do NOT retry without fixing the window.`
+    );
+  }
+
+  return { vestingStart: vestStart, balanceLimitEnd: capEndBig, window };
+}
 
 async function main() {
   // ── 1. Signer ────────────────────────────────────────────────────────────────
@@ -162,7 +244,7 @@ async function main() {
   const tokenSymbol = need('TOKEN_SYMBOL');
   const tokenURI    = process.env.TOKEN_URI ?? '';
 
-  // ── 6. Build launch params ───────────────────────────────────────────────────
+  // ── 6. Build preview params (preliminary startTime for gas estimate) ────────
   const sdk = new DopplerSDK({ publicClient, walletClient, chainId });
   const airlockOwner = (await getAirlockOwner(publicClient)) as Address;
 
@@ -178,7 +260,6 @@ async function main() {
   if (shareSum !== WAD) throw new Error(`Shares sum ${shareSum} != ${WAD}`);
   if (POOL_TOKENS + VESTED_TOKENS !== SUPPLY) throw new Error('pool + vested != supply');
 
-  // Verify PlatformFeeReceiver has the 30% share
   const pfrBen = beneficiaries.find(
     (b) => getAddress(b.beneficiary) === getAddress(pfrAddr)
   );
@@ -186,59 +267,22 @@ async function main() {
     throw new Error(`PlatformFeeReceiver must have 30% share`);
   }
 
-  const now = Math.floor(Date.now() / 1000);
-  const startTime = now + 60; // 1 min from now so the tx lands before start
+  const buildOpts = { tokenName, tokenSymbol, tokenURI, beneficiaries, creator, pfrAddr };
 
-  const params = sdk
-    .buildMulticurveAuction()
-    .tokenConfig({
-      name: tokenName,
-      symbol: tokenSymbol,
-      tokenURI,
-      maxBalanceLimit: SUPPLY / 100n,
-      balanceLimitEnd: startTime + 720,
-    })
-    .saleConfig({ initialSupply: SUPPLY, numTokensToSell: POOL_TOKENS, numeraire: USDC })
-    .withCurves({
-      numerairePrice: 1,
-      numeraireDecimals: 6,
-      tokenDecimals: 18,
-      fee: POOL_FEE,
-      tickSpacing: TICK_SPACING,
-      beneficiaries,
-      curves: [
-        { marketCap: { start: START_MCAP_USD, end: START_MCAP_USD * 20 }, numPositions: 10, shares: 400_000_000_000_000_000n },
-        { marketCap: { start: START_MCAP_USD * 20, end: 'max' }, numPositions: 10, shares: 600_000_000_000_000_000n },
-      ],
-    })
-    .withSchedule({ startTime })
-    .withVesting({
-      duration: BigInt(365 * DAY),
-      cliffDuration: 30 * DAY,
-      recipients: [creator],
-      amounts: [VESTED_TOKENS],
-    })
-    .withGovernance({ type: 'noOp' })
-    .withMigration({ type: 'noOp' })
-    .withUserAddress(creator)
-    .withIntegrator(pfrAddr)
-    .build();
+  // Preliminary simulation for gas preview
+  const previewBlock = await publicClient.getBlock();
+  const previewStart = Number(previewBlock.timestamp) + 60;
+  const previewParams = buildParams(sdk, { ...buildOpts, startTime: previewStart });
 
-  // ── 7. Simulate + gas estimate ───────────────────────────────────────────────
-  console.log('Simulating launch...');
-  const sim = await sdk.factory.simulateCreateMulticurve(params);
-  const launchGas = sim.gasEstimate ?? 0n;
-
-  // register() gas: can't estimate before the token exists; use known upper bound
-  const registerGasEst = 500_000n;
+  console.log('Simulating launch (preview)...');
+  const previewSim = await sdk.factory.simulateCreateMulticurve(previewParams);
+  const launchGas = previewSim.gasEstimate ?? 0n;
 
   const gasPrice = await publicClient.getGasPrice();
-  const launchCost  = withBuffer(launchGas) * gasPrice;
-  const registerCost = withBuffer(registerGasEst) * gasPrice;
-  const totalCost   = launchCost + registerCost;
-  const monBalance  = await publicClient.getBalance({ address: creator });
+  const launchCost = withBuffer(launchGas) * gasPrice;
+  const monBalance = await publicClient.getBalance({ address: creator });
 
-  // ── 8. Display summary ───────────────────────────────────────────────────────
+  // ── 7. Display summary ───────────────────────────────────────────────────────
   const sep = '══════════════════════════════════════════════════════════════';
   console.log(`\n╔${sep}╗`);
   console.log( '║             MAINNET LAUNCH CONFIRMATION                     ║');
@@ -253,8 +297,7 @@ async function main() {
   console.log(`  Pool        : 85% (${formatEther(POOL_TOKENS)})`);
   console.log(`  Vested      : 15% (${formatEther(VESTED_TOKENS)}) -- 30d cliff, 365d duration`);
   console.log(`  Start FDV   : $${START_MCAP_USD.toLocaleString()}`);
-  console.log(`  Balance cap : 1% of supply, ${720}s window`);
-  console.log(`  Start time  : ${new Date(startTime * 1000).toISOString()} (${startTime})`);
+  console.log(`  Balance cap : 1% of supply, 720s target window`);
   console.log(`╠${sep}╣`);
   console.log(`  Beneficiaries (trading fee split):`);
   for (const b of beneficiaries) {
@@ -269,27 +312,38 @@ async function main() {
     console.log(`    ${pct.padStart(2)}%  ${b.beneficiary}  ${label}`);
   }
   console.log(`╠${sep}╣`);
-  console.log(`  Launch gas    : ${launchGas} (limit ${withBuffer(launchGas)})`);
-  console.log(`  Register gas  : ~${registerGasEst} (limit ${withBuffer(registerGasEst)})`);
-  console.log(`  Gas price     : ${gasPrice} wei (${Number(gasPrice) / 1e9} gwei)`);
-  console.log(`  Launch cost   : ${formatEther(launchCost)} MON`);
-  console.log(`  Register cost : ~${formatEther(registerCost)} MON`);
-  console.log(`  Total         : ~${formatEther(totalCost)} MON`);
+  console.log(`  Launch gas  : ${launchGas} (limit ${withBuffer(launchGas)})`);
+  console.log(`  Register gas: estimated after launch (not hardcoded)`);
+  console.log(`  Gas price   : ${gasPrice} wei (${Number(gasPrice) / 1e9} gwei)`);
+  console.log(`  Launch cost : ${formatEther(launchCost)} MON`);
+  console.log(`  NOTE: startTime will be recomputed from latest block after you confirm`);
   console.log(`╚${sep}╝`);
 
-  if (monBalance < totalCost * 2n) {
+  if (monBalance < launchCost * 3n) {
     console.warn(
       `\nWARNING: MON balance (${formatEther(monBalance)}) may be tight.` +
-      ` Recommended: ${formatEther(totalCost * 2n)} MON`
+      ` Recommended: ${formatEther(launchCost * 3n)} MON (launch + register + buffer)`
     );
   }
 
-  // ── 9. Confirm ───────────────────────────────────────────────────────────────
+  // ── 8. Confirm ───────────────────────────────────────────────────────────────
   const ok = await askYes('\nType "yes" to proceed with mainnet launch: ');
   if (!ok) {
     console.log('Aborted.');
     process.exit(0);
   }
+
+  // ── 9. Recompute startTime from latest block (not wall-clock) ──────────────
+  const freshBlock = await publicClient.getBlock();
+  const startTime = Number(freshBlock.timestamp) + 60;
+  const balanceLimitEnd = startTime + 720;
+  console.log(`\nRecomputed: startTime=${startTime}, balanceLimitEnd=${balanceLimitEnd} (block ${freshBlock.number}, ts ${freshBlock.timestamp})`);
+
+  const params = buildParams(sdk, { ...buildOpts, startTime });
+
+  console.log('Re-simulating with final startTime...');
+  const sim = await sdk.factory.simulateCreateMulticurve(params);
+  console.log(`  predicted token: ${sim.tokenAddress}, gas: ${sim.gasEstimate ?? 'n/a'}`);
 
   // ── 10. Launch ───────────────────────────────────────────────────────────────
   console.log('\nSending createMulticurve...');
@@ -301,20 +355,43 @@ async function main() {
   console.log(`  tx      : ${res.transactionHash}`);
   console.log(`  gasUsed : ${receipt.gasUsed}`);
 
-  // ── 11. Register ─────────────────────────────────────────────────────────────
-  console.log('\nSending register()...');
-  const regGas = await publicClient.estimateContractGas({
-    account: creatorAccount,
-    address: registryAddr,
-    abi: registryAbi,
-    functionName: 'register',
-    args: [res.tokenAddress, creator],
-  });
+  // ── 11. Validate balance cap window on-chain before register ───────────────
+  console.log('\nChecking on-chain balance cap window...');
+  const { vestingStart, balanceLimitEnd: capEnd, window: capWindow } =
+    await checkCapWindow(publicClient, res.tokenAddress as Address);
+  console.log(`  vestingStart=${vestingStart}, balanceLimitEnd=${capEnd}, window=${capWindow}s -- OK`);
+
+  // ── 12. Register with on-chain gas estimate ────────────────────────────────
+  console.log('\nEstimating register() gas...');
+  let regGas: bigint;
+  try {
+    regGas = await publicClient.estimateContractGas({
+      account: creatorAccount,
+      address: registryAddr,
+      abi: registryAbi,
+      functionName: 'register',
+      args: [res.tokenAddress as Address, creator],
+    });
+  } catch (err: any) {
+    console.error('\nERROR: register() gas estimation failed. The token is launched but NOT registered.');
+    console.error(`  Revert reason: ${err.shortMessage ?? err.message}`);
+    console.error(`\n  Token address: ${res.tokenAddress}`);
+    console.error(`  Launch tx:     ${res.transactionHash}`);
+    console.error(`\n  To retry registration:\n`);
+    console.error(`    ASSET_ADDRESS=${res.tokenAddress} \\`);
+    console.error(`    CONTRACTS_JSON_PATH=${contractsPath} \\`);
+    console.error(`    MONAD_RPC_URL=${rpcUrl} \\`);
+    console.error(`      npx tsx src/mainnet-register.ts`);
+    process.exit(1);
+  }
+  console.log(`  register gas estimate: ${regGas} (limit ${withBuffer(regGas)})`);
+
+  console.log('Sending register()...');
   const registerHash = await walletClient.writeContract({
     address: registryAddr,
     abi: registryAbi,
     functionName: 'register',
-    args: [res.tokenAddress, creator],
+    args: [res.tokenAddress as Address, creator],
     gas: withBuffer(regGas),
   });
   const regReceipt = await publicClient.waitForTransactionReceipt({ hash: registerHash });
@@ -324,10 +401,10 @@ async function main() {
     address: registryAddr,
     abi: registryAbi,
     functionName: 'routers',
-    args: [res.tokenAddress],
+    args: [res.tokenAddress as Address],
   });
 
-  // ── 12. Results ──────────────────────────────────────────────────────────────
+  // ── 13. Results ──────────────────────────────────────────────────────────────
   console.log('\n=== MAINNET LAUNCH + REGISTER COMPLETE ===');
   console.log(`  asset    : ${res.tokenAddress}`);
   console.log(`  poolId   : ${res.poolId}`);

@@ -202,8 +202,20 @@ The script:
 2. Refuses `dryRun: true` or missing bytecode
 3. Prints creator, token, beneficiaries, supply split, vesting, gas estimates, MON cost
 4. Waits for you to type `yes`
-5. Sends `createMulticurve` + `register(asset, creator)` with gas = estimate x 1.1
-6. Prints asset, poolId, router, and both tx hashes
+5. Recomputes `startTime` from the latest block timestamp (not wall-clock from earlier)
+6. Re-simulates, shows final `startTime` / `balanceLimitEnd`
+7. Sends `createMulticurve`, then estimates `register()` gas on-chain (no hardcoded guess)
+8. Validates balance cap window (600..900 s) before calling `register()`
+9. Prints asset, poolId, router, and both tx hashes
+
+### Retry register only (if launch succeeded but register failed)
+
+```bash
+ASSET_ADDRESS=<token address> \
+CONTRACTS_JSON_PATH=../packages/contracts/deployments/monad-mainnet.json \
+MONAD_RPC_URL=https://rpc.monad.xyz \
+  npx tsx src/mainnet-register.ts
+```
 
 ### Verify after launch
 
