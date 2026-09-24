@@ -1,0 +1,15 @@
+{
+  "id": "0002_tokens_probes",
+  "prevId": "0001_init",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {},
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
