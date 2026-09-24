@@ -1,16 +1,18 @@
 /**
- * Revpad keeper — scheduled on-chain job runner.
+ * Astralaunch keeper — scheduled on-chain job runner.
  *
  * Reads the list of registered assets from env (comma-separated ASSETS) or from
  * the server database (DATABASE_URL) and runs jobs every POLL_INTERVAL_S seconds.
  *
  * Jobs per asset (ordered by usefulness — high-value first):
  *   1. distribute — forward revenue from routers
- *   2. buyback   — swap + burn (rate-limited by contract)
+ *   2. buyback   — swap + burn (rate-limited by contract; skipped for WMON pairs)
  *   3. collect   — pull Doppler trading fees (escrow + vault + PFR), gated by pending fee check + cadence
  *   4. forfeit   — redirect abandoned escrow to vault
+ *   5. O4 swap   — swap WMON numeraire fees to USDC (stub, pending USDC/WMON pool)
  *
- * After the per-asset loop: monitor PlatformFeeReceiver for treasury proposals.
+ * After the per-asset loop: monitor PlatformFeeReceiver for treasury proposals,
+ * admin transfers, and AstralaunchRegistry for initializer proposals.
  *
  * Usage:
  *   ASSETS=0xToken1,0xToken2 ROUTERS=0xRouter1,0xRouter2 tsx src/index.ts
@@ -32,9 +34,9 @@ import {
   refreshWalletBalance,
   verifyContracts,
 } from './chain.js';
-import { monitorTreasuryProposal, monitorAdminTransfers, dryRunTelegramAlert } from './telegram.js';
+import { monitorTreasuryProposal, monitorAdminTransfers, monitorInitializerProposal, dryRunTelegramAlert } from './telegram.js';
 import { SpendGuardError } from './spend.js';
-import { KEEPER_DEFAULT_INTERVAL_S, KEEPER_MIN_INTERVAL_S } from '@revpad/shared';
+import { KEEPER_DEFAULT_INTERVAL_S, KEEPER_MIN_INTERVAL_S } from '@astralaunch/shared';
 
 config({ path: '../../.env' });
 config({ path: '.env', override: false });
@@ -87,9 +89,10 @@ async function runOnce(pairs: Array<{ asset: Address; router: Address }>) {
     throw e;
   }
 
-  // Monitor treasury proposals and admin transfers after all per-asset jobs
+  // Monitor treasury proposals, admin transfers, and initializer proposals after all per-asset jobs
   await monitorTreasuryProposal(PLATFORM_FEE_RECEIVER, publicClient);
   await monitorAdminTransfers(PLATFORM_FEE_RECEIVER, REGISTRY, publicClient);
+  await monitorInitializerProposal();
 }
 
 async function main() {

@@ -1,5 +1,5 @@
 {
-  "name": "@revpad/web",
+  "name": "@astralaunch/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@privy-io/react-auth":   "^2.0.0",
-    "@revpad/shared":         "workspace:*",
+    "@astralaunch/shared":    "workspace:*",
     "@tanstack/react-query":  "^5.62.0",
     "@uniswap/v4-sdk":        "^1.0.0",
     "react":                  "^18.3.0",

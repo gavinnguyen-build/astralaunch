@@ -1,5 +1,5 @@
 {
-  "name": "@revpad/indexer",
+  "name": "@astralaunch/indexer",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@revpad/shared": "workspace:*",
+    "@astralaunch/shared": "workspace:*",
     "dotenv": "^16.4.5",
     "drizzle-orm": "^0.38.0",
     "postgres": "^3.4.5",

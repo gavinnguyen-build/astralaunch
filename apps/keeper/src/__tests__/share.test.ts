@@ -31,7 +31,7 @@ vi.mock('../spend.js', () => ({
 
 import { runAssetJobs, _resetCadenceForTest } from '../jobs.js';
 import { publicClient, sendTx, simulatePendingFees, getBeneficiaryShare } from '../chain.js';
-import { ESCROW_SHARE_WAD, BUYBACK_SHARE_WAD, TREASURY_SHARE_WAD, WAD } from '@revpad/shared';
+import { ESCROW_SHARE_WAD, BUYBACK_SHARE_WAD, TREASURY_SHARE_WAD, WAD } from '@astralaunch/shared';
 import type { Address } from 'viem';
 
 const ASSET = '0x1111111111111111111111111111111111111111' as Address;

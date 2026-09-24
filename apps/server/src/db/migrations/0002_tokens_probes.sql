@@ -1,4 +1,4 @@
--- Revpad migration 0002: tokens + service_probes
+-- Astralaunch migration 0002: tokens + service_probes
 -- Generated 2026-09-23
 
 CREATE TABLE IF NOT EXISTS tokens (

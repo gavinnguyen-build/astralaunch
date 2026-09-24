@@ -27,7 +27,7 @@ export const services = pgTable('services', {
   creator:        text('creator').notNull(),       // wallet that registered
   upstreamUrl:    text('upstream_url').notNull(),
   priceUsdc:      text('price_usdc').notNull(),    // raw bigint string (6 dec)
-  upstreamSecret: text('upstream_secret').notNull(), // HMAC key for X-Revpad-Signature
+  upstreamSecret: text('upstream_secret').notNull(), // HMAC key for X-Astralaunch-Signature
   timeoutSeconds: integer('timeout_seconds').notNull().default(20),
   requestSchema:  text('request_schema'),
   responseSchema: text('response_schema'),

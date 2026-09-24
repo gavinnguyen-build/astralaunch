@@ -25,9 +25,28 @@ export const NOMIG = '0x5F3bA43D44375286296Cb85F1EA2EBfa25dde731';
 /** Dead address — used as governance for noOp tokens (decisions.md D1) */
 export const NOGOV = '0x000000000000000000000000000000000000dEaD';
 
+// ── Airlock owner ─────────────────────────────────────────────────────────────
+/** Airlock owner: SDK ADDRESSES[143] — must be a beneficiary with >= 5% share */
+export const AIRLOCK_OWNER = '0x21E2ce70511e4FE542a97708e89520471DAa7A66';
+
 // ── Tokens ────────────────────────────────────────────────────────────────────
 /** USDC on Monad mainnet: verified via on-chain name()="USD Coin", decimals()=6 */
 export const USDC = '0x754704Bc059F8C67012fEd69BC8A327a5aafb603';
+/** WMON (Wrapped MON) on Monad mainnet: from Doppler SDK weth field for chain 143 */
+export const WMON = '0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A';
+
+// ── Doppler Bundler (dev buy support) ────────────────────────────────────────
+/** Bundler contract for atomic dev buy during launch: SDK GENERATED_DOPPLER_DEPLOYMENTS["143"].Bundler */
+export const BUNDLER = '0xf45588E8e0B1df9dB9ae7E20eCE5726AE931357c';
+
+/** Supported numeraire addresses for Astralaunch launches. */
+export const SUPPORTED_NUMERAIRES = [USDC, WMON] as const;
+
+/** Numeraire decimals lookup. */
+export const NUMERAIRE_DECIMALS: Record<string, number> = {
+  [USDC]: 6,
+  [WMON]: 18,
+};
 
 // ── x402 facilitator ──────────────────────────────────────────────────────────
 /**

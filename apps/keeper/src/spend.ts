@@ -11,7 +11,7 @@ import {
   MAX_MON_PER_DAY_WEI,
   MIN_MON_BALANCE_WEI,
   SINGLE_TX_ALERT_WEI,
-} from '@revpad/shared';
+} from '@astralaunch/shared';
 import { sendTelegramAlert } from './telegram.js';
 
 // ── Config (overridable via env) ──────────────────────────────────────────────

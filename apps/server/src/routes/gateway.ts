@@ -29,7 +29,7 @@ import { services, gatewayRequests } from '../db/schema.js';
 import type { Service } from '../db/schema.js';
 import { signRequest } from '../lib/hmac.js';
 import { FACILITATOR_URL, USDC_ADDR, CHAIN_ID, PAYMENT_TIMEOUT_S } from '../env.js';
-import { MONAD_NETWORK } from '@revpad/shared';
+import { MONAD_NETWORK } from '@astralaunch/shared';
 
 const PAYMENT_HEADER         = 'X-PAYMENT';
 const PAYMENT_REQUIRED_HEADER = 'X-PAYMENT-REQUIRED';
@@ -114,7 +114,7 @@ app.all('/:slug/*', async (c) => {
 
   const fwdHeaders: Record<string, string> = {
     'Content-Type':      c.req.header('Content-Type') ?? 'application/json',
-    'X-Revpad-Signature': signRequest(svc.upstreamSecret, bodyBytes ?? Buffer.alloc(0)),
+    'X-Astralaunch-Signature': signRequest(svc.upstreamSecret, bodyBytes ?? Buffer.alloc(0)),
   };
 
   let upstreamRes: Response;

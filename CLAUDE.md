@@ -1,6 +1,6 @@
-# CLAUDE.md — Revpad
+# CLAUDE.md — Astralaunch (formerly Revpad)
 
-Revpad is a token launchpad on Monad for x402 services. Each service is bound to a token launched via Doppler (Uniswap v4 multicurve, USDC pair). Trading fees are split on-chain; service revenue flows through a per-token RevenueRouter into provider payouts, buyback-and-burn, and escrow unlocks for the creator.
+Astralaunch is a token launchpad on Monad for x402 services. Each service is bound to a token launched via Doppler (Uniswap v4 multicurve, USDC or MON pair). Trading fees are split on-chain; service revenue flows through a per-token RevenueRouter into provider payouts, buyback-and-burn, and escrow unlocks for the creator.
 
 **Read `SPEC.md` before any task.** It is the source of truth for economics and behavior. `docs/BANKR_REFERENCE.md` is background only.
 
@@ -61,7 +61,7 @@ These encode SPEC §3. Do not change them without an explicit instruction from T
 8. **Addresses:** only in `packages/shared/src/addresses.ts`, each with a source comment (doc URL or tx). Nothing unverified gets used on mainnet.
 9. **USDC = 6 decimals.** Use bigint everywhere in TS for token amounts. No floats in money math.
 10. **Doppler specifics:** Airlock owner must be a beneficiary with ≥ 5%; beneficiaries sorted ascending by address; shares sum to 1e18; `numTokensToSell + vested == initialSupply` (Airlock sends leftovers to the timelock).
-11. **Launch = Doppler SDK + `RevpadRegistry.register`.** Use the `V4ScheduledMulticurveInitializer` (Monad has no standard/decay multicurve). Never re-implement the multicurve encoding in Solidity; the registry verifies on-chain config instead.
+11. **Launch = Doppler SDK + `AstralaunchRegistry.register`.** Use the `V4ScheduledMulticurveInitializer` (Monad has no standard/decay multicurve). Never re-implement the multicurve encoding in Solidity; the registry verifies on-chain config instead. v2: Registry accepts USDC or WMON as numeraire; start market cap is set by creator (not fixed). Dev buy via Bundler is supported.
 12. **Fee beneficiaries collect themselves.** FeeEscrow and BuybackVault must call `collectFees` on the initializer; Doppler only pays the caller.
 13. **Contracts swap via `PoolManager.unlock()`** (IUnlockCallback). Universal Router + Permit2 only for user wallets.
 14. **x402 facilitator calls go through the SDK `HTTPFacilitatorClient`** (`@x402/core/http`), never hand-written HTTP. Facilitator URL from config (Monad official by default). USDC EIP-712 domain: name `"USDC"`, version `"2"`.
@@ -113,8 +113,10 @@ MONAD_CHAIN_ID=143
 X402_FACILITATOR_URL=https://x402-facilitator.molandak.org
 FACILITATOR_SUBMITTER_ADDRESSES=0x7f6a2850669202519f0FE8aa912451238820Db86
 USDC_ADDRESS=0x754704Bc059F8C67012fEd69BC8A327a5aafb603
+WMON_ADDRESS=0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A
 TREASURY_ADDRESS=
-REVPAD_FACTORY_ADDRESS=
+GUARDIAN_ADDRESS=
+ASTRALAUNCH_REGISTRY_ADDRESS=
 FEE_ESCROW_ADDRESS=
 BUYBACK_VAULT_ADDRESS=
 PLATFORM_FEE_RECEIVER_ADDRESS=

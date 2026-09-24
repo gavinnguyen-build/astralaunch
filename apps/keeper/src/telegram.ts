@@ -1,14 +1,16 @@
 /**
- * Telegram alerting for treasury and admin change proposals.
+ * Telegram alerting for treasury, admin change, and initializer proposals.
  *
  * Sends alerts when:
  *   - A new treasury proposal is detected / resolved (PlatformFeeReceiver)
- *   - A pending admin transfer is detected / resolved (RevpadRegistry or PlatformFeeReceiver)
+ *   - A pending admin transfer is detected / resolved (AstralaunchRegistry or PlatformFeeReceiver)
+ *   - A new initializer proposal is detected / accepted / cancelled (AstralaunchRegistry)
  *
  * No-ops gracefully if TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID are not set.
  */
 import type { Address, PublicClient } from 'viem';
 import { pfrAbi, registryAdminAbi } from './jobs.js';
+import { getPendingInitializerProposal, REGISTRY } from './chain.js';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID   = process.env.TELEGRAM_CHAT_ID;
@@ -17,6 +19,7 @@ const CHAT_ID   = process.env.TELEGRAM_CHAT_ID;
 let lastTreasuryKey = '';
 let lastPfrAdminKey = '';
 let lastRegistryAdminKey = '';
+let lastInitializerKey = '';
 
 /** Send a Telegram message. No-op with console log if no credentials. */
 export async function sendTelegramAlert(message: string): Promise<void> {
@@ -121,7 +124,7 @@ async function monitorAdminOnContract(
   return lastKey;
 }
 
-/** Monitor admin transfers on both PlatformFeeReceiver and RevpadRegistry. */
+/** Monitor admin transfers on both PlatformFeeReceiver and AstralaunchRegistry. */
 export async function monitorAdminTransfers(
   pfrAddress: Address,
   registryAddress: Address,
@@ -131,11 +134,48 @@ export async function monitorAdminTransfers(
     'PlatformFeeReceiver', pfrAddress, pfrAbi, lastPfrAdminKey, publicClient,
   );
   lastRegistryAdminKey = await monitorAdminOnContract(
-    'RevpadRegistry', registryAddress, registryAdminAbi, lastRegistryAdminKey, publicClient,
+    'AstralaunchRegistry', registryAddress, registryAdminAbi, lastRegistryAdminKey, publicClient,
   );
+}
+
+/**
+ * Monitor AstralaunchRegistry for initializer proposals.
+ * Alerts when a new proposal is created, and when it is resolved (accepted or cancelled).
+ */
+export async function monitorInitializerProposal(): Promise<void> {
+  try {
+    const proposal = await getPendingInitializerProposal();
+
+    if (proposal) {
+      const key = `${proposal.initializer}-${proposal.adapter}-${proposal.executableAt}`;
+      if (key !== lastInitializerKey) {
+        const execDate = new Date(Number(proposal.executableAt) * 1000).toISOString();
+        await sendTelegramAlert(
+          `🔔 *Initializer Proposal Detected*\n` +
+          `Initializer: \`${proposal.initializer}\`\n` +
+          `Adapter: \`${proposal.adapter}\`\n` +
+          `Executable at: ${execDate}\n` +
+          `Registry: \`${REGISTRY}\``
+        );
+        lastInitializerKey = key;
+      }
+    } else {
+      // No active proposal
+      if (lastInitializerKey) {
+        await sendTelegramAlert(
+          `✅ *Initializer Proposal Resolved*\n` +
+          `Previous proposal accepted or cancelled.\n` +
+          `Registry: \`${REGISTRY}\``
+        );
+        lastInitializerKey = '';
+      }
+    }
+  } catch (e) {
+    console.error(`[telegram] monitorInitializerProposal error: ${e}`);
+  }
 }
 
 /** Send a test alert to verify Telegram credentials. */
 export async function dryRunTelegramAlert(): Promise<void> {
-  await sendTelegramAlert('🧪 Revpad keeper Telegram alert — dry run OK');
+  await sendTelegramAlert('🧪 Astralaunch keeper Telegram alert — dry run OK');
 }

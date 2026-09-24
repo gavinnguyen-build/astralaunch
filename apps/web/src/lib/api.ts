@@ -1,4 +1,4 @@
-/** Typed API client for the Revpad server. */
+/** Typed API client for the Astralaunch server. */
 import { API_BASE } from '../env.js';
 
 async function get<T>(path: string): Promise<T> {

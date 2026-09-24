@@ -10,7 +10,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@revpad/shared': resolve(__dirname, '../../packages/shared/src/index.ts'),
+      '@astralaunch/shared': resolve(__dirname, '../../packages/shared/src/index.ts'),
     },
   },
   server: {

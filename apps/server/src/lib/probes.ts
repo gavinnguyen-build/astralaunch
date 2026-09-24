@@ -40,7 +40,7 @@ async function probe(svc: typeof services.$inferSelect): Promise<void> {
     const sig        = signRequest(svc.upstreamSecret, Buffer.alloc(0));
     const res        = await fetch(url, {
       method: 'GET',
-      headers: { 'X-Revpad-Signature': sig },
+      headers: { 'X-Astralaunch-Signature': sig },
       signal:  controller.signal,
     });
     clearTimeout(timer);

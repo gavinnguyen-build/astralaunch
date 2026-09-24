@@ -6,7 +6,7 @@ export function generateSecret(): string {
 }
 
 /**
- * Compute X-Revpad-Signature header value.
+ * Compute X-Astralaunch-Signature header value.
  * Format: `t={timestamp};v1={hex_mac}`
  * MAC = HMAC-SHA256(secret, `{timestamp}.{bodyHex}`)
  *

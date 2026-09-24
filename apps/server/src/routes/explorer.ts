@@ -1,7 +1,7 @@
 /**
  * Explorer route — GET /api/explorer
  *
- * Returns all active Revpad x402 services on Monad with aggregate metrics.
+ * Returns all active Astralaunch x402 services on Monad with aggregate metrics.
  */
 import { Hono } from 'hono';
 import { eq, and, gte, sql, desc } from 'drizzle-orm';

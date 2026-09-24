@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { privateKeyToAccount } from 'viem/accounts';
 import { verifyMessage, getAddress } from 'viem';
-import { serviceRegistrationMessage } from '@revpad/shared';
+import { serviceRegistrationMessage } from '@astralaunch/shared';
 
 // Deterministic test wallet (Anvil dev key #0 — never used on mainnet)
 const CREATOR_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' as const;

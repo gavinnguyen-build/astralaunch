@@ -37,7 +37,7 @@ interface IInitializer {
     ///         Fix 1: preferred over getPoolKey(poolId) because it takes the asset address directly.
     ///         See docs/decisions.md Decision D16.
     /// @param asset  The DopplerERC20V1 token address.
-    /// @return numeraire  Quote token (USDC on Revpad).
+    /// @return numeraire  Quote token (USDC or WMON on Astralaunch).
     /// @return status     Doppler pool status enum value (uint8).
     /// @return poolKey    The Uniswap v4 PoolKey for this asset's pool.
     /// @return farTick    Far tick used by the multicurve.

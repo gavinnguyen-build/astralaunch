@@ -10,8 +10,8 @@ import {
   type Address,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { withBuffer } from '@revpad/shared';
-import { INITIALIZER as INITIALIZER_ADDR } from '@revpad/shared';
+import { withBuffer } from '@astralaunch/shared';
+import { INITIALIZER as INITIALIZER_ADDR, WMON as WMON_ADDR } from '@astralaunch/shared';
 import { assertCanSpend, recordSpend, alertIfExpensive } from './spend.js';
 
 config({ path: '../../.env' });
@@ -23,9 +23,16 @@ function need(k: string): string {
   return v;
 }
 
+/** Accept both new and legacy env var name for the registry address. */
+function needRegistry(): string {
+  const v = process.env.ASTRALAUNCH_REGISTRY_ADDRESS ?? process.env.REVPAD_REGISTRY_ADDRESS;
+  if (!v) throw new Error('Missing env var ASTRALAUNCH_REGISTRY_ADDRESS');
+  return v;
+}
+
 export const RPC_URL   = need('MONAD_RPC_URL');
 export const CHAIN_ID  = Number(process.env.MONAD_CHAIN_ID ?? 143);
-export const REGISTRY  = need('REVPAD_REGISTRY_ADDRESS') as Address;
+export const REGISTRY  = needRegistry() as Address;
 export const ESCROW    = need('FEE_ESCROW_ADDRESS') as Address;
 export const VAULT     = need('BUYBACK_VAULT_ADDRESS') as Address;
 export const PLATFORM_FEE_RECEIVER = need('PLATFORM_FEE_RECEIVER_ADDRESS') as Address;
@@ -45,6 +52,10 @@ const baseWallet = createWalletClient({ account, chain: monad, transport: http(R
 // ── Dry-run mode ────────────────────────────────────────────────────────────
 
 export const DRY_RUN = process.argv.includes('--dry-run') || process.env.DRY_RUN === 'true';
+
+// ── WMON address ────────────────────────────────────────────────────────────
+
+export const WMON = WMON_ADDR as Address;
 
 // ── Cached gas price (refreshed per tick) ───────────────────────────────────
 
@@ -88,7 +99,7 @@ const initializerAbi = [
 
 /**
  * Simulate collectFees via eth_call to read TOTAL pending fees for the pool.
- * Returns (fees0, fees1); caller must determine which is USDC.
+ * Returns (fees0, fees1); caller must determine which is USDC/WMON.
  *
  * NOTE: collectFees returns the TOTAL pool fees regardless of the calling account.
  * To get per-beneficiary pending, use getBeneficiaryShare() and multiply.
@@ -130,6 +141,67 @@ export async function getBeneficiaryShare(
     return 0n;
   }
 }
+
+// ── AstralaunchRegistry ABI (for numeraire lookups + initializer proposals) ─
+
+const registryAbi = [
+  {
+    type: 'function', name: 'assetNumeraires', stateMutability: 'view',
+    inputs: [{ name: 'asset', type: 'address' }],
+    outputs: [{ name: 'numeraire', type: 'address' }],
+  },
+  {
+    type: 'function', name: 'pendingInitializer', stateMutability: 'view',
+    inputs: [],
+    outputs: [
+      { name: 'initializer', type: 'address' },
+      { name: 'adapter', type: 'address' },
+      { name: 'executableAt', type: 'uint256' },
+    ],
+  },
+] as const;
+
+/**
+ * Read the numeraire address for an asset from AstralaunchRegistry.
+ * Returns the numeraire (USDC or WMON), or zero address if not registered.
+ */
+export async function getAssetNumeraire(asset: Address): Promise<Address> {
+  try {
+    return await publicClient.readContract({
+      address: REGISTRY,
+      abi: registryAbi,
+      functionName: 'assetNumeraires',
+      args: [asset],
+    }) as Address;
+  } catch {
+    return '0x0000000000000000000000000000000000000000' as Address;
+  }
+}
+
+/**
+ * Read the pending initializer proposal from AstralaunchRegistry.
+ * Returns { initializer, adapter, executableAt } or null if no active proposal.
+ */
+export async function getPendingInitializerProposal(): Promise<{
+  initializer: Address;
+  adapter: Address;
+  executableAt: bigint;
+} | null> {
+  try {
+    const result = await publicClient.readContract({
+      address: REGISTRY,
+      abi: registryAbi,
+      functionName: 'pendingInitializer',
+    });
+    const [initializer, adapter, executableAt] = result as [Address, Address, bigint];
+    if (executableAt === 0n) return null;
+    return { initializer, adapter, executableAt };
+  } catch {
+    return null;
+  }
+}
+
+export { registryAbi };
 
 // ── Send transaction ────────────────────────────────────────────────────────
 
@@ -203,7 +275,7 @@ export async function verifyContracts(): Promise<void> {
   }
 
   const addrs: Array<{ name: string; addr: Address }> = [
-    { name: 'RevpadRegistry', addr: REGISTRY },
+    { name: 'AstralaunchRegistry', addr: REGISTRY },
     { name: 'FeeEscrow', addr: ESCROW },
     { name: 'BuybackVault', addr: VAULT },
     { name: 'PlatformFeeReceiver', addr: PLATFORM_FEE_RECEIVER },
@@ -220,7 +292,7 @@ export async function verifyContracts(): Promise<void> {
   if (expectedAdmin) {
     const expected = getAddress(expectedAdmin);
     for (const { name, addr } of [
-      { name: 'RevpadRegistry', addr: REGISTRY },
+      { name: 'AstralaunchRegistry', addr: REGISTRY },
       { name: 'PlatformFeeReceiver', addr: PLATFORM_FEE_RECEIVER },
     ]) {
       const actual = await publicClient.readContract({ address: addr, abi: adminAbi, functionName: 'admin' });

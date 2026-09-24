@@ -1,5 +1,5 @@
 // Economics constants — source of truth for both TypeScript and Solidity (CLAUDE.md rule 1).
-// Any change here must be mirrored in packages/contracts/src/RevpadConstants.sol.
+// Any change here must be mirrored in packages/contracts/src/AstralaunchConstants.sol.
 
 // ── Trading fee ────────────────────────────────────────────────────────────────
 /** Uniswap v4 fee units: 2% = 20000 (hundredths of a bip). */

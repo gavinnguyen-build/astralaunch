@@ -1,4 +1,4 @@
--- Revpad initial schema
+-- Astralaunch initial schema
 -- Generated 2026-09-23
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
