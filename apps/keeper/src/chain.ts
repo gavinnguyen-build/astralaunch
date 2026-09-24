@@ -79,11 +79,19 @@ const initializerAbi = [
     inputs: [{ name: 'poolId', type: 'bytes32' }],
     outputs: [{ name: 'fees0', type: 'uint128' }, { name: 'fees1', type: 'uint128' }],
   },
+  {
+    type: 'function', name: 'getShares', stateMutability: 'view',
+    inputs: [{ name: 'poolId', type: 'bytes32' }, { name: 'beneficiary', type: 'address' }],
+    outputs: [{ name: 'shares', type: 'uint256' }],
+  },
 ] as const;
 
 /**
- * Simulate collectFees via eth_call to read pending fees for a beneficiary
- * without sending a tx. Returns (fees0, fees1); caller must determine which is USDC.
+ * Simulate collectFees via eth_call to read TOTAL pending fees for the pool.
+ * Returns (fees0, fees1); caller must determine which is USDC.
+ *
+ * NOTE: collectFees returns the TOTAL pool fees regardless of the calling account.
+ * To get per-beneficiary pending, use getBeneficiaryShare() and multiply.
  */
 export async function simulatePendingFees(
   poolId: `0x${string}`,
@@ -100,6 +108,26 @@ export async function simulatePendingFees(
     return { fees0: result[0], fees1: result[1] };
   } catch {
     return { fees0: 0n, fees1: 0n };
+  }
+}
+
+/**
+ * Read the WAD share for a beneficiary on a pool via the initializer's
+ * getShares(poolId, beneficiary) view function.
+ */
+export async function getBeneficiaryShare(
+  poolId: `0x${string}`,
+  beneficiary: Address,
+): Promise<bigint> {
+  try {
+    return await publicClient.readContract({
+      address: INITIALIZER,
+      abi: initializerAbi,
+      functionName: 'getShares',
+      args: [poolId, beneficiary],
+    });
+  } catch {
+    return 0n;
   }
 }
 

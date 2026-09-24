@@ -16,7 +16,7 @@
 import { formatUnits, parseUnits, type Address } from 'viem';
 import {
   publicClient, ESCROW, VAULT, PLATFORM_FEE_RECEIVER,
-  sendTx, DRY_RUN, simulatePendingFees,
+  sendTx, DRY_RUN, simulatePendingFees, getBeneficiaryShare,
 } from './chain.js';
 import {
   KEEPER_MIN_COLLECT_USDC,
@@ -26,6 +26,7 @@ import {
   FORFEIT_DELAY_S,
   COLLECT_INTERVAL_S as DEFAULT_COLLECT_INTERVAL_S,
   USDC as USDC_ADDR,
+  WAD,
 } from '@revpad/shared';
 import { SpendGuardError } from './spend.js';
 
@@ -131,10 +132,21 @@ async function getAssetMeta(asset: Address): Promise<AssetMeta> {
 
 // ── Pending fee helper ──────────────────────────────────────────────────────
 
+/**
+ * Get the pending USDC for a specific beneficiary of an asset.
+ *
+ * collectFees returns TOTAL pool fees regardless of the caller.
+ * We multiply by the beneficiary's WAD share (from getShares) to get
+ * the per-beneficiary amount: `total * share / WAD`.
+ */
 async function getPendingUsdc(asset: Address, beneficiary: Address): Promise<bigint> {
   const meta = await getAssetMeta(asset);
   const { fees0, fees1 } = await simulatePendingFees(meta.poolId, beneficiary);
-  return meta.isUsdcCurrency0 ? fees0 : fees1;
+  const totalUsdc = meta.isUsdcCurrency0 ? fees0 : fees1;
+  if (totalUsdc === 0n) return 0n;
+  const share = await getBeneficiaryShare(meta.poolId, beneficiary);
+  if (share === 0n) return 0n;
+  return (totalUsdc * share) / WAD;
 }
 
 // ── Collect cadence tracker ─────────────────────────────────────────────────

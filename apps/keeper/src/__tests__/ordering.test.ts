@@ -14,6 +14,7 @@ vi.mock('../chain.js', () => ({
   sendTx: vi.fn().mockResolvedValue({ hash: '0x00', gasBuffered: 0n, monCost: 0n }),
   DRY_RUN: false,
   simulatePendingFees: vi.fn().mockResolvedValue({ fees0: 0n, fees1: 0n }),
+  getBeneficiaryShare: vi.fn().mockResolvedValue(0n),
 }));
 
 // Mock telegram
