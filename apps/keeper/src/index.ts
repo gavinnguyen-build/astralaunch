@@ -22,8 +22,8 @@
 import { config } from 'dotenv';
 import { isAddress, type Address } from 'viem';
 import { jobCollect, jobDistribute, jobBuyback, jobForfeit, jobCollectPlatformFee } from './jobs.js';
-import { PLATFORM_FEE_RECEIVER, publicClient } from './chain.js';
-import { monitorTreasuryProposal, dryRunTelegramAlert } from './telegram.js';
+import { PLATFORM_FEE_RECEIVER, REGISTRY, publicClient } from './chain.js';
+import { monitorTreasuryProposal, monitorAdminTransfers, dryRunTelegramAlert } from './telegram.js';
 
 config({ path: '../../.env' });
 config({ path: '.env', override: false });
@@ -47,8 +47,9 @@ async function runOnce(pairs: Array<{ asset: Address; router: Address }>) {
     await jobBuyback(asset);
     await jobForfeit(asset);
   }
-  // Monitor treasury proposals after all per-asset jobs
+  // Monitor treasury proposals and admin transfers after all per-asset jobs
   await monitorTreasuryProposal(PLATFORM_FEE_RECEIVER, publicClient);
+  await monitorAdminTransfers(PLATFORM_FEE_RECEIVER, REGISTRY, publicClient);
 }
 
 async function main() {

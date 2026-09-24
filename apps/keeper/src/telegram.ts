@@ -1,20 +1,22 @@
 /**
- * Telegram alerting for treasury change proposals on PlatformFeeReceiver.
+ * Telegram alerting for treasury and admin change proposals.
  *
  * Sends alerts when:
- *   - A new treasury proposal is detected
- *   - A previously active proposal is resolved (accepted or cancelled)
+ *   - A new treasury proposal is detected / resolved (PlatformFeeReceiver)
+ *   - A pending admin transfer is detected / resolved (RevpadRegistry or PlatformFeeReceiver)
  *
  * No-ops gracefully if TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID are not set.
  */
 import type { Address, PublicClient } from 'viem';
-import { pfrAbi } from './jobs.js';
+import { pfrAbi, registryAdminAbi } from './jobs.js';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID   = process.env.TELEGRAM_CHAT_ID;
 
-// Dedupe: track the last alerted proposal key
-let lastAlertedKey = '';
+// Dedupe: track the last alerted key for each monitor
+let lastTreasuryKey = '';
+let lastPfrAdminKey = '';
+let lastRegistryAdminKey = '';
 
 /** Send a Telegram message. No-op with console log if no credentials. */
 export async function sendTelegramAlert(message: string): Promise<void> {
@@ -53,7 +55,7 @@ export async function monitorTreasuryProposal(
 
     if (proposed !== '0x0000000000000000000000000000000000000000') {
       // Active proposal
-      if (key !== lastAlertedKey) {
+      if (key !== lastTreasuryKey) {
         const execDate = new Date(Number(executableAt) * 1000).toISOString();
         await sendTelegramAlert(
           `🔔 *Treasury Proposal Detected*\n` +
@@ -61,21 +63,76 @@ export async function monitorTreasuryProposal(
           `Executable at: ${execDate}\n` +
           `PFR: \`${pfrAddress}\``
         );
-        lastAlertedKey = key;
+        lastTreasuryKey = key;
       }
     } else {
       // No active proposal
-      if (lastAlertedKey && lastAlertedKey !== key) {
+      if (lastTreasuryKey && lastTreasuryKey !== key) {
         await sendTelegramAlert(
           `✅ *Treasury Proposal Resolved*\n` +
           `PFR: \`${pfrAddress}\``
         );
-        lastAlertedKey = key;
+        lastTreasuryKey = key;
       }
     }
   } catch (e) {
     console.error(`[telegram] monitorTreasuryProposal error: ${e}`);
   }
+}
+
+/** Check a contract for pending admin transfer and alert. */
+async function monitorAdminOnContract(
+  label: string,
+  contractAddress: Address,
+  abi: typeof pfrAbi | typeof registryAdminAbi,
+  lastKey: string,
+  publicClient: PublicClient,
+): Promise<string> {
+  try {
+    const pending = await publicClient.readContract({
+      address: contractAddress,
+      abi,
+      functionName: 'pendingAdmin',
+    }) as string;
+
+    const ZERO = '0x0000000000000000000000000000000000000000';
+
+    if (pending !== ZERO) {
+      if (pending !== lastKey) {
+        await sendTelegramAlert(
+          `🔔 *Admin Transfer Started — ${label}*\n` +
+          `Pending admin: \`${pending}\`\n` +
+          `Contract: \`${contractAddress}\``
+        );
+        return pending;
+      }
+    } else {
+      if (lastKey && lastKey !== ZERO) {
+        await sendTelegramAlert(
+          `✅ *Admin Transfer Resolved — ${label}*\n` +
+          `Contract: \`${contractAddress}\``
+        );
+        return ZERO;
+      }
+    }
+  } catch (e) {
+    console.error(`[telegram] monitorAdmin(${label}) error: ${e}`);
+  }
+  return lastKey;
+}
+
+/** Monitor admin transfers on both PlatformFeeReceiver and RevpadRegistry. */
+export async function monitorAdminTransfers(
+  pfrAddress: Address,
+  registryAddress: Address,
+  publicClient: PublicClient,
+): Promise<void> {
+  lastPfrAdminKey = await monitorAdminOnContract(
+    'PlatformFeeReceiver', pfrAddress, pfrAbi, lastPfrAdminKey, publicClient,
+  );
+  lastRegistryAdminKey = await monitorAdminOnContract(
+    'RevpadRegistry', registryAddress, registryAdminAbi, lastRegistryAdminKey, publicClient,
+  );
 }
 
 /** Send a test alert to verify Telegram credentials. */

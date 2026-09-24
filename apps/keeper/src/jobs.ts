@@ -192,6 +192,11 @@ const pfrAbi = [
   { type: 'function', name: 'collect', stateMutability: 'nonpayable', inputs: [{ name: 'asset', type: 'address' }], outputs: [] },
   { type: 'function', name: 'pendingTreasury', stateMutability: 'view', inputs: [],
     outputs: [{ name: 'proposed', type: 'address' }, { name: 'executableAt', type: 'uint256' }] },
+  { type: 'function', name: 'pendingAdmin', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
+] as const;
+
+const registryAdminAbi = [
+  { type: 'function', name: 'pendingAdmin', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
 ] as const;
 
 /** Collect platform trading-fee share via PlatformFeeReceiver and forward to treasury. */
@@ -206,7 +211,7 @@ export async function jobCollectPlatformFee(asset: Address): Promise<void> {
   }
 }
 
-export { pfrAbi };
+export { pfrAbi, registryAdminAbi };
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
