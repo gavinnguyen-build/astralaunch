@@ -16,8 +16,8 @@ import { defineChain } from 'viem';
 import { db } from '../db/client.js';
 import {
   tokens, services, gatewayRequests, serviceProbes,
-  idxDistributions, idxBuybacks, idxEscrowClaims, idxEscrowForfeits,
-  idxUsdcTransfers, idxCheckpoints,
+  idxRegistrations, idxDistributions, idxBuybacks, idxEscrowClaims,
+  idxEscrowForfeits, idxUsdcTransfers, idxCheckpoints,
 } from '../db/schema.js';
 import { addressSchema } from '@revpad/shared';
 import { RPC_URL, CHAIN_ID, REGISTRY_ADDR, SUBMITTERS } from '../env.js';
@@ -374,6 +374,7 @@ app.get('/:asset', async (c) => {
 });
 
 // GET /api/tokens/:asset/metrics — aggregated on-chain metrics from indexed data
+// Clean revenue filtering per SPEC §13
 app.get('/:asset/metrics', async (c) => {
   const asset = c.req.param('asset').toLowerCase();
 
@@ -410,20 +411,81 @@ app.get('/:asset/metrics', async (c) => {
     .from(idxEscrowForfeits)
     .where(eq(idxEscrowForfeits.asset, asset));
 
-  // Find the router for this asset to query USDC transfers
+  // Find the token record + registration for this asset
   const token = await db.query.tokens.findFirst({ where: eq(tokens.asset, asset) });
-  let usdcCount = 0;
-  let usdcTotal = '0';
-  if (token?.router) {
-    const [usdcRows] = await db
-      .select({
-        cnt:   sql<number>`COUNT(*)::int`,
-        total: sql<string>`COALESCE(SUM(${idxUsdcTransfers.value}), '0')`,
-      })
+
+  // Look up registration to get creator address (from on-chain data)
+  const [registration] = await db.select({
+    creator: idxRegistrations.creator,
+    router:  idxRegistrations.router,
+  })
+    .from(idxRegistrations)
+    .where(eq(idxRegistrations.asset, asset))
+    .limit(1);
+
+  const routerAddr = (registration?.router ?? token?.router ?? '').toLowerCase();
+  const creatorAddr = (registration?.creator ?? token?.creator ?? '').toLowerCase();
+
+  // Build the set of addresses that make a payment NOT clean
+  // Astralaunch contract addresses from env
+  const excludedAddrs = new Set<string>([
+    creatorAddr,
+    routerAddr,
+    ESCROW_ADDR.toLowerCase(),
+    VAULT_ADDR.toLowerCase(),
+    REGISTRY_ADDR.toLowerCase(),
+  ].filter(Boolean));
+  // Platform fee receiver if available
+  const pfrAddr = process.env.PLATFORM_FEE_RECEIVER_ADDRESS;
+  if (pfrAddr) excludedAddrs.add(pfrAddr.toLowerCase());
+  const treasuryAddr = process.env.TREASURY_ADDRESS;
+  if (treasuryAddr) excludedAddrs.add(treasuryAddr.toLowerCase());
+
+  // Query all USDC transfers to this router
+  let rawRevenue = 0n;
+  let cleanRevenue = 0n;
+  let transferCount = 0;
+  const exclusions: { payer: string; amount: string; reason: string }[] = [];
+
+  if (routerAddr) {
+    const transfers = await db.select({
+      fromAddr:             idxUsdcTransfers.fromAddr,
+      value:                idxUsdcTransfers.value,
+      isFacilitatorSettled: idxUsdcTransfers.isFacilitatorSettled,
+    })
       .from(idxUsdcTransfers)
-      .where(eq(idxUsdcTransfers.toAddr, token.router.toLowerCase()));
-    usdcCount = usdcRows?.cnt ?? 0;
-    usdcTotal = usdcRows?.total ?? '0';
+      .where(eq(idxUsdcTransfers.toAddr, routerAddr));
+
+    transferCount = transfers.length;
+
+    for (const t of transfers) {
+      const val = BigInt(t.value);
+      rawRevenue += val;
+      const payer = t.fromAddr.toLowerCase();
+
+      // Must be settled by facilitator
+      if (!t.isFacilitatorSettled) {
+        exclusions.push({ payer: t.fromAddr, amount: t.value, reason: 'not_facilitator' });
+        continue;
+      }
+
+      // Payer must not be the creator
+      if (payer === creatorAddr) {
+        exclusions.push({ payer: t.fromAddr, amount: t.value, reason: 'creator' });
+        continue;
+      }
+
+      // Payer must not be the router or any Astralaunch contract
+      if (excludedAddrs.has(payer)) {
+        exclusions.push({ payer: t.fromAddr, amount: t.value, reason: 'contract' });
+        continue;
+      }
+
+      // TODO: "funded by creator" detection — check if payer received USDC from
+      // creator in the same block or recent blocks. Requires additional hop analysis.
+
+      cleanRevenue += val;
+    }
   }
 
   // Last indexed block from checkpoints
@@ -443,8 +505,11 @@ app.get('/:asset/metrics', async (c) => {
     totalTokensBurned:  buybackRows?.totalBurned ?? '0',
     escrowClaimed:      claimRows?.totalClaimed ?? '0',
     escrowForfeited:    forfeitRows?.totalForfeited ?? '0',
-    usdcTransferCount:  usdcCount,
-    usdcTransferTotal:  usdcTotal,
+    rawRevenue:         rawRevenue.toString(),
+    cleanRevenue:       cleanRevenue.toString(),
+    exclusions,
+    usdcTransferCount:  transferCount,
+    usdcTransferTotal:  rawRevenue.toString(),
     lastIndexedBlock:   Number(lastBlock),
   });
 });

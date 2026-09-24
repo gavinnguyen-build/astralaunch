@@ -1,7 +1,11 @@
 import type { PublicClient, Log, Hex } from 'viem';
 
 /** Minimum chunk size — floor for auto-halving on RPC errors. */
-export const MIN_CHUNK_SIZE = 100;
+export const MIN_CHUNK_SIZE = 10;
+
+/** After N consecutive successes at the current chunk size, grow by 50%. */
+const GROW_AFTER = 3;
+const GROW_FACTOR = 1.5;
 
 /** Default max retries with exponential backoff. */
 const MAX_RETRIES = 5;
@@ -39,39 +43,77 @@ export class RateLimiter {
   }
 }
 
-function isRangeError(msg: string): boolean {
+/**
+ * Extract all relevant text from a (possibly viem-wrapped) error.
+ * Checks `.message`, `.cause.message`, `.details`, `.cause.details`.
+ */
+function collectErrorText(err: unknown): string {
+  const parts: string[] = [];
+  if (err instanceof Error) {
+    parts.push(err.message);
+    const cause = (err as any).cause;
+    if (cause instanceof Error) parts.push(cause.message);
+    if (typeof cause === 'string') parts.push(cause);
+  }
+  const details = (err as any)?.details;
+  if (typeof details === 'string') parts.push(details);
+  const causeDetails = (err as any)?.cause?.details;
+  if (typeof causeDetails === 'string') parts.push(causeDetails);
+  return parts.join(' ').toLowerCase();
+}
+
+/** Extract RPC error code from a (possibly viem-wrapped) error. */
+function extractErrorCode(err: unknown): number | undefined {
+  const code = (err as any)?.code ?? (err as any)?.cause?.code;
+  return typeof code === 'number' ? code : undefined;
+}
+
+/**
+ * Detect RPC "block range too wide" errors.
+ * Matches: error codes -32614 / -32005, and various message patterns.
+ */
+export function isRangeError(err: unknown): boolean {
+  const code = extractErrorCode(err);
+  if (code === -32614 || code === -32005) return true;
+
+  const text = collectErrorText(err);
   return (
-    msg.includes('block range') ||
-    msg.includes('too many') ||
-    msg.includes('limit exceeded') ||
-    msg.includes('query returned more than')
+    text.includes('limited to') ||
+    text.includes('block range') ||
+    text.includes('range too large') ||
+    text.includes('too many results') ||
+    text.includes('query returned more than')
   );
 }
 
-function isTransientError(msg: string): boolean {
+function isTransientError(err: unknown): boolean {
+  const text = collectErrorText(err);
   return (
-    msg.includes('rate limit') ||
-    msg.includes('429') ||
-    msg.includes('timeout') ||
-    msg.includes('ECONNRESET') ||
-    msg.includes('ECONNREFUSED') ||
-    msg.includes('socket hang up') ||
-    msg.includes('network') ||
-    msg.includes('502') ||
-    msg.includes('503') ||
-    msg.includes('504')
+    text.includes('rate limit') ||
+    text.includes('429') ||
+    text.includes('timeout') ||
+    text.includes('econnreset') ||
+    text.includes('econnrefused') ||
+    text.includes('socket hang up') ||
+    text.includes('network') ||
+    text.includes('502') ||
+    text.includes('503') ||
+    text.includes('504')
   );
 }
 
 /**
  * ChunkManager: fetches logs in configurable chunks.
- * - Auto-halves chunk size on RPC "block range too wide" errors.
+ * - Auto-halves chunk size on RPC "block range too wide" errors (floor: 10).
+ * - Grows chunk size back gradually after consecutive successes.
  * - Exponential backoff with jitter on transient errors.
  * - Token-bucket rate limiter for max RPS.
  */
 export class ChunkManager {
   private chunkSize: number;
+  private maxChunkSize: number;
   private limiter: RateLimiter;
+  private consecutiveSuccesses = 0;
 
   constructor(
     private client: PublicClient,
@@ -79,6 +121,7 @@ export class ChunkManager {
     maxRps: number = 25,
   ) {
     this.chunkSize = initialChunkSize;
+    this.maxChunkSize = initialChunkSize;
     this.limiter = new RateLimiter(maxRps);
   }
 
@@ -139,27 +182,46 @@ export class ChunkManager {
           })) as Log[];
         }
 
+        // Success — persist chunk size and try to grow
+        if (currentChunk !== this.chunkSize) {
+          console.log(`[fetcher] Chunk size now ${currentChunk}`);
+        }
         this.chunkSize = currentChunk;
         retries = 0;
+
+        this.consecutiveSuccesses++;
+        if (this.consecutiveSuccesses >= GROW_AFTER && this.chunkSize < this.maxChunkSize) {
+          const grown = Math.min(
+            Math.floor(this.chunkSize * GROW_FACTOR),
+            this.maxChunkSize,
+          );
+          if (grown !== this.chunkSize) {
+            this.chunkSize = grown;
+            console.log(`[fetcher] Growing chunk size to ${this.chunkSize}`);
+          }
+          this.consecutiveSuccesses = 0;
+        }
+
         return { logs, fromBlock, toBlock: effectiveTo };
 
       } catch (err) {
-        const msg = (err as Error).message ?? '';
-
         // Block range too wide → halve chunk and retry immediately
-        if (isRangeError(msg)) {
+        if (isRangeError(err)) {
+          this.consecutiveSuccesses = 0;
+          const prev = currentChunk;
           currentChunk = Math.max(Math.floor(currentChunk / 2), MIN_CHUNK_SIZE);
-          if (currentChunk <= MIN_CHUNK_SIZE && this.chunkSize <= MIN_CHUNK_SIZE) {
+          console.log(`[fetcher] Range error, halving chunk ${prev} → ${currentChunk}`);
+          if (currentChunk <= MIN_CHUNK_SIZE && prev <= MIN_CHUNK_SIZE) {
             throw err;
           }
-          console.log(`[fetcher] Halving chunk size to ${currentChunk}`);
           retries = 0;
           continue;
         }
 
         // Transient error → exponential backoff with jitter
-        if (isTransientError(msg) && retries < MAX_RETRIES) {
+        if (isTransientError(err) && retries < MAX_RETRIES) {
           retries++;
+          const msg = collectErrorText(err);
           const delayMs = BASE_DELAY_MS * 2 ** (retries - 1) + Math.random() * 200;
           console.log(`[fetcher] Transient error, retry ${retries}/${MAX_RETRIES} in ${Math.round(delayMs)}ms: ${msg}`);
           await new Promise(r => setTimeout(r, delayMs));
