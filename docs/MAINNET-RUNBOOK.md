@@ -108,6 +108,7 @@ TREASURY_ADDRESS=0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C \
 forge script script/Deploy.s.sol \
   --rpc-url https://rpc.monad.xyz \
   --broadcast \
+  --sender 0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6 \
   --account revpad-deployer \
   --gas-estimate-multiplier 110
 ```
@@ -178,20 +179,50 @@ cast call $REGISTRY "paused()(bool)" --rpc-url $RPC
 
 ## 4. Launch first token
 
+### Set creator private key (not stored in shell history)
+
 ```bash
-cd revpad-anvil
-export CONTRACTS_JSON_PATH=../packages/contracts/deployments/monad-mainnet.json
-npx tsx src/02-launch.ts
+read -s CREATOR_PRIVATE_KEY && export CREATOR_PRIVATE_KEY
 ```
 
-After launch, register:
+### Launch + register
+
+```bash
+cd revpad-anvil
+
+CONTRACTS_JSON_PATH=../packages/contracts/deployments/monad-mainnet.json \
+MONAD_RPC_URL=https://rpc.monad.xyz \
+TOKEN_NAME="Revpad" \
+TOKEN_SYMBOL="RVPD" \
+  npx tsx src/mainnet-launch.ts
+```
+
+The script:
+1. Refuses Anvil dev accounts on non-localhost RPC
+2. Refuses `dryRun: true` or missing bytecode
+3. Prints creator, token, beneficiaries, supply split, vesting, gas estimates, MON cost
+4. Waits for you to type `yes`
+5. Sends `createMulticurve` + `register(asset, creator)` with gas = estimate x 1.1
+6. Prints asset, poolId, router, and both tx hashes
+
+### Verify after launch
 
 ```bash
 RPC=https://rpc.monad.xyz
-REGISTRY=$(jq -r .registry $CONTRACTS_JSON_PATH)
-cast send $REGISTRY "register(address,address)(address)" \
-  <ASSET_ADDRESS> <CREATOR_ADDRESS> \
-  --rpc-url $RPC --account revpad-deployer --gas-limit 500000
+ASSET=<asset address from output>
+REGISTRY=0x25845Cee2b0E6dF0DA40bb9B60A84D162eabd00B
+
+# Token exists
+cast call $ASSET "name()(string)" --rpc-url $RPC
+cast call $ASSET "symbol()(string)" --rpc-url $RPC
+cast call $ASSET "totalSupply()(uint256)" --rpc-url $RPC
+
+# Router registered
+cast call $REGISTRY "routers(address)(address)" $ASSET --rpc-url $RPC
+
+# Beneficiaries (from Airlock)
+cast call 0x660eAaEdEBc968f8f3694354FA8EC0b4c5Ba8D12 \
+  "getAssetData(address)" $ASSET --rpc-url $RPC
 ```
 
 ---
