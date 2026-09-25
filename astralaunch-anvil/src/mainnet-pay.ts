@@ -5,7 +5,8 @@
 //     npx tsx src/mainnet-pay.ts [--yes]
 //
 // Env:
-//   AGENT_PRIVATE_KEY   required (payer; needs USDC, no MON needed: EIP-3009 is gasless for the payer)
+//   AGENT_KEYSTORE      Foundry keystore name/path of the payer (hidden password prompt, or
+//                       AGENT_KEYSTORE_PASSWORD_FILE); or AGENT_PRIVATE_KEY. Needs USDC, no MON (EIP-3009).
 //   SLUG                required (SERVICE_SLUG also accepted)
 //   SERVICE_PATH        default /  (named SERVICE_PATH, not PATH, so the shell's PATH is not clobbered)
 //   SERVER_URL          default http://localhost:3001
@@ -45,7 +46,7 @@ run(async () => {
   const contractsPath = process.env.CONTRACTS_JSON_PATH ?? fileURLToPath(new URL('../../packages/contracts/deployments/monad-mainnet.json', import.meta.url));
   if (!existsSync(contractsPath)) throw new Error(`Not found: ${contractsPath}`);
   const registry = getAddress(JSON.parse(readFileSync(contractsPath, 'utf8')).registry);
-  const account = accountFromEnv('AGENT_PRIVATE_KEY');
+  const account = await accountFromEnv('AGENT_PRIVATE_KEY');
 
   const monad = defineChain({
     id: MONAD_CHAIN_ID, name: 'Monad',

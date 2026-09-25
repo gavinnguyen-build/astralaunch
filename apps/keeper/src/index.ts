@@ -6,7 +6,7 @@
  *
  * Jobs per asset (ordered by usefulness — high-value first):
  *   1. distribute — forward revenue from routers
- *   2. buyback   — swap + burn (rate-limited by contract; skipped for WMON pairs)
+ *   2. buyback   — swap + burn (rate-limited by contract; WMON pairs two-hop USDC → MON → WMON → token)
  *   3. collect   — pull Doppler trading fees (escrow + vault + PFR), gated by pending fee check + cadence
  *   4. forfeit   — redirect abandoned escrow to vault
  *   5. O4 swap   — swap WMON numeraire fees to USDC (stub, pending USDC/WMON pool)
@@ -18,6 +18,7 @@
  *   ASSETS=0xToken1,0xToken2 ROUTERS=0xRouter1,0xRouter2 tsx src/index.ts
  *   --telegram-test  — send a dry-run Telegram alert and exit
  *   --dry-run        — estimate gas but send no transactions
+ *   --once           — run a single tick, then exit (no schedule)
  *
  * Or with DATABASE_URL set, assets/routers are loaded from Postgres.
  */
@@ -120,6 +121,10 @@ async function main() {
 
   // Run immediately on start, then on schedule
   await runOnce(pairs);
+  if (process.argv.includes('--once')) {
+    console.log('[keeper] --once: single tick done, exiting');
+    process.exit(0);
+  }
   setInterval(() => runOnce(pairs).catch(console.error), POLL_INTERVAL_S * 1000);
 }
 

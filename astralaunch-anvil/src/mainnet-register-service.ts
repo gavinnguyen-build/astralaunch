@@ -9,8 +9,10 @@
 // Env:
 //   ASSET, SLUG, UPSTREAM_URL      required
 //   PRICE_USDC                     required, human USDC (e.g. 0.01), not raw units
-//   CREATOR_PRIVATE_KEY            required, the token's on-chain creator
+//   CREATOR_KEYSTORE               Foundry keystore name/path of the token's on-chain creator (hidden password
+//                                  prompt, or CREATOR_KEYSTORE_PASSWORD_FILE); or CREATOR_PRIVATE_KEY
 //   SCHEMA                         optional request JSON schema: inline JSON or a path to a .json file
+//   RESPONSE_SCHEMA                optional response JSON schema: inline JSON or a path to a .json file
 //   NAME, DESCRIPTION, TIMEOUT_SECONDS   optional (NAME defaults to SLUG)
 //   SERVER_URL                     default http://localhost:3001
 //   ALLOW_HIGH_PRICE=1             allow PRICE_USDC > 100
@@ -31,12 +33,11 @@ import { accountFromEnv, confirm, need, readBody, run, show } from './mainnet-cl
 
 const MAX_PRICE_USDC = 100n * 10n ** 6n;
 
-function loadSchema(): string | undefined {
-  const raw = process.env.SCHEMA;
+function loadSchema(env: 'SCHEMA' | 'RESPONSE_SCHEMA'): string | undefined {
+  const raw = process.env[env];
   if (!raw) return undefined;
   const text = existsSync(raw) ? readFileSync(raw, 'utf8') : raw;
-  try { JSON.parse(text); } catch { throw new Error('SCHEMA must be valid JSON (inline or a path to a .json file)'); }
-  return text;
+  try { return JSON.stringify(JSON.parse(text)); } catch { throw new Error(`${env} must be valid JSON (inline or a path to a .json file)`); }
 }
 
 run(async () => {
@@ -53,10 +54,11 @@ run(async () => {
   if (priceRaw > MAX_PRICE_USDC && process.env.ALLOW_HIGH_PRICE !== '1') {
     throw new Error(`PRICE_USDC ${priceHuman} is above ${formatUnits(MAX_PRICE_USDC, 6)} USDC per call. Set ALLOW_HIGH_PRICE=1 if intended.`);
   }
-  const requestSchema = loadSchema();
+  const requestSchema = loadSchema('SCHEMA');
+  const responseSchema = loadSchema('RESPONSE_SCHEMA');
   const timeoutSeconds = process.env.TIMEOUT_SECONDS ? Number(process.env.TIMEOUT_SECONDS) : undefined;
   const description = process.env.DESCRIPTION || undefined;
-  const account = accountFromEnv('CREATOR_PRIVATE_KEY');
+  const account = await accountFromEnv('CREATOR_PRIVATE_KEY');
 
   console.log(`Server:  ${server}`);
   console.log(`Signer:  ${account.address}`);
@@ -95,6 +97,7 @@ run(async () => {
     const fields = {
       asset, slug, name: process.env.NAME || slug, upstreamUrl, priceUsdc: priceRaw.toString(),
       ...(requestSchema !== undefined && { requestSchema }),
+      ...(responseSchema !== undefined && { responseSchema }),
       ...(timeoutSeconds !== undefined && { timeoutSeconds }),
       ...(description !== undefined && { description }),
       issuedAt,
@@ -106,7 +109,7 @@ run(async () => {
     url = `${server}/api/services`;
     console.log(`\nAction:  CREATE service "${slug}"`);
   } else {
-    if (process.env.NAME || requestSchema) console.log('\nNOTE: NAME and SCHEMA cannot be changed on an existing service; they are ignored.');
+    if (process.env.NAME || requestSchema || responseSchema) console.log('\nNOTE: NAME, SCHEMA and RESPONSE_SCHEMA cannot be changed on an existing service; they are ignored.');
     const fields = {
       priceUsdc: priceRaw.toString(), upstreamUrl,
       ...(timeoutSeconds !== undefined && { timeoutSeconds }),

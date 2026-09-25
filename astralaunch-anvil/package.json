@@ -6,7 +6,6 @@
     "check": "tsx src/01-check.ts",
     "launch": "tsx src/02-launch.ts",
     "launch-wmon": "tsx src/launch-wmon.ts",
-
     "trade": "tsx src/03-trade.ts",
     "fees": "tsx src/04-fees.ts",
     "vesting": "tsx src/05-vesting.ts",
@@ -25,6 +24,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@noble/hashes": "2.4.0",
     "@whetstone-research/doppler-sdk": "1.0.43",
     "@x402/core": "2.26.0",
     "@x402/evm": "2.26.0",
