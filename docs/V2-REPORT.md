@@ -245,7 +245,7 @@ Dev buys require DopplerHookInitializer or Rehype (not V4ScheduledMulticurveInit
 - `test_collect_receivesWMON` PASSED: escrow received `3999999999999999` WMON (~0.004 WMON from 1 WMON swap at 2%)
 - `test_twoHopBuyback_burnTokens` PASSED: 3 USDC revenue → vault gets 3 USDC via distribute → two-hop buyback (USDC → native MON via real v4 pool fee=500 ts=10 → wrap → WMON → token → burn). **3,751,468,154,800,126,370,883,698 tokens burned.**
 - `test_claimWmon_oracleValuation` PASSED: 100 USDC revenue recorded, 5 WMON trading fees collected, Chainlink oracle answer=2707267 ($0.0271/MON). Creator claimed `19999999999999999` WMON (~0.02 WMON), `wmonClaimedUsd=54145` (8 dec).
-- `test_washCheck_wmonPair` PASSED: `ESCROW_UNLOCK_BPS (2000) < 10000 - PROVIDER_BPS (4000)` — wash constraint holds.
+- `test_washCheck_wmonPair` PASSED — wash constraint: `ESCROW_UNLOCK_BPS` (2000 bps = 20% of recorded revenue unlocked as escrow) < `10000 - PROVIDER_BPS` (10000 − 6000 = 4000 bps = the portion of each revenue dollar NOT returned to provider). Worked example: a creator who self-pays 1 USDC for a WMON-paired token gets back 0.60 USDC (provider share, 6000 bps) + 0.20 USDC-equivalent in WMON (escrow unlocked, valued by Chainlink oracle at claim time, 2000 bps of 1 USDC recorded revenue) = **0.80 USDC-equivalent total**, and **loses 0.20 USDC**. The remaining 0.20 goes to the platform: 0.10 USDC treasury (1000 bps) + 0.30 USDC buyback (3000 bps) − 0.20 USDC-equivalent escrow = 0.20 net. Loss is always > 0 because the compile-time assertion `_WASH_ASSERT = (10000 - 6000) - 2000 - 1 = 1999` prevents any parameter combination where wash could break even.
 - `test_pfr_forwardsWMON` PASSED: treasury received `5999999999999999` WMON (~0.006 WMON, the 30% PFR share)
 
 **USDC-Paired Token: CONFIRMED WORKING (single-hop buyback)**
@@ -269,7 +269,8 @@ Native MON/USDC v4 pools found on Monad (currency0=address(0)):
 WMON/USDC v3 pool: fee=3000, sqrtPriceX96=4295128740, liquidity=0 (empty).
 
 PoolKey for selected pool: `(address(0), 0x754704Bc059F8C67012fEd69BC8A327a5aafb603, 500, 10, address(0))`
-PoolId: `0x18a9fc874581f3ba12b7898f80a683c66fd5877fd74b26a85ba9a3a79c549954` (verified via keccak256(abi.encode(PoolKey))).
+
+PoolId verification: `keccak256(abi.encode(monUsdcPoolKey))` = `0x18a9fc874581f3ba12b7898f80a683c66fd5877fd74b26a85ba9a3a79c549954`. Confirmed via `forge script` — matches the GeckoTerminal pool id exactly.
 
 ### Task 5: USDC/MON Liquidity Measurement (Redone 2026-09-25)
 
