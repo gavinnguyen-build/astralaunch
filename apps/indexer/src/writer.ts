@@ -13,6 +13,7 @@ import {
 } from '../../server/src/db/schema.js';
 import type { DecodedRow } from './decoder.js';
 import { writeCheckpoint } from './checkpoint.js';
+import { consumeForRegistration } from '../../server/src/services/launchFee.js';
 
 /**
  * Write decoded rows and update checkpoint in a single transaction.
@@ -38,9 +39,24 @@ export async function writeChunk(
             poolId:      row.poolId,
             numeraire:   row.numeraire,
             initializer: row.initializer,
+            launcher:    row.launcher,
             blockNumber: row.blockNumber,
             timestamp:   row.timestamp,
           }).onConflictDoNothing();
+          {
+            // Match the launcher's oldest unused fee receipt, atomically with the row (D-LF3).
+            const res = await consumeForRegistration(tx, {
+              asset:       row.asset,
+              launcher:    row.launcher,
+              txHash:      row.txHash,
+              blockNumber: row.blockNumber,
+              timestamp:   row.timestamp,
+            });
+            if (res.status !== 'already_listed') {
+              console.log(`[indexer] launch fee ${row.asset} launcher=${row.launcher || '?'}: ${res.status}` +
+                (res.status === 'no_receipt' || res.status === 'rate_limited' ? ' (unlisted)' : ''));
+            }
+          }
           break;
 
         case 'usdc_transfer':

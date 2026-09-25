@@ -35,6 +35,8 @@ export interface RegistrationRow extends BaseRow {
   poolId:      string;
   numeraire:   string;
   initializer: string;
+  /** register() tx sender — filled by the indexer, '' from the decoder. Launch-fee identity (D-LF3). */
+  launcher:    string;
 }
 
 export interface UsdcTransferRow extends BaseRow {
@@ -168,6 +170,7 @@ export function decodeStaticLog(
           poolId:      (decoded.args as any).poolId,
           numeraire:   (decoded.args as any).numeraire.toLowerCase(),
           initializer: (decoded.args as any).initializer.toLowerCase(),
+          launcher:    '',
         };
 
       case 'FeeCollected': {

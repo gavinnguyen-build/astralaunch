@@ -266,6 +266,27 @@ cp .env.mainnet.example .env.mainnet
 pnpm -F server db:migrate
 ```
 
+### Launch fee migration + legacy token listing (one-off, 2026-09-25)
+
+Migration `0005_launch_fee` adds `fee_receipts`. After it, public endpoints only show tokens with a
+consumed launch fee (docs/decisions.md D-LF4), so SIGHT and FEED, which were launched before the fee,
+must be listed by the admin script **before** the new server build goes live:
+
+```bash
+cd apps/server
+pnpm exec tsx --env-file=.env.mainnet src/db/migrate.ts
+# dry run: prints the target DB and checks both assets on-chain
+pnpm exec tsx --env-file=.env.mainnet src/scripts/listLegacyTokens.ts --expect-db astralaunch_mainnet \
+  --asset 0x30Ae380593A04C14aBFa994969B718a78A6105aD --asset 0x2686619d5569AEbcdfeC774e8a2167dE78376dDf
+# apply
+pnpm exec tsx --env-file=.env.mainnet src/scripts/listLegacyTokens.ts --expect-db astralaunch_mainnet \
+  --asset 0x30Ae380593A04C14aBFa994969B718a78A6105aD --asset 0x2686619d5569AEbcdfeC774e8a2167dE78376dDf --yes
+```
+
+The script aborts if `DATABASE_URL`'s database is not `astralaunch_mainnet`, if an asset is not registered
+in `AstralaunchRegistry`, or if `fee_receipts` does not exist. Re-running it is safe.
+Set `ADMIN_API_KEY` in `.env.mainnet` to enable `GET /api/admin/tokens/unlisted`.
+
 ### Start (port 3001)
 
 ```bash

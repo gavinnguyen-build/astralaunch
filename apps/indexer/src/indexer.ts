@@ -9,6 +9,7 @@ import {
   decodeRouterLog,
   decodeTransferLog,
   type DecodedRow,
+  type RegistrationRow,
 } from './decoder.js';
 import { staticEvents, routerEvents, usdcEvents } from './abis.js';
 import type { Log } from 'viem';
@@ -155,6 +156,13 @@ export class Indexer {
           }
         }
       }
+    }
+
+    // Launcher = register() tx sender, never the event's creator field (D-LF3).
+    const regRows = rows.filter((r): r is RegistrationRow => r.type === 'registration');
+    if (regRows.length > 0) {
+      const senders = await this.getTxSenders(regRows.map(r => ({ transactionHash: r.txHash }) as Log));
+      for (const r of regRows) r.launcher = senders.get(r.txHash) ?? '';
     }
 
     await writeChunk(this.db, rows, 'static', toBlock);

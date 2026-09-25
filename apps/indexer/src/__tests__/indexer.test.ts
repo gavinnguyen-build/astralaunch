@@ -20,6 +20,11 @@ vi.mock('../../../server/src/db/schema.js', () => ({
   idxCheckpoints:     { _: 'idxCheckpoints', contractSet: 'contract_set' },
 }));
 
+// Launch-fee consumption is covered against real Postgres in launch-fee-indexer.test.ts.
+vi.mock('../../../server/src/services/launchFee.js', () => ({
+  consumeForRegistration: vi.fn(async () => ({ status: 'no_receipt' })),
+}));
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 const REGISTRY = '0x25845cee2b0e6df0da40bb9b60a84d162eabd00b';

@@ -14,6 +14,7 @@ import { defineChain } from 'viem';
 import { db } from '../db/client.js';
 import { tokens, services, gatewayRequests } from '../db/schema.js';
 import { RPC_URL, CHAIN_ID, ESCROW_ADDR, VAULT_ADDR } from '../env.js';
+import { isListedSql } from '../services/launchFee.js';
 
 const monad = defineChain({
   id: CHAIN_ID,
@@ -65,7 +66,7 @@ app.get('/me', async (c) => {
 
   // Load creator's tokens
   const creatorTokens = await db.select().from(tokens)
-    .where(eq(tokens.creator, creator))
+    .where(and(eq(tokens.creator, creator), isListedSql(tokens.asset)))
     .orderBy(desc(tokens.launchedAt));
 
   if (creatorTokens.length === 0) return c.json({ creator, tokens: [] });

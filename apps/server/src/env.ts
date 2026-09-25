@@ -24,6 +24,8 @@ export const ESCROW_ADDR        = need('FEE_ESCROW_ADDRESS') as `0x${string}`;
 export const VAULT_ADDR         = need('BUYBACK_VAULT_ADDRESS') as `0x${string}`;
 export const FACILITATOR_URL    = process.env.X402_FACILITATOR_URL ?? X402_FACILITATOR_URL_DEFAULT;
 export const HMAC_MASTER_KEY    = need('GATEWAY_HMAC_MASTER_KEY');
+/** Bearer token for /api/admin/*. Unset = admin API disabled. */
+export const ADMIN_API_KEY      = process.env.ADMIN_API_KEY || undefined;
 /** Comma-separated list of known facilitator submitters (clean-revenue signal). */
 export const SUBMITTERS         = (process.env.FACILITATOR_SUBMITTER_ADDRESSES ?? '')
   .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);

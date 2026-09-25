@@ -29,6 +29,13 @@
       "when": 1727308800000,
       "tag": "0004_indexer_v2",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1727395200000,
+      "tag": "0005_launch_fee",
+      "breakpoints": true
     }
   ]
 }

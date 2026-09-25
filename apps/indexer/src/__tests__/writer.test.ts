@@ -17,6 +17,11 @@ vi.mock('../../../server/src/db/schema.js', () => ({
   idxCheckpoints:     { _: 'idxCheckpoints', contractSet: 'contract_set' },
 }));
 
+// Launch-fee consumption is covered against real Postgres in launch-fee-indexer.test.ts.
+vi.mock('../../../server/src/services/launchFee.js', () => ({
+  consumeForRegistration: vi.fn(async () => ({ status: 'no_receipt' })),
+}));
+
 vi.mock('../checkpoint.js', () => ({
   writeCheckpoint: vi.fn(),
 }));
@@ -62,6 +67,7 @@ describe('writeChunk', () => {
       poolId: '0xpoolid',
       numeraire: '0xusdc',
       initializer: '0xinit',
+      launcher: '0xlauncher',
     };
 
     await writeChunk(db as any, [row], 'static', 100n);
@@ -92,7 +98,7 @@ describe('writeChunk', () => {
         chainId: 143, txHash: '0xa', logIndex: 0,
         blockNumber: 100n, timestamp: 1n,
         asset: '0x1', creator: '0x2', router: '0x3', poolId: '0x4',
-        numeraire: '0xusdc', initializer: '0xinit',
+        numeraire: '0xusdc', initializer: '0xinit', launcher: '',
       },
       {
         type: 'fee_collection',

@@ -96,3 +96,13 @@ export const SINGLE_TX_ALERT_WEI  = (MON * 5n) / 100n; // 0.05 MON
 export function withBuffer(gas: bigint): bigint {
   return (gas * GAS_BUFFER_BPS) / 10_000n;
 }
+
+// ── Launch fee + rate limit (off-chain only, no contract mirror) ──────────────
+/** Launch fee in whole MON, paid natively to LAUNCH_FEE_TREASURY before launching. */
+export const LAUNCH_FEE_MON = 10;
+/** Launch fee in wei (MON has 18 decimals). A payment of at least this much counts. */
+export const LAUNCH_FEE_WEI = BigInt(LAUNCH_FEE_MON) * 10n ** 18n;
+/** Max counted (fee-consumed) launches per launcher wallet per rolling window. */
+export const LAUNCH_RATE_LIMIT = 3;
+/** Rolling window for LAUNCH_RATE_LIMIT, in seconds (24h). */
+export const LAUNCH_RATE_WINDOW_S = 86_400;

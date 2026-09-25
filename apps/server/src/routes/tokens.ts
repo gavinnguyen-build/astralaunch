@@ -6,6 +6,8 @@
  * GET  /api/tokens/:asset        — aggregated token + service + on-chain state
  * GET  /api/tokens/:asset/payments — recent settled payments
  * GET  /api/tokens/:asset/health   — service probe uptime data
+ *
+ * All GETs only expose listed tokens (launch fee paid + consumed, D-LF4).
  */
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
@@ -21,6 +23,7 @@ import {
 } from '../db/schema.js';
 import { addressSchema } from '@astralaunch/shared';
 import { RPC_URL, CHAIN_ID, REGISTRY_ADDR, SUBMITTERS } from '../env.js';
+import { isAssetListed, isListedSql } from '../services/launchFee.js';
 
 // ── viem client ───────────────────────────────────────────────────────────────
 
@@ -135,6 +138,16 @@ async function cleanRevenue(asset: string, days: number): Promise<bigint> {
 
 const app = new Hono();
 
+// Unlisted tokens (no consumed launch fee) do not exist publicly (D-LF4).
+const requireListed = async (c: any, next: () => Promise<void>) => {
+  if (!(await isAssetListed(db, c.req.param('asset')))) {
+    return c.json({ error: 'Token not found' }, 404);
+  }
+  await next();
+};
+app.get('/:asset', requireListed);
+app.get('/:asset/*', requireListed);
+
 // GET /api/tokens?sort=clean_revenue_30d|new&limit=50&offset=0
 app.get('/', async (c) => {
   const sort   = c.req.query('sort') ?? 'clean_revenue_30d';
@@ -156,7 +169,9 @@ app.get('/', async (c) => {
 
   const revenueMap = new Map(revenueRows.map(r => [r.asset, { revenue: BigInt(r.revenue), calls: r.calls }]));
 
+  // Only tokens whose launch fee was paid and consumed are public (D-LF4).
   const allTokens = await db.select().from(tokens)
+    .where(isListedSql(tokens.asset))
     .orderBy(sort === 'new' ? desc(tokens.launchedAt) : desc(tokens.launchedAt))
     .limit(limit)
     .offset(offset);

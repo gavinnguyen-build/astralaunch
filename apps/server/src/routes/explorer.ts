@@ -7,6 +7,7 @@ import { Hono } from 'hono';
 import { eq, and, gte, sql, desc } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { services, tokens, gatewayRequests } from '../db/schema.js';
+import { isListedSql } from '../services/launchFee.js';
 
 const app = new Hono();
 
@@ -14,7 +15,9 @@ app.get('/', async (c) => {
   const since30 = new Date(Date.now() - 30 * 86_400_000);
 
   // All active services
-  const allServices = await db.select().from(services).where(eq(services.active, true));
+  // Only services of listed tokens (launch fee paid + consumed, D-LF4).
+  const allServices = await db.select().from(services)
+    .where(and(eq(services.active, true), isListedSql(services.asset)));
 
   // Aggregate calls + revenue per service for last 30d
   const statsRows = await db
@@ -26,7 +29,7 @@ app.get('/', async (c) => {
       payers:    sql<number>`COUNT(DISTINCT ${gatewayRequests.payer}) FILTER (WHERE ${gatewayRequests.settled})`.as('payers'),
     })
     .from(gatewayRequests)
-    .where(gte(gatewayRequests.createdAt, since30))
+    .where(and(gte(gatewayRequests.createdAt, since30), isListedSql(gatewayRequests.asset)))
     .groupBy(gatewayRequests.serviceId);
 
   const statsMap = new Map(statsRows.map(r => [r.serviceId, r]));
@@ -37,7 +40,7 @@ app.get('/', async (c) => {
   const totalPayers   = new Set(
     (await db.select({ payer: gatewayRequests.payer })
       .from(gatewayRequests)
-      .where(and(eq(gatewayRequests.settled, true), gte(gatewayRequests.createdAt, since30)))
+      .where(and(eq(gatewayRequests.settled, true), gte(gatewayRequests.createdAt, since30), isListedSql(gatewayRequests.asset)))
     ).map(r => r.payer)
   ).size;
 
@@ -50,7 +53,7 @@ app.get('/', async (c) => {
     createdAt: gatewayRequests.createdAt,
   })
     .from(gatewayRequests)
-    .where(eq(gatewayRequests.settled, true))
+    .where(and(eq(gatewayRequests.settled, true), isListedSql(gatewayRequests.asset)))
     .orderBy(desc(gatewayRequests.createdAt))
     .limit(20);
 

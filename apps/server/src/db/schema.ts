@@ -1,4 +1,4 @@
-import { pgTable, text, integer, boolean, timestamp, uuid, serial, bigint, numeric, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, boolean, timestamp, uuid, serial, bigint, numeric, uniqueIndex, index } from 'drizzle-orm/pg-core';
 
 // ── tokens ────────────────────────────────────────────────────────────────────
 export const tokens = pgTable('tokens', {
@@ -93,6 +93,7 @@ export const idxRegistrations = pgTable('idx_registrations', {
   poolId:      text('pool_id').notNull(),
   numeraire:   text('numeraire').notNull().default(''),
   initializer: text('initializer').notNull().default(''),
+  launcher:    text('launcher').notNull().default(''),   // register() tx sender (migration 0005)
   blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
   timestamp:   bigint('timestamp', { mode: 'bigint' }).notNull(),
 }, (t) => [
@@ -236,3 +237,32 @@ export const idxPfrCollections = pgTable('idx_pfr_collections', {
 }, (t) => [
   uniqueIndex('idx_pfr_collections_unique').on(t.chainId, t.txHash, t.logIndex),
 ]);
+
+// ── fee_receipts (migration 0005) — off-chain launch fee + rate limit ────────
+// One row per verified 10 MON payment to LAUNCH_FEE_TREASURY. A receipt is
+// "unused" until the indexer consumes it with a Registered event whose register()
+// tx was sent by the same launcher. One receipt = one token; a token is publicly
+// listed iff some receipt has consumed_asset = token.
+export const feeReceipts = pgTable('fee_receipts', {
+  id:             serial('id').primaryKey(),
+  chainId:        integer('chain_id').notNull(),
+  txHash:         text('tx_hash').notNull(),                     // fee tx (lowercase); 'admin:<asset>' for admin listings
+  launcher:       text('launcher').notNull(),                    // fee tx.from (lowercase)
+  amountWei:      numeric('amount_wei', { precision: 78 }).notNull(),
+  blockNumber:    bigint('block_number', { mode: 'bigint' }).notNull(),
+  paidAt:         bigint('paid_at', { mode: 'bigint' }).notNull(), // fee block timestamp (s)
+  source:         text('source').notNull().default('fee'),       // 'fee' | 'admin'
+  verifiedAt:     timestamp('verified_at', { withTimezone: true }).notNull().defaultNow(),
+  consumedAsset:  text('consumed_asset'),                        // null = unused
+  consumedTxHash: text('consumed_tx_hash'),                      // register() tx
+  consumedRegTs:  bigint('consumed_reg_ts', { mode: 'bigint' }), // register block timestamp (s)
+  consumedAt:     timestamp('consumed_at', { withTimezone: true }),
+  note:           text('note'),
+}, (t) => [
+  uniqueIndex('fee_receipts_tx_hash_unique').on(t.txHash),
+  uniqueIndex('fee_receipts_consumed_asset_unique').on(t.consumedAsset),
+  index('fee_receipts_launcher_idx').on(t.launcher, t.consumedAsset),
+]);
+
+export type FeeReceipt = typeof feeReceipts.$inferSelect;
+export type NewFeeReceipt = typeof feeReceipts.$inferInsert;

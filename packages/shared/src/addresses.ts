@@ -63,3 +63,11 @@ export const X402_FACILITATOR_URL_DEFAULT = 'https://x402-facilitator.molandak.o
 export const FACILITATOR_SUBMITTERS: ReadonlyArray<string> = [
   '0x7f6a2850669202519f0FE8aa912451238820Db86',
 ];
+
+// ── Launch fee (off-chain enforced) ───────────────────────────────────────────
+/**
+ * Treasury wallet that receives the native-MON launch fee (checked off-chain by
+ * POST /api/launch-fee/verify). Source: provided by Tun in the launch-fee spec,
+ * 2026-09-25 (docs/decisions.md D-LF1). Receives plain MON transfers only.
+ */
+export const LAUNCH_FEE_TREASURY = '0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C';

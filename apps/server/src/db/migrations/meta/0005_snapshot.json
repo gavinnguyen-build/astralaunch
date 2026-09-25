@@ -1,0 +1,15 @@
+{
+  "id": "0005_launch_fee",
+  "prevId": "0004_indexer_v2",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {},
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
