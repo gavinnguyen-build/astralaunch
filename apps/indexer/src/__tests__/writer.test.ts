@@ -18,6 +18,10 @@ vi.mock('../../../server/src/db/schema.js', () => ({
 }));
 
 // Launch-fee consumption is covered against real Postgres in launch-fee-indexer.test.ts.
+vi.mock('../../../server/src/services/tokenSync.js', () => ({
+  readErc20Meta: vi.fn(async () => ({ name: 'T', symbol: 'T', decimals: 18 })),
+  upsertTokenFromRegistration: vi.fn(async () => {}),
+}));
 vi.mock('../../../server/src/services/launchFee.js', () => ({
   consumeForRegistration: vi.fn(async () => ({ status: 'no_receipt' })),
 }));

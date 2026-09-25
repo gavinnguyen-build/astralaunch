@@ -7,6 +7,7 @@ import { createServiceSchema, updateServiceSchema, serviceRegistrationMessage } 
 import { MONAD_NETWORK, USDC } from '@astralaunch/shared';
 import { assertSafeUpstream, SsrfError } from '../lib/ssrf.js';
 import { generateSecret } from '../lib/hmac.js';
+import { isAssetListed } from '../services/launchFee.js';
 import { REGISTRY_ADDR, RPC_URL, CHAIN_ID, USDC_ADDR, PAYMENT_TIMEOUT_S } from '../env.js';
 import { createPublicClient, http, verifyMessage, getAddress, type Address } from 'viem';
 import { defineChain } from 'viem';
@@ -32,6 +33,12 @@ const app = new Hono();
 // POST /api/services — register a BYO service
 app.post('/', zValidator('json', createServiceSchema), async (c) => {
   const body = c.req.valid('json');
+
+  // 0. Only listed tokens (launch fee paid + consumed, D-LF4) can get new services.
+  //    Existing services keep working: the /s/* gateway is not filtered.
+  if (!(await isAssetListed(db, body.asset))) {
+    return c.json({ error: 'Token is not listed: its launch fee has not been paid and consumed. Services can only be registered for listed tokens.' }, 403);
+  }
 
   // 1. SSRF check on upstream URL
   try {

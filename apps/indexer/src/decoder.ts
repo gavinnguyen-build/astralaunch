@@ -37,6 +37,8 @@ export interface RegistrationRow extends BaseRow {
   initializer: string;
   /** register() tx sender — filled by the indexer, '' from the decoder. Launch-fee identity (D-LF3). */
   launcher:    string;
+  /** ERC-20 name/symbol/decimals — filled by the indexer before writing (D-TK1). */
+  token?:      { name: string; symbol: string; decimals: number };
 }
 
 export interface UsdcTransferRow extends BaseRow {

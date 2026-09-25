@@ -2,7 +2,7 @@
  * Token API routes — /api/tokens
  *
  * GET  /api/tokens               — explore list (sort=clean_revenue_30d|new)
- * POST /api/tokens               — record a newly launched token
+ * POST /api/tokens               — creator-signed metadata update (tokens come from the indexer)
  * GET  /api/tokens/:asset        — aggregated token + service + on-chain state
  * GET  /api/tokens/:asset/payments — recent settled payments
  * GET  /api/tokens/:asset/health   — service probe uptime data
@@ -11,9 +11,8 @@
  */
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { z } from 'zod';
 import { eq, desc, and, gte, sql, count } from 'drizzle-orm';
-import { createPublicClient, http, type Address } from 'viem';
+import { createPublicClient, http, verifyMessage, getAddress, type Address } from 'viem';
 import { defineChain } from 'viem';
 import { db } from '../db/client.js';
 import {
@@ -21,7 +20,7 @@ import {
   idxRegistrations, idxDistributions, idxBuybacks, idxEscrowClaims,
   idxEscrowForfeits, idxUsdcTransfers, idxCheckpoints,
 } from '../db/schema.js';
-import { addressSchema } from '@astralaunch/shared';
+import { tokenMetadataSchema, tokenMetadataMessage, TOKEN_METADATA_MAX_AGE_S } from '@astralaunch/shared';
 import { RPC_URL, CHAIN_ID, REGISTRY_ADDR, SUBMITTERS } from '../env.js';
 import { isAssetListed, isListedSql } from '../services/launchFee.js';
 
@@ -91,10 +90,6 @@ const erc20Abi = [
     outputs: [{ type: 'uint256' }] },
 ] as const;
 
-const registryAbi = [
-  { type: 'function', name: 'routers', stateMutability: 'view',
-    inputs: [{ name: '', type: 'address' }], outputs: [{ name: '', type: 'address' }] },
-] as const;
 
 // Env-injected singleton addresses (populated from env in env.ts)
 import { ESCROW_ADDR, VAULT_ADDR } from '../env.js';
@@ -214,75 +209,46 @@ app.get('/', async (c) => {
   return c.json({ tokens: results, limit, offset });
 });
 
-// POST /api/tokens — record a newly launched token (called after SDK launch + registry.register)
-const createTokenSchema = z.object({
-  asset:       addressSchema,
-  name:        z.string().min(1).max(80),
-  symbol:      z.string().min(1).max(20),
-  imageUrl:    z.string().url().optional(),
-  description: z.string().max(500).optional(),
-  website:     z.string().url().optional(),
-  twitter:     z.string().url().optional(),
-});
-
-app.post('/', zValidator('json', createTokenSchema), async (c) => {
+// POST /api/tokens — metadata only (image, X handle, website, description), signed by
+// the token's on-chain creator. Token rows are created by the indexer from the Registered
+// event (D-TK1); this cannot create a token that is not registered on-chain.
+app.post('/', zValidator('json', tokenMetadataSchema), async (c) => {
   const body = c.req.valid('json');
-  const assetAddr = body.asset.toLowerCase() as Address;
+  const asset = body.asset.toLowerCase();
 
-  // Verify on-chain that this asset is registered in AstralaunchRegistry
-  let router: Address;
-  try {
-    router = await publicClient.readContract({
-      address: REGISTRY_ADDR,
-      abi:     registryAbi,
-      functionName: 'routers',
-      args:    [assetAddr],
-    });
-    if (router === '0x0000000000000000000000000000000000000000') {
-      return c.json({ error: 'Asset not registered in AstralaunchRegistry' }, 400);
-    }
-  } catch {
-    return c.json({ error: 'Failed to read AstralaunchRegistry' }, 502);
+  const token = await db.query.tokens.findFirst({ where: eq(tokens.asset, asset) });
+  if (!token) {
+    return c.json({ error: 'Token is not registered on-chain (or not indexed yet). Metadata can only be set on registered tokens.' }, 404);
   }
 
-  // Read creator from FeeEscrow tokenData (populated by register)
-  let creator: string;
-  try {
-    const data = await publicClient.readContract({
-      address: ESCROW_ADDR,
-      abi:     escrowAbi,
-      functionName: 'tokenData',
-      args:    [assetAddr],
-    });
-    creator = data.creator.toLowerCase();
-  } catch {
-    return c.json({ error: 'Failed to read FeeEscrow' }, 502);
+  const nowS = Math.floor(Date.now() / 1000);
+  if (Math.abs(nowS - body.issuedAt) > TOKEN_METADATA_MAX_AGE_S) {
+    return c.json({ error: `issuedAt must be within ${TOKEN_METADATA_MAX_AGE_S}s of server time` }, 400);
+  }
+  if (token.metadataSignedAt !== null && BigInt(body.issuedAt) <= token.metadataSignedAt) {
+    return c.json({ error: 'A newer metadata update was already accepted (issuedAt too old)' }, 409);
   }
 
-  // Upsert token record
-  await db.insert(tokens).values({
-    asset:       assetAddr,
-    name:        body.name,
-    symbol:      body.symbol,
-    creator,
-    router:      router.toLowerCase(),
-    imageUrl:    body.imageUrl,
-    description: body.description,
-    website:     body.website,
-    twitter:     body.twitter,
-  }).onConflictDoUpdate({
-    target:  tokens.asset,
-    set: {
-      name:        body.name,
-      symbol:      body.symbol,
-      imageUrl:    body.imageUrl,
-      description: body.description,
-      website:     body.website,
-      twitter:     body.twitter,
-    },
-  });
+  const { signature, ...signed } = body;
+  let sigValid = false;
+  try {
+    sigValid = await verifyMessage({
+      address:   getAddress(token.creator),
+      message:   tokenMetadataMessage(signed),
+      signature: signature as `0x${string}`,
+    });
+  } catch { /* invalid signature encoding */ }
+  if (!sigValid) return c.json({ error: 'Signature must be from the token creator' }, 401);
 
-  return c.json({ asset: assetAddr, router: router.toLowerCase() }, 201);
+  await db.update(tokens).set({
+    ...(body.imageUrl    !== undefined && { imageUrl:    body.imageUrl }),
+    ...(body.xHandle     !== undefined && { xHandle:     body.xHandle.replace(/^@/, '') }),
+    ...(body.website     !== undefined && { website:     body.website }),
+    ...(body.description !== undefined && { description: body.description }),
+    metadataSignedAt: BigInt(body.issuedAt),
+  }).where(eq(tokens.asset, asset));
+
+  return c.json({ asset, updated: true });
 });
 
 // GET /api/tokens/:asset — full token detail
@@ -352,7 +318,13 @@ app.get('/:asset', async (c) => {
     description:token.description,
     website:    token.website,
     twitter:    token.twitter,
+    xHandle:    token.xHandle,
     launchedAt: token.launchedAt,
+    launcher:   token.launcher,
+    poolId:     token.poolId,
+    numeraire:  token.numeraire,
+    decimals:   token.decimals,
+    registeredBlock: token.registeredBlock?.toString() ?? null,
     service: svc ? {
       id:            svc.id,
       slug:          svc.slug,

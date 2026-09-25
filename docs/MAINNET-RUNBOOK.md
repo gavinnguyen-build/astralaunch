@@ -283,6 +283,19 @@ pnpm exec tsx --env-file=.env.mainnet src/scripts/listLegacyTokens.ts --expect-d
   --asset 0x30Ae380593A04C14aBFa994969B718a78A6105aD --asset 0x2686619d5569AEbcdfeC774e8a2167dE78376dDf --yes
 ```
 
+Tokens are created by the indexer from the Registered event (docs/decisions.md D-TK1). Registrations
+indexed before migration 0006 need a one-off backfill of `tokens` rows (reads ERC-20 name/symbol/decimals
+and the register tx sender from Monad):
+
+```bash
+cd apps/server
+pnpm exec tsx --env-file=.env.mainnet src/db/migrate.ts          # applies 0006_tokens_onchain
+pnpm exec tsx --env-file=.env.mainnet src/scripts/backfillTokens.ts --expect-db astralaunch_mainnet        # dry run
+pnpm exec tsx --env-file=.env.mainnet src/scripts/backfillTokens.ts --expect-db astralaunch_mainnet --yes  # apply
+```
+
+Safe to re-run. Then restart the indexer and server with this build.
+
 The script aborts if `DATABASE_URL`'s database is not `astralaunch_mainnet`, if an asset is not registered
 in `AstralaunchRegistry`, or if `fee_receipts` does not exist. Re-running it is safe.
 Set `ADMIN_API_KEY` in `.env.mainnet` to enable `GET /api/admin/tokens/unlisted`.

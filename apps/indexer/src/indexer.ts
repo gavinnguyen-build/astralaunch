@@ -13,6 +13,7 @@ import {
 } from './decoder.js';
 import { staticEvents, routerEvents, usdcEvents } from './abis.js';
 import type { Log } from 'viem';
+import { readErc20Meta } from '../../server/src/services/tokenSync.js';
 
 export interface IndexerConfig {
   chainId:         number;
@@ -162,7 +163,11 @@ export class Indexer {
     const regRows = rows.filter((r): r is RegistrationRow => r.type === 'registration');
     if (regRows.length > 0) {
       const senders = await this.getTxSenders(regRows.map(r => ({ transactionHash: r.txHash }) as Log));
-      for (const r of regRows) r.launcher = senders.get(r.txHash) ?? '';
+      for (const r of regRows) {
+        r.launcher = senders.get(r.txHash) ?? '';
+        // tokens row comes from chain, never from a client call (D-TK1).
+        r.token = await readErc20Meta(this.client, r.asset);
+      }
     }
 
     await writeChunk(this.db, rows, 'static', toBlock);

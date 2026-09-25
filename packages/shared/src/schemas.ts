@@ -52,3 +52,39 @@ export const updateServiceSchema = z.object({
 }).refine(d => Object.keys(d).length > 0, 'at least one field required');
 
 export type UpdateServiceInput = z.infer<typeof updateServiceSchema>;
+
+// ── Token metadata (POST /api/tokens) ──────────────────────────────────────────
+// Tokens themselves come from the indexer (on-chain Registered event). This only
+// updates off-chain display metadata, signed by the token's on-chain creator.
+
+/** Max clock skew / age for a signed metadata update, in seconds. */
+export const TOKEN_METADATA_MAX_AGE_S = 600;
+
+export const tokenMetadataSchema = z.object({
+  asset:       addressSchema,
+  imageUrl:    z.string().url().max(500).optional(),
+  /** X (Twitter) handle, with or without leading @. */
+  xHandle:     z.string().regex(/^@?[A-Za-z0-9_]{1,15}$/, 'Invalid X handle').optional(),
+  website:     z.string().url().max(500).optional(),
+  description: z.string().max(500).optional(),
+  /** Unix seconds when signed; must be recent and newer than the last accepted update. */
+  issuedAt:    z.number().int().positive(),
+  /** personal_sign by the token creator over tokenMetadataMessage(...). */
+  signature:   z.string().regex(/^0x[0-9a-fA-F]+$/, 'hex signature'),
+}).refine(
+  d => d.imageUrl !== undefined || d.xHandle !== undefined || d.website !== undefined || d.description !== undefined,
+  'at least one metadata field required',
+);
+
+export type TokenMetadataInput = z.infer<typeof tokenMetadataSchema>;
+
+/** Message the creator signs; binds every provided field, the asset and issuedAt. */
+export function tokenMetadataMessage(m: Omit<TokenMetadataInput, 'signature'>): string {
+  const lines = [`Astralaunch: update metadata for token ${m.asset.toLowerCase()}`];
+  if (m.imageUrl    !== undefined) lines.push(`image: ${m.imageUrl}`);
+  if (m.xHandle     !== undefined) lines.push(`x: ${m.xHandle.replace(/^@/, '')}`);
+  if (m.website     !== undefined) lines.push(`website: ${m.website}`);
+  if (m.description !== undefined) lines.push(`description: ${m.description}`);
+  lines.push(`issuedAt: ${m.issuedAt}`);
+  return lines.join('\n');
+}

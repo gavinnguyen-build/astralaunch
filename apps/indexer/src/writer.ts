@@ -14,6 +14,7 @@ import {
 import type { DecodedRow } from './decoder.js';
 import { writeCheckpoint } from './checkpoint.js';
 import { consumeForRegistration } from '../../server/src/services/launchFee.js';
+import { upsertTokenFromRegistration } from '../../server/src/services/tokenSync.js';
 
 /**
  * Write decoded rows and update checkpoint in a single transaction.
@@ -43,6 +44,7 @@ export async function writeChunk(
             blockNumber: row.blockNumber,
             timestamp:   row.timestamp,
           }).onConflictDoNothing();
+          if (row.token) await upsertTokenFromRegistration(tx, row, row.token);
           {
             // Match the launcher's oldest unused fee receipt, atomically with the row (D-LF3).
             const res = await consumeForRegistration(tx, {

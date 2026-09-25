@@ -10,8 +10,20 @@ export const tokens = pgTable('tokens', {
   imageUrl:    text('image_url'),
   description: text('description'),
   website:     text('website'),
-  twitter:     text('twitter'),
-  launchedAt:  timestamp('launched_at').notNull().defaultNow(),
+  twitter:     text('twitter'),                      // legacy (pre-0006) URL field
+  launchedAt:  timestamp('launched_at', { withTimezone: true }).notNull().defaultNow(), // TIMESTAMPTZ; = registration time for indexed tokens
+  // On-chain fields written by the indexer (migration 0006)
+  launcher:         text('launcher').notNull().default(''),   // register() tx sender
+  poolId:           text('pool_id').notNull().default(''),
+  numeraire:        text('numeraire').notNull().default(''),
+  initializer:      text('initializer').notNull().default(''),
+  decimals:         integer('decimals').notNull().default(18),
+  registeredTx:     text('registered_tx'),
+  registeredBlock:  bigint('registered_block', { mode: 'bigint' }),
+  registeredAt:     bigint('registered_at', { mode: 'bigint' }),  // block timestamp (s)
+  // Creator-signed metadata (POST /api/tokens)
+  xHandle:          text('x_handle'),
+  metadataSignedAt: bigint('metadata_signed_at', { mode: 'bigint' }),
 });
 
 export type Token = typeof tokens.$inferSelect;

@@ -42,3 +42,28 @@ or after the fee block. Without this, a paying user would stay hidden forever be
 
 **D-LF6: Legacy tokens.** SIGHT (`0x30Ae…05aD`) and FEED (`0x2686…6dDf`) were launched before the fee.
 `apps/server/src/scripts/listLegacyTokens.ts` writes a `source='admin'` receipt per asset (see runbook).
+
+## Tokens come from chain (2026-09-25)
+
+**D-TK1: Source of truth.** The indexer upserts the `tokens` row on each Registered event, in the same
+transaction as the registration: asset, creator (event field), launcher (register() tx sender), router,
+poolId, numeraire, initializer, register tx/block/time (`launched_at` = block time), and
+name/symbol/decimals read from the ERC-20. Idempotent: re-indexing refreshes on-chain fields only and
+never overwrites a known name/symbol/launcher with ''. An ERC-20 read that *reverts* falls back to
+''/''/18 so the row still exists; an RPC error fails the chunk, which is retried.
+Code: `apps/server/src/services/tokenSync.ts`, migration `0006_tokens_onchain.sql`.
+
+**D-TK2: POST /api/tokens is metadata-only.** Fields: imageUrl, xHandle (new `x_handle` column; the
+legacy `twitter` URL column is left as is), website, description. It needs a personal_sign by the token's
+on-chain creator (`tokens.creator`) over `tokenMetadataMessage` (shared), which binds the asset, every
+provided field and `issuedAt`. issuedAt must be within 10 min of server time and newer than the last
+accepted update (`metadata_signed_at`), so an old signed update cannot be replayed. Unknown asset → 404:
+it can no longer create tokens. Signing by the launcher alone is not accepted (conservative).
+POST /api/services returns 403 for tokens that are not listed (D-LF4). The `/s/*` gateway and existing
+services are not filtered.
+
+**D-TK3: Backfill.** `apps/server/src/scripts/backfillTokens.ts` runs the same upsert for every
+`idx_registrations` row and fills `idx_registrations.launcher` from the register tx where it is ''.
+It does not change listing status (use `listLegacyTokens.ts` for that).
+Also fixed: `tokens.launched_at` is TIMESTAMPTZ in SQL but was declared without a time zone in the drizzle
+schema, which shifted reads by the host's UTC offset.

@@ -10,10 +10,8 @@
  *
  * Needs DATABASE_URL, MONAD_RPC_URL, ASTRALAUNCH_REGISTRY_ADDRESS, MONAD_CHAIN_ID (default 143).
  */
-import postgres from 'postgres';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import { createPublicClient, http, isAddress, zeroAddress, type Address } from 'viem';
-import * as schema from '../db/schema.js';
+import { isAddress, zeroAddress, type Address } from 'viem';
+import { chainClient, connectGuarded, need, run } from './common.js';
 import { adminListAsset, isAssetListed } from '../services/launchFee.js';
 
 function args() {
@@ -30,12 +28,6 @@ function args() {
   return out;
 }
 
-function need(k: string): string {
-  const v = process.env[k];
-  if (!v) throw new Error(`Missing env var ${k}`);
-  return v;
-}
-
 const registryAbi = [{ type: 'function', name: 'routers', stateMutability: 'view',
   inputs: [{ name: '', type: 'address' }], outputs: [{ type: 'address' }] }] as const;
 
@@ -43,19 +35,11 @@ async function main() {
   const opts = args();
   if (opts.assets.length === 0) throw new Error('Pass at least one --asset 0x…');
   for (const a of opts.assets) if (!isAddress(a)) throw new Error(`Invalid address: ${a}`);
-  if (!opts.expectDb) throw new Error('Pass --expect-db <database name> to guard against the wrong DB');
-
-  const dbUrl = new URL(need('DATABASE_URL'));
-  const dbName = dbUrl.pathname.replace(/^\//, '');
-  console.log(`Target database: ${dbName} @ ${dbUrl.hostname}`);
-  if (dbName !== opts.expectDb) throw new Error(`DATABASE_URL points at "${dbName}", expected "${opts.expectDb}". Aborting.`);
 
   const chainId = Number(process.env.MONAD_CHAIN_ID ?? 143);
   const registry = need('ASTRALAUNCH_REGISTRY_ADDRESS') as Address;
-  const client = createPublicClient({ transport: http(need('MONAD_RPC_URL')) });
-
-  const sql = postgres(dbUrl.toString(), { max: 1 });
-  const db = drizzle(sql, { schema });
+  const client = chainClient();
+  const { sql, db } = await connectGuarded(opts.expectDb);
   try {
     const [{ exists }] = await sql`SELECT to_regclass('public.fee_receipts') IS NOT NULL AS exists`;
     if (!exists) throw new Error('fee_receipts table missing: run migrations first (src/db/migrate.ts).');
@@ -82,4 +66,4 @@ async function main() {
   }
 }
 
-main().catch((e) => { console.error(e instanceof Error ? e.message : e); process.exit(1); });
+run(main);

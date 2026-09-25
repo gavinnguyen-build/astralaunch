@@ -5,12 +5,12 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { encodeAbiParameters, encodeEventTopics, type Hex, type Log, type PublicClient } from 'viem';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { LAUNCH_FEE_WEI } from '@astralaunch/shared';
 import { Indexer, type IndexerConfig } from '../indexer.js';
 import { registeredEvent } from '../abis.js';
 import { createTestDb, type TestDb } from '../../../server/src/__tests__/helpers/pgliteDb.js';
-import { feeReceipts, idxRegistrations } from '../../../server/src/db/schema.js';
+import { feeReceipts, idxRegistrations, tokens } from '../../../server/src/db/schema.js';
 
 const REGISTRY = '0x25845cee2b0e6df0da40bb9b60a84d162eabd00b';
 const ASSET    = '0x13db78bd3f92382306a17d50dac93af1904e171d';
@@ -45,6 +45,10 @@ function mockClient(regBlock: bigint): PublicClient {
     getBlockNumber: vi.fn(async () => 150n),
     getLogs: vi.fn(async (p: { address?: string[] }) =>
       (p.address ?? []).map(a => a.toLowerCase()).includes(REGISTRY) ? [registeredLog(regBlock)] : []),
+    readContract: vi.fn(async ({ address, functionName }: { address: string; functionName: string }) => {
+      expect(address).toBe(ASSET);
+      return ({ name: 'nullsight', symbol: 'SIGHT', decimals: 18 } as Record<string, unknown>)[functionName];
+    }),
     getTransaction: vi.fn(async ({ hash }: { hash: string }) =>
       ({ from: hash === REG_TX ? '0x3333333333333333333333333333333333333333' : '0xother' })),
   } as unknown as PublicClient;
@@ -87,5 +91,30 @@ describe('indexer launch-fee consumption (PGlite)', () => {
     await indexer.processStaticChunk();
     const [r] = await db.select().from(feeReceipts);
     expect(r!.consumedAsset).toBeNull();
+  });
+
+  it('token row appears after a Registered event with no POST /api/tokens', async () => {
+    const indexer = new Indexer(mockClient(120n), db as any, config);
+    await indexer.processStaticChunk();
+    const [t] = await db.select().from(tokens);
+    expect(t).toMatchObject({
+      asset: ASSET, name: 'nullsight', symbol: 'SIGHT', decimals: 18,
+      creator: CREATOR, launcher: LAUNCHER, router: ROUTER,
+      poolId: `0x${'0'.repeat(63)}1`, numeraire: config.usdcAddr, initializer: '0x0000000000000000000000000000000000000001',
+      registeredTx: REG_TX, registeredBlock: 120n, registeredAt: 1_800_000_000n,
+    });
+    expect(t!.launchedAt.getTime()).toBe(1_800_000_000_000);
+  });
+
+  it('re-indexing the same Registered event is idempotent and keeps creator metadata', async () => {
+    const indexer = new Indexer(mockClient(120n), db as any, config);
+    await indexer.processStaticChunk();
+    await db.update(tokens).set({ imageUrl: 'https://img.example/x.png', xHandle: 'nullsight' });
+    await db.execute(sql`DELETE FROM idx_checkpoints`); // force the same range again
+    await new Indexer(mockClient(120n), db as any, config).processStaticChunk();
+    const rows = await db.select().from(tokens);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ name: 'nullsight', imageUrl: 'https://img.example/x.png', xHandle: 'nullsight' });
+    expect(await db.select().from(idxRegistrations)).toHaveLength(1);
   });
 });
