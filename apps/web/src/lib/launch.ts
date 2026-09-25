@@ -184,6 +184,11 @@ export async function planLaunch(ctx: Ctx, input: LaunchInput): Promise<LaunchPl
       `Launch limit reached: ${ctx.config.launchFee.maxPer24h} launches per 24h per wallet. Next slot ${status.nextSlotAt ? new Date(status.nextSlotAt * 1000).toLocaleString() : 'later'}.`,
       'rate_limited', { nextSlotAt: status.nextSlotAt });
   }
+  // A taken service slug would only fail after the token is launched: check it before any tx.
+  if (input.service) {
+    const m = await fetch(`${ctx.apiBase}/api/services/${encodeURIComponent(input.service.slug)}/manifest`);
+    if (m.status === 200) throw new LaunchError(`The service name "${input.service.slug}" is already taken. Choose another ticker or attach the API later.`, 'slug_taken');
+  }
   const reuse = status.unusedReceipts[0]?.txHash ?? null;
   const feeWei = BigInt(ctx.config.launchFee.wei);
   const feeGas = reuse ? null : await ctx.publicClient.estimateGas({ account: ctx.account, to: ctx.config.launchFee.treasury, value: feeWei });
