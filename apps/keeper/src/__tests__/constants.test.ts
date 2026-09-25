@@ -15,12 +15,12 @@ describe('keeper-related constants', () => {
     expect(BUYBACK_MIN_INTERVAL_S).toBe(600);
   });
 
-  it('economic thresholds default to 1 USDC (1_000_000)', () => {
-    // Origin: chosen so gas cost (~0.1 MON ≈ $0.03) is a small fraction
-    // of the USDC value processed. 1 USDC ≈ 33× the gas cost.
-    expect(KEEPER_MIN_COLLECT_USDC).toBe(1_000_000n);
-    expect(KEEPER_MIN_DISTRIBUTE_USDC).toBe(1_000_000n);
-    expect(KEEPER_MIN_BUYBACK_USDC).toBe(1_000_000n);
+  it('economic thresholds reflect v2 Monad gas costs', () => {
+    // v2 decision (5c38dba): Monad gas ~$0.0003/tx, so 0.1 USDC = 333× gas cost.
+    // Buyback is higher (0.5 USDC) because WMON pairs do two swaps.
+    expect(KEEPER_MIN_COLLECT_USDC).toBe(100_000n);      // 0.1 USDC
+    expect(KEEPER_MIN_DISTRIBUTE_USDC).toBe(100_000n);   // 0.1 USDC
+    expect(KEEPER_MIN_BUYBACK_USDC).toBe(500_000n);      // 0.5 USDC
   });
 
   it('collect cadence default is 6 hours', () => {

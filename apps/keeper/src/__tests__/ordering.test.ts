@@ -43,21 +43,24 @@ describe('job ordering', () => {
     vi.clearAllMocks();
     _resetCadenceForTest();
 
-    // vault assetData for metadata cache — currency0 < USDC so fees0 is NOT usdc
+    // vault assetData + getPoolKey for metadata cache — currency0 < USDC so fees0 is NOT usdc
     vi.mocked(publicClient.readContract).mockImplementation(async (args: any) => {
       if (args.functionName === 'balanceOf') return 0n;
       if (args.functionName === 'assetData') {
         return {
-          poolKey: {
-            currency0: '0x0000000000000000000000000000000000000099',
-            currency1: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603', // USDC
-            fee: 20000, tickSpacing: 200, hooks: '0x0000000000000000000000000000000000000000',
-          },
           poolId: '0x' + '00'.repeat(32),
           registered: true,
+          numeraire: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
           balanceUSDC: 0n,
           buybackFromRevenue: 0n, buybackFromTrading: 0n,
           tokenBalance: 0n, lastExecuteTime: 0n,
+        };
+      }
+      if (args.functionName === 'getPoolKey') {
+        return {
+          currency0: '0x0000000000000000000000000000000000000099',
+          currency1: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603', // USDC
+          fee: 20000, tickSpacing: 200, hooks: '0x0000000000000000000000000000000000000000',
         };
       }
       if (args.functionName === 'tokenData') {
@@ -67,6 +70,7 @@ describe('job ordering', () => {
           usdcAccrued: 0n, usdcClaimed: 0n,
           tokenPending: 0n, recordedRevenue: 0n,
           poolId: '0x' + '00'.repeat(32),
+          numeraire: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
         };
       }
       return 0n;
@@ -84,16 +88,19 @@ describe('job ordering', () => {
       if (args.functionName === 'assetData') {
         callOrder.push('buyback:assetData');
         return {
-          poolKey: {
-            currency0: '0x0000000000000000000000000000000000000099',
-            currency1: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
-            fee: 20000, tickSpacing: 200, hooks: '0x0000000000000000000000000000000000000000',
-          },
           poolId: '0x' + '00'.repeat(32),
           registered: true,
+          numeraire: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
           balanceUSDC: 0n, // below threshold → skip
           buybackFromRevenue: 0n, buybackFromTrading: 0n,
           tokenBalance: 0n, lastExecuteTime: 0n,
+        };
+      }
+      if (args.functionName === 'getPoolKey') {
+        return {
+          currency0: '0x0000000000000000000000000000000000000099',
+          currency1: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
+          fee: 20000, tickSpacing: 200, hooks: '0x0000000000000000000000000000000000000000',
         };
       }
       if (args.functionName === 'tokenData') {
@@ -104,6 +111,7 @@ describe('job ordering', () => {
           usdcAccrued: 0n, usdcClaimed: 0n,
           tokenPending: 0n, recordedRevenue: 0n,
           poolId: '0x' + '00'.repeat(32),
+          numeraire: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
         };
       }
       return 0n;

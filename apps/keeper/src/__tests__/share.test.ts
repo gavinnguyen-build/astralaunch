@@ -51,21 +51,24 @@ describe('per-beneficiary pending fee shares', () => {
     vi.clearAllMocks();
     _resetCadenceForTest();
 
-    // assetData: currency1 is USDC (fees1 = USDC)
+    // assetData + getPoolKey: currency1 is USDC (fees1 = USDC)
     vi.mocked(publicClient.readContract).mockImplementation(async (args: any) => {
       if (args.functionName === 'balanceOf') return 0n; // distribute skip
       if (args.functionName === 'assetData') {
         return {
-          poolKey: {
-            currency0: '0x0000000000000000000000000000000000000099',
-            currency1: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603', // USDC
-            fee: 20000, tickSpacing: 200, hooks: '0x0000000000000000000000000000000000000000',
-          },
           poolId: '0x' + '00'.repeat(32),
           registered: true,
+          numeraire: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
           balanceUSDC: 0n,
           buybackFromRevenue: 0n, buybackFromTrading: 0n,
           tokenBalance: 0n, lastExecuteTime: 0n,
+        };
+      }
+      if (args.functionName === 'getPoolKey') {
+        return {
+          currency0: '0x0000000000000000000000000000000000000099',
+          currency1: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603', // USDC
+          fee: 20000, tickSpacing: 200, hooks: '0x0000000000000000000000000000000000000000',
         };
       }
       if (args.functionName === 'tokenData') {
@@ -75,6 +78,7 @@ describe('per-beneficiary pending fee shares', () => {
           usdcAccrued: 0n, usdcClaimed: 0n,
           tokenPending: 0n, recordedRevenue: 0n,
           poolId: '0x' + '00'.repeat(32),
+          numeraire: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
         };
       }
       return 0n;
@@ -97,10 +101,10 @@ describe('per-beneficiary pending fee shares', () => {
     const expected = (TOTAL_USDC * ESCROW_SHARE_WAD) / WAD; // 2_000_000n
     expect(expected).toBe(2_000_000n);
 
-    // With 10 USDC total and 1 USDC threshold, escrow's 2 USDC should trigger collect
+    // With 10 USDC total and 0.1 USDC threshold, escrow's 2 USDC should trigger collect
     await runAssetJobs(ASSET, ROUTER);
 
-    // sendTx should have been called for collect (escrow has 2 USDC >= 1 USDC threshold)
+    // sendTx should have been called for collect (escrow has 2 USDC >= 0.1 USDC threshold)
     const collectCalls = vi.mocked(sendTx).mock.calls.filter(
       (c: any) => c[0].functionName === 'collect',
     );
@@ -134,12 +138,13 @@ describe('per-beneficiary pending fee shares', () => {
   });
 
   it('skips collect when per-beneficiary share is below threshold', async () => {
-    // Total = 0.5 USDC → vault share (10%) = 0.05 USDC < 1 USDC threshold
-    vi.mocked(simulatePendingFees).mockResolvedValue({ fees0: 0n, fees1: 500_000n });
+    // Total = 0.03 USDC → PFR share (30%) = 0.009 USDC < 0.1 USDC threshold
+    // v2: thresholds lowered to 0.1 USDC (100_000n) for Monad's cheap gas
+    vi.mocked(simulatePendingFees).mockResolvedValue({ fees0: 0n, fees1: 30_000n });
 
     await runAssetJobs(ASSET, ROUTER);
 
-    // No collect txs should be sent (all per-beneficiary amounts < 1 USDC)
+    // No collect txs should be sent (all per-beneficiary amounts < 0.1 USDC)
     const collectCalls = vi.mocked(sendTx).mock.calls.filter(
       (c: any) => c[0].functionName === 'collect',
     );
