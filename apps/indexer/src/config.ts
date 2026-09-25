@@ -1,6 +1,6 @@
 import { config } from 'dotenv';
 import { readFileSync } from 'node:fs';
-import { USDC, FACILITATOR_SUBMITTERS } from '@astralaunch/shared';
+import { USDC, FACILITATOR_SUBMITTERS, POOL_MANAGER } from '@astralaunch/shared';
 
 config({ path: '../../.env' });
 config({ path: '.env', override: false });
@@ -57,3 +57,8 @@ export const FACILITATOR_ADDRS: ReadonlySet<string> = new Set(
     .filter(Boolean)
     .concat(FACILITATOR_SUBMITTERS.map(s => s.toLowerCase())),
 );
+
+/** Uniswap v4 PoolManager (addresses.ts). */
+export const POOL_MANAGER_ADDR = POOL_MANAGER as `0x${string}`;
+/** Look-back for a newly discovered pool's swaps/transfers (launch → register gap). */
+export const SWAP_LOOKBACK_BLOCKS = Number(process.env.INDEXER_SWAP_LOOKBACK_BLOCKS ?? 20_000);

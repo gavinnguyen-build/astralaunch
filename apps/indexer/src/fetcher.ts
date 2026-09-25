@@ -1,4 +1,4 @@
-import type { PublicClient, Log, Hex } from 'viem';
+import { formatLog, toHex, type PublicClient, type Log, type Hex } from 'viem';
 
 /** Minimum chunk size — floor for auto-halving on RPC errors. */
 export const MIN_CHUNK_SIZE = 10;
@@ -161,8 +161,10 @@ export class ChunkManager {
     address: `0x${string}` | `0x${string}`[];
     events: readonly { type: 'event'; name: string; inputs: readonly any[] }[];
     topics?: (Hex | Hex[] | null)[];
+    /** Raw eth_getLogs topic filter, e.g. [[topicA, topicB], [poolId, …]] (OR within a position). */
+    rawTopics?: (Hex | Hex[] | null)[];
   }): Promise<ChunkResult> {
-    const { fromBlock, address, events, topics } = params;
+    const { fromBlock, address, events, topics, rawTopics } = params;
     let toBlock = params.toBlock;
     let currentChunk = this.chunkSize;
 
@@ -182,7 +184,13 @@ export class ChunkManager {
 
         let logs: Log[];
 
-        if (topics) {
+        if (rawTopics) {
+          const raw = await this.client.request({
+            method: 'eth_getLogs',
+            params: [{ address, fromBlock: toHex(fromBlock), toBlock: toHex(effectiveTo), topics: rawTopics }],
+          } as any) as any[];
+          logs = raw.map((l) => formatLog(l)) as Log[];
+        } else if (topics) {
           // For USDC transfer filtering by topic (indexed `to` address)
           const rawParams: any = {
             fromBlock,

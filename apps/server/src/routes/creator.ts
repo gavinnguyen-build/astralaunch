@@ -15,6 +15,8 @@ import { db } from '../db/client.js';
 import { tokens, services, gatewayRequests } from '../db/schema.js';
 import { RPC_URL, CHAIN_ID, ESCROW_ADDR, VAULT_ADDR } from '../env.js';
 import { isListedSql } from '../services/launchFee.js';
+import { creatorDashboard } from '../services/creatorDashboard.js';
+import { creatorChain } from '../lib/chain.js';
 
 const monad = defineChain({
   id: CHAIN_ID,
@@ -152,6 +154,13 @@ app.get('/me', async (c) => {
   }));
 
   return c.json({ creator, tokens: tokenDetails });
+});
+
+// GET /api/creator/:wallet — public creator dashboard (D-MK1). Registered after /me.
+app.get('/:wallet', async (c) => {
+  const wallet = c.req.param('wallet');
+  if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) return c.json({ error: 'wallet must be an address' }, 400);
+  return c.json(await creatorDashboard(db, creatorChain, wallet));
 });
 
 export default app;

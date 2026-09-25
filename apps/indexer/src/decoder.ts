@@ -16,6 +16,9 @@ import {
   routerEvents,
   usdcEvents,
 } from './abis.js';
+import { poolManagerEvents } from './v4abis.js';
+import { priceWadFromSqrtX96 } from '@astralaunch/shared';
+import { ASSET_DECIMALS, type PoolMeta } from './pools.js';
 
 // ── Row types (match Drizzle insert shapes) ──────────────────────────────────
 
@@ -116,6 +119,39 @@ export interface PfrCollectionRow extends BaseRow {
   numeraireForwarded: string;
 }
 
+export interface SwapRow extends BaseRow {
+  type: 'swap';
+  poolId:         string;
+  asset:          string;
+  numeraire:      string;
+  sender:         string;
+  txFrom:         string;
+  assetDelta:     string;   // swapper's side: + received, - paid
+  numeraireDelta: string;
+  sqrtPriceX96:   string;
+  liquidity:      string;
+  tick:           number;
+  fee:            number;
+  priceWad:       string;   // asset price in numeraire × 1e18
+  isBuyback:      boolean;
+}
+
+export interface PoolInitRow extends BaseRow {
+  type: 'pool_init';
+  poolId:       string;
+  asset:        string;
+  sqrtPriceX96: string;
+  priceWad:     string;
+}
+
+export interface AssetTransferRow extends BaseRow {
+  type: 'asset_transfer';
+  asset:    string;
+  fromAddr: string;
+  toAddr:   string;
+  value:    string;
+}
+
 export type DecodedRow =
   | RegistrationRow
   | UsdcTransferRow
@@ -126,7 +162,10 @@ export type DecodedRow =
   | EscrowForfeitRow
   | BuybackRow
   | BurnRow
-  | PfrCollectionRow;
+  | PfrCollectionRow
+  | SwapRow
+  | PoolInitRow
+  | AssetTransferRow;
 
 // ── Decoder ──────────────────────────────────────────────────────────────────
 
@@ -336,6 +375,59 @@ export function decodeTransferLog(
       value:    (decoded.args as any).value.toString(),
       txFrom,
       isFacilitatorSettled,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Decode a PoolManager Swap / Initialize log for a registered pool.
+ * `pool` resolves the pool id; unknown pools return null.
+ */
+export function decodePoolManagerLog(
+  log: Log,
+  chainId: number,
+  blockTimestamp: bigint,
+  pool: (poolId: string) => PoolMeta | undefined,
+  vaultAddr: string,
+  txFrom = '',
+): SwapRow | PoolInitRow | null {
+  try {
+    const decoded = decodeEventLog({ abi: poolManagerEvents, data: log.data as Hex, topics: log.topics as [Hex, ...Hex[]] });
+    const a = decoded.args as any;
+    const meta = pool(a.id);
+    if (!meta) return null;
+    const sqrt = BigInt(a.sqrtPriceX96);
+    const priceWad = priceWadFromSqrtX96(sqrt, meta.assetIsCurrency0, ASSET_DECIMALS, meta.numeraireDecimals).toString();
+    const b = base(log, chainId, blockTimestamp);
+    if (decoded.eventName === 'Initialize') {
+      return { ...b, type: 'pool_init', poolId: meta.poolId, asset: meta.asset, sqrtPriceX96: sqrt.toString(), priceWad };
+    }
+    const amount0 = BigInt(a.amount0), amount1 = BigInt(a.amount1);
+    const sender = String(a.sender).toLowerCase();
+    return {
+      ...b, type: 'swap', poolId: meta.poolId, asset: meta.asset, numeraire: meta.numeraire, sender, txFrom,
+      assetDelta:     (meta.assetIsCurrency0 ? amount0 : amount1).toString(),
+      numeraireDelta: (meta.assetIsCurrency0 ? amount1 : amount0).toString(),
+      sqrtPriceX96: sqrt.toString(), liquidity: BigInt(a.liquidity).toString(),
+      tick: Number(a.tick), fee: Number(a.fee), priceWad,
+      isBuyback: sender === vaultAddr.toLowerCase(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Decode an ERC-20 Transfer of a registered asset (the emitting contract is the asset). */
+export function decodeAssetTransferLog(log: Log, chainId: number, blockTimestamp: bigint): AssetTransferRow | null {
+  try {
+    const decoded = decodeEventLog({ abi: usdcEvents, data: log.data as Hex, topics: log.topics as [Hex, ...Hex[]] });
+    if (decoded.eventName !== 'Transfer') return null;
+    const a = decoded.args as any;
+    return {
+      ...base(log, chainId, blockTimestamp), type: 'asset_transfer', asset: log.address.toLowerCase(),
+      fromAddr: a.from.toLowerCase(), toAddr: a.to.toLowerCase(), value: a.value.toString(),
     };
   } catch {
     return null;

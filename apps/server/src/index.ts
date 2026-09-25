@@ -10,6 +10,9 @@
  *   POST /api/launch-fee/verify               — verify 10 MON launch fee tx
  *   GET  /api/launch-fee/status               — launcher receipts + 24h limit
  *   GET  /api/admin/tokens/unlisted           — registered tokens without a fee (admin)
+ *   GET  /api/leaderboard                     — creators by clean revenue (7d/30d/all)
+ *   GET  /api/creator/:wallet                 — creator dashboard (claims, vesting, services)
+ *   GET  /api/tokens/:asset/candles|trades|holders — market data
  *   ALL  /s/:slug/*                           — x402 gateway
  */
 import { serve } from '@hono/node-server';
@@ -41,6 +44,7 @@ import gateway from './routes/gateway.js';
 import pricesRouter from './routes/prices.js';
 import launchFeeRouter from './routes/launchFee.js';
 import adminRouter from './routes/admin.js';
+import leaderboardRouter from './routes/leaderboard.js';
 import { startProbeWorker } from './lib/probes.js';
 
 const app = new Hono();
@@ -55,6 +59,7 @@ app.route('/api/creator',  creatorRouter);
 app.route('/api/prices',  pricesRouter);
 app.route('/api/launch-fee', launchFeeRouter);
 app.route('/api/admin',  adminRouter);
+app.route('/api/leaderboard', leaderboardRouter);
 app.route('/s', gateway);
 
 startProbeWorker();

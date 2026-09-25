@@ -288,3 +288,62 @@ export const signedRequests = pgTable('signed_requests', {
   issuedAt:    bigint('issued_at', { mode: 'bigint' }).notNull(),
   usedAt:      timestamp('used_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ── Market data (migration 0009, D-MK1) ──────────────────────────────────────
+// v4 Swap events for registered pools; deltas are from the swapper's side (positive = received).
+export const idxSwaps = pgTable('idx_swaps', {
+  id:             serial('id').primaryKey(),
+  chainId:        integer('chain_id').notNull(),
+  txHash:         text('tx_hash').notNull(),
+  logIndex:       integer('log_index').notNull(),
+  poolId:         text('pool_id').notNull(),
+  asset:          text('asset').notNull(),
+  numeraire:      text('numeraire').notNull(),
+  sender:         text('sender').notNull(),               // PoolManager caller (router / BuybackVault)
+  txFrom:         text('tx_from').notNull().default(''),  // trader (tx sender)
+  assetDelta:     numeric('asset_delta', { precision: 78 }).notNull(),
+  numeraireDelta: numeric('numeraire_delta', { precision: 78 }).notNull(),
+  sqrtPriceX96:   numeric('sqrt_price_x96', { precision: 78 }).notNull(),
+  liquidity:      numeric('liquidity', { precision: 78 }).notNull(),
+  tick:           integer('tick').notNull(),
+  fee:            integer('fee').notNull(),
+  priceWad:       numeric('price_wad', { precision: 78 }).notNull(), // asset price in numeraire × 1e18
+  isBuyback:      boolean('is_buyback').notNull().default(false),
+  blockNumber:    bigint('block_number', { mode: 'bigint' }).notNull(),
+  timestamp:      bigint('timestamp', { mode: 'bigint' }).notNull(),
+}, (t) => [
+  uniqueIndex('idx_swaps_unique').on(t.chainId, t.txHash, t.logIndex),
+  index('idx_swaps_asset_time').on(t.asset, t.timestamp),
+]);
+
+export const idxPoolInits = pgTable('idx_pool_inits', {
+  id:           serial('id').primaryKey(),
+  chainId:      integer('chain_id').notNull(),
+  txHash:       text('tx_hash').notNull(),
+  logIndex:     integer('log_index').notNull(),
+  poolId:       text('pool_id').notNull(),
+  asset:        text('asset').notNull(),
+  sqrtPriceX96: numeric('sqrt_price_x96', { precision: 78 }).notNull(),
+  priceWad:     numeric('price_wad', { precision: 78 }).notNull(),
+  blockNumber:  bigint('block_number', { mode: 'bigint' }).notNull(),
+  timestamp:    bigint('timestamp', { mode: 'bigint' }).notNull(),
+}, (t) => [
+  uniqueIndex('idx_pool_inits_unique').on(t.chainId, t.txHash, t.logIndex),
+  uniqueIndex('idx_pool_inits_pool').on(t.poolId),
+]);
+
+export const idxAssetTransfers = pgTable('idx_asset_transfers', {
+  id:          serial('id').primaryKey(),
+  chainId:     integer('chain_id').notNull(),
+  txHash:      text('tx_hash').notNull(),
+  logIndex:    integer('log_index').notNull(),
+  asset:       text('asset').notNull(),
+  fromAddr:    text('from_addr').notNull(),
+  toAddr:      text('to_addr').notNull(),
+  value:       numeric('value', { precision: 78 }).notNull(),
+  blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
+  timestamp:   bigint('timestamp', { mode: 'bigint' }).notNull(),
+}, (t) => [
+  uniqueIndex('idx_asset_transfers_unique').on(t.chainId, t.txHash, t.logIndex),
+  index('idx_asset_transfers_asset').on(t.asset),
+]);

@@ -6,11 +6,15 @@
  * GET  /api/tokens/:asset        — aggregated token + service + on-chain state
  * GET  /api/tokens/:asset/payments — recent settled payments
  * GET  /api/tokens/:asset/health   — service probe uptime data
+ * GET  /api/tokens/:asset/candles  — OHLC (tf=5m|15m|1h|4h|1d), USD for MON pairs via Chainlink
+ * GET  /api/tokens/:asset/trades   — swaps (buybacks marked)
+ * GET  /api/tokens/:asset/holders  — holder balances
  *
  * All GETs only expose listed tokens (launch fee paid + consumed, D-LF4).
  */
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
 import { eq, desc, and, gte, sql, count, or, isNull, lt } from 'drizzle-orm';
 import { createPublicClient, http, type Address } from 'viem';
 import { defineChain } from 'viem';
@@ -24,6 +28,10 @@ import { tokenMetadataSchema, tokenMetadataMessage } from '@astralaunch/shared';
 import { authorizeTokenCreator, consumeSignedMessage, ServiceAuthError } from '../services/serviceAuth.js';
 import { RPC_URL, CHAIN_ID, REGISTRY_ADDR, SUBMITTERS } from '../env.js';
 import { isAssetListed, isListedSql } from '../services/launchFee.js';
+import { classifyTransfer, excludedPayers } from '../services/cleanRevenue.js';
+import { platformAddrs } from '../lib/platform.js';
+import { holderLabels, usdResolver } from '../lib/chain.js';
+import { TIMEFRAMES, candles, holders, marketSnapshot, trades, type Timeframe } from '../services/market.js';
 
 // ── viem client ───────────────────────────────────────────────────────────────
 
@@ -96,6 +104,8 @@ const erc20Abi = [
 import { ESCROW_ADDR, VAULT_ADDR } from '../env.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+const nowS = () => BigInt(Math.floor(Date.now() / 1000));
 
 function ago(days: number) {
   const d = new Date();
@@ -178,6 +188,7 @@ app.get('/', async (c) => {
       where: and(eq(services.asset, t.asset), eq(services.active, true)),
     });
     const metrics = revenueMap.get(t.asset) ?? { revenue: 0n, calls: 0 };
+    const market = t.numeraire ? await marketSnapshot(db, t.asset, t.numeraire, usdResolver, nowS()) : null;
     return {
       asset:         t.asset,
       name:          t.name,
@@ -196,6 +207,7 @@ app.get('/', async (c) => {
         cleanRevenue30d: metrics.revenue.toString(),
         calls30d:        metrics.calls,
       },
+      market,
     };
   }));
 
@@ -324,6 +336,7 @@ app.get('/:asset', async (c) => {
     numeraire:  token.numeraire,
     decimals:   token.decimals,
     registeredBlock: token.registeredBlock?.toString() ?? null,
+    market: token.numeraire ? await marketSnapshot(db, token.asset, token.numeraire, usdResolver, nowS()) : null,
     service: svc ? {
       id:            svc.id,
       slug:          svc.slug,
@@ -412,20 +425,8 @@ app.get('/:asset/metrics', async (c) => {
   const routerAddr = (registration?.router ?? token?.router ?? '').toLowerCase();
   const creatorAddr = (registration?.creator ?? token?.creator ?? '').toLowerCase();
 
-  // Build the set of addresses that make a payment NOT clean
-  // Astralaunch contract addresses from env
-  const excludedAddrs = new Set<string>([
-    creatorAddr,
-    routerAddr,
-    ESCROW_ADDR.toLowerCase(),
-    VAULT_ADDR.toLowerCase(),
-    REGISTRY_ADDR.toLowerCase(),
-  ].filter(Boolean));
-  // Platform fee receiver if available
-  const pfrAddr = process.env.PLATFORM_FEE_RECEIVER_ADDRESS;
-  if (pfrAddr) excludedAddrs.add(pfrAddr.toLowerCase());
-  const treasuryAddr = process.env.TREASURY_ADDRESS;
-  if (treasuryAddr) excludedAddrs.add(treasuryAddr.toLowerCase());
+  // Clean-revenue rules live in services/cleanRevenue.ts (shared with /api/leaderboard).
+  const excludedAddrs = excludedPayers(routerAddr, platformAddrs());
 
   // Query all USDC transfers to this router
   let rawRevenue = 0n;
@@ -447,23 +448,9 @@ app.get('/:asset/metrics', async (c) => {
     for (const t of transfers) {
       const val = BigInt(t.value);
       rawRevenue += val;
-      const payer = t.fromAddr.toLowerCase();
-
-      // Must be settled by facilitator
-      if (!t.isFacilitatorSettled) {
-        exclusions.push({ payer: t.fromAddr, amount: t.value, reason: 'not_facilitator' });
-        continue;
-      }
-
-      // Payer must not be the creator
-      if (payer === creatorAddr) {
-        exclusions.push({ payer: t.fromAddr, amount: t.value, reason: 'creator' });
-        continue;
-      }
-
-      // Payer must not be the router or any Astralaunch contract
-      if (excludedAddrs.has(payer)) {
-        exclusions.push({ payer: t.fromAddr, amount: t.value, reason: 'contract' });
+      const cls = classifyTransfer(t, creatorAddr, excludedAddrs);
+      if (cls !== 'clean') {
+        exclusions.push({ payer: t.fromAddr, amount: t.value, reason: cls });
         continue;
       }
 
@@ -585,6 +572,37 @@ app.get('/:asset/buybacks', async (c) => {
     })),
     cursor: hasMore ? String(offset + limit) : null,
   });
+});
+
+// GET /api/tokens/:asset/candles?tf=5m|15m|1h|4h|1d — OHLC from indexed v4 swaps (D-MK1)
+app.get('/:asset/candles', zValidator('query', z.object({
+  tf: z.enum(Object.keys(TIMEFRAMES) as [Timeframe, ...Timeframe[]]).default('1h'),
+  limit: z.coerce.number().int().min(1).max(1000).default(500),
+})), async (c) => {
+  const token = await db.query.tokens.findFirst({ where: eq(tokens.asset, c.req.param('asset').toLowerCase()) });
+  if (!token?.numeraire) return c.json({ error: 'Token not indexed yet' }, 404);
+  const { tf, limit } = c.req.valid('query');
+  return c.json(await candles(db, token.asset, token.numeraire, tf, usdResolver, limit));
+});
+
+// GET /api/tokens/:asset/trades?limit&before — swaps, newest first; buybacks marked
+app.get('/:asset/trades', zValidator('query', z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  before: z.coerce.number().int().positive().optional(),
+})), async (c) => {
+  const token = await db.query.tokens.findFirst({ where: eq(tokens.asset, c.req.param('asset').toLowerCase()) });
+  if (!token?.numeraire) return c.json({ error: 'Token not indexed yet' }, 404);
+  const { limit, before } = c.req.valid('query');
+  return c.json(await trades(db, token.asset, token.numeraire, usdResolver, limit, before));
+});
+
+// GET /api/tokens/:asset/holders?limit — balances from indexed transfers, labeled
+app.get('/:asset/holders', zValidator('query', z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+})), async (c) => {
+  const token = await db.query.tokens.findFirst({ where: eq(tokens.asset, c.req.param('asset').toLowerCase()) });
+  if (!token) return c.json({ error: 'Token not found' }, 404);
+  return c.json(await holders(db, token.asset, holderLabels(token.creator), c.req.valid('query').limit));
 });
 
 // GET /api/tokens/:asset/health — service probe uptime

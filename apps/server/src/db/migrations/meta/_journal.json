@@ -57,6 +57,13 @@
       "when": 1727654400000,
       "tag": "0008_timestamptz",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1727740800000,
+      "tag": "0009_market",
+      "breakpoints": true
     }
   ]
 }

@@ -4,10 +4,14 @@ import { ChunkManager } from './fetcher.js';
 import { readCheckpoint } from './checkpoint.js';
 import { writeChunk } from './writer.js';
 import { RouterRegistry } from './discovery.js';
+import { PoolRegistry } from './pools.js';
+import { poolManagerEvents, SWAP_TOPIC, INITIALIZE_TOPIC } from './v4abis.js';
 import {
   decodeStaticLog,
   decodeRouterLog,
   decodeTransferLog,
+  decodePoolManagerLog,
+  decodeAssetTransferLog,
   type DecodedRow,
   type RegistrationRow,
 } from './decoder.js';
@@ -27,6 +31,10 @@ export interface IndexerConfig {
   pfrAddr:         `0x${string}`;
   usdcAddr:        `0x${string}`;
   facilitatorAddrs: ReadonlySet<string>;
+  /** Uniswap v4 PoolManager (swaps + pool inits of registered pools). */
+  poolManagerAddr?: `0x${string}`;
+  /** On new pool discovery, backfill its swaps/transfers from registration block minus this. */
+  swapLookbackBlocks?: number;
 }
 
 /**
@@ -35,6 +43,7 @@ export interface IndexerConfig {
 export class Indexer {
   private fetcher: ChunkManager;
   private registry: RouterRegistry;
+  private pools = new PoolRegistry();
   private blockTimestampCache = new Map<bigint, bigint>();
 
   constructor(
@@ -49,7 +58,8 @@ export class Indexer {
   /** Initialize: load known routers from DB. */
   async init(): Promise<void> {
     await this.registry.load(this.db);
-    console.log(`[indexer] Loaded ${this.registry.size} known router(s)`);
+    await this.pools.load(this.db);
+    console.log(`[indexer] Loaded ${this.registry.size} known router(s), ${this.pools.size} pool(s)`);
   }
 
   /**
@@ -138,6 +148,7 @@ export class Indexer {
 
     const timestamps = await this.getBlockTimestamps(logs);
     const rows: DecodedRow[] = [];
+    const newPools: RegistrationRow[] = [];
 
     for (const log of logs) {
       const ts = timestamps.get(log.blockNumber!)!;
@@ -151,6 +162,7 @@ export class Indexer {
       if (row) {
         rows.push(row);
         if (row.type === 'registration') {
+          if (row.numeraire && this.pools.add(row.poolId, row.asset, row.numeraire)) newPools.push(row);
           const isNew = this.registry.add(row.router, row.asset);
           if (isNew) {
             console.log(`[indexer] New router discovered: ${row.router} (asset: ${row.asset})`);
@@ -175,6 +187,10 @@ export class Indexer {
     if (rows.length > 0) {
       console.log(`[indexer] static ${fromBlock}→${toBlock}: ${rows.length} event(s)`);
     }
+
+    // Trades (and the launch mint / pool init) can happen between launch and register():
+    // backfill a newly discovered pool over the range the swaps/transfers sets already passed.
+    for (const reg of newPools) await this.backfillNewPool(reg);
 
     return toBlock < latestBlock;
   }
@@ -263,6 +279,95 @@ export class Indexer {
     return toBlock < latestBlock;
   }
 
+  private get swapsEnabled(): boolean { return !!this.config.poolManagerAddr; }
+
+  /** Decode PoolManager logs (with trader = tx.from for swaps). */
+  private async decodePoolLogs(logs: Log[]): Promise<DecodedRow[]> {
+    const timestamps = await this.getBlockTimestamps(logs);
+    const swapLogs = logs.filter(l => l.topics[0]?.toLowerCase() === SWAP_TOPIC.toLowerCase());
+    const senders = swapLogs.length > 0 ? await this.getTxSenders(swapLogs) : new Map<string, string>();
+    const rows: DecodedRow[] = [];
+    for (const log of logs) {
+      const row = decodePoolManagerLog(log, this.config.chainId, timestamps.get(log.blockNumber!)!,
+        (id) => this.pools.get(id), this.config.vaultAddr, senders.get(log.transactionHash!) ?? '');
+      if (row) rows.push(row);
+    }
+    return rows;
+  }
+
+  private async decodeAssetLogs(logs: Log[]): Promise<DecodedRow[]> {
+    const timestamps = await this.getBlockTimestamps(logs);
+    return logs.flatMap(l => decodeAssetTransferLog(l, this.config.chainId, timestamps.get(l.blockNumber!)!) ?? []);
+  }
+
+  /** Swap + Initialize events of registered pools only (filtered by pool id). */
+  async processSwapsChunk(): Promise<boolean> {
+    if (!this.swapsEnabled || this.pools.size === 0) return false;
+    const latestBlock = await this.getLatestBlock();
+    const checkpoint = await readCheckpoint(this.db, 'swaps');
+    const fromBlock = checkpoint !== null ? checkpoint + 1n : this.config.startBlock;
+    if (fromBlock > latestBlock) return false;
+
+    const { logs, toBlock } = await this.fetcher.getLogs({
+      fromBlock, toBlock: latestBlock, address: this.config.poolManagerAddr!, events: poolManagerEvents,
+      rawTopics: [[SWAP_TOPIC, INITIALIZE_TOPIC], this.pools.poolIds()],
+    });
+    const rows = await this.decodePoolLogs(logs);
+    await writeChunk(this.db, rows, 'swaps', toBlock);
+    if (rows.length > 0) console.log(`[indexer] swaps ${fromBlock}→${toBlock}: ${rows.length} event(s)`);
+    return toBlock < latestBlock;
+  }
+
+  /** ERC-20 Transfer events of registered assets (holders). */
+  async processAssetTransfersChunk(): Promise<boolean> {
+    if (!this.swapsEnabled || this.pools.size === 0) return false;
+    const latestBlock = await this.getLatestBlock();
+    const checkpoint = await readCheckpoint(this.db, 'asset_transfers');
+    const fromBlock = checkpoint !== null ? checkpoint + 1n : this.config.startBlock;
+    if (fromBlock > latestBlock) return false;
+
+    const { logs, toBlock } = await this.fetcher.getLogs({
+      fromBlock, toBlock: latestBlock, address: this.pools.assets(), events: usdcEvents,
+    });
+    const rows = await this.decodeAssetLogs(logs);
+    await writeChunk(this.db, rows, 'asset_transfers', toBlock);
+    if (rows.length > 0) console.log(`[indexer] asset_transfers ${fromBlock}→${toBlock}: ${rows.length} event(s)`);
+    return toBlock < latestBlock;
+  }
+
+  /**
+   * Targeted backfill for a pool discovered after the swaps / asset_transfers sets already
+   * moved past its launch: [registration - lookback, checkpoint] for that pool / asset only.
+   */
+  async backfillNewPool(reg: RegistrationRow): Promise<void> {
+    if (!this.swapsEnabled) return;
+    const lookback = BigInt(this.config.swapLookbackBlocks ?? 20_000);
+    let from = reg.blockNumber > lookback ? reg.blockNumber - lookback : 0n;
+    if (from < this.config.startBlock) from = this.config.startBlock;
+
+    const sets = [
+      { set: 'swaps', fetch: (f: bigint, t: bigint) => this.fetcher.getLogs({ fromBlock: f, toBlock: t,
+          address: this.config.poolManagerAddr!, events: poolManagerEvents, rawTopics: [[SWAP_TOPIC, INITIALIZE_TOPIC], [reg.poolId as Hex]] }),
+        decode: (logs: Log[]) => this.decodePoolLogs(logs) },
+      { set: 'asset_transfers', fetch: (f: bigint, t: bigint) => this.fetcher.getLogs({ fromBlock: f, toBlock: t,
+          address: reg.asset as `0x${string}`, events: usdcEvents }),
+        decode: (logs: Log[]) => this.decodeAssetLogs(logs) },
+    ];
+    for (const { set, fetch, decode } of sets) {
+      const cp = await readCheckpoint(this.db, set);
+      if (cp === null || cp < from) continue; // the set itself will reach this range
+      let n = 0;
+      for (let f = from; f <= cp;) {
+        const { logs, toBlock } = await fetch(f, cp);
+        const rows = await decode(logs);
+        await writeChunk(this.db, rows, null, toBlock);
+        n += rows.length;
+        f = toBlock + 1n;
+      }
+      console.log(`[indexer] new pool ${reg.poolId.slice(0, 10)}… ${set} look-back ${from}→${cp}: ${n} event(s)`);
+    }
+  }
+
   /**
    * Run one full cycle: process all contract sets until caught up.
    * Returns true if any work was done.
@@ -282,6 +387,14 @@ export class Indexer {
 
     // Process USDC transfers
     while (await this.processUsdcChunk()) {
+      didWork = true;
+    }
+
+    // Market data: swaps / pool inits of registered pools, asset transfers (holders)
+    while (await this.processSwapsChunk()) {
+      didWork = true;
+    }
+    while (await this.processAssetTransfersChunk()) {
       didWork = true;
     }
 

@@ -14,6 +14,8 @@ import {
   PFR_ADDR,
   USDC_ADDR,
   FACILITATOR_ADDRS,
+  POOL_MANAGER_ADDR,
+  SWAP_LOOKBACK_BLOCKS,
 } from './config.js';
 import { publicClient } from './chain.js';
 import { Indexer } from './indexer.js';
@@ -41,6 +43,8 @@ const indexer = new Indexer(publicClient, db, {
   pfrAddr:         PFR_ADDR,
   usdcAddr:        USDC_ADDR,
   facilitatorAddrs: FACILITATOR_ADDRS,
+  poolManagerAddr: POOL_MANAGER_ADDR,
+  swapLookbackBlocks: SWAP_LOOKBACK_BLOCKS,
 });
 
 await indexer.init();

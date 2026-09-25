@@ -10,6 +10,9 @@ import {
   idxBuybacks,
   idxBurns,
   idxPfrCollections,
+  idxSwaps,
+  idxPoolInits,
+  idxAssetTransfers,
 } from '../../server/src/db/schema.js';
 import type { DecodedRow } from './decoder.js';
 import { writeCheckpoint } from './checkpoint.js';
@@ -18,12 +21,12 @@ import { upsertTokenFromRegistration } from '../../server/src/services/tokenSync
 
 /**
  * Write decoded rows and update checkpoint in a single transaction.
- * Uses ON CONFLICT DO NOTHING for idempotency.
+ * Uses ON CONFLICT DO NOTHING for idempotency. contractSet null = rows only (targeted backfill).
  */
 export async function writeChunk(
   db: PostgresJsDatabase<any>,
   rows: DecodedRow[],
-  contractSet: string,
+  contractSet: string | null,
   blockNumber: bigint,
 ): Promise<void> {
   await db.transaction(async (tx) => {
@@ -176,6 +179,30 @@ export async function writeChunk(
           }).onConflictDoNothing();
           break;
 
+        case 'swap':
+          await tx.insert(idxSwaps).values({
+            chainId: row.chainId, txHash: row.txHash, logIndex: row.logIndex,
+            poolId: row.poolId, asset: row.asset, numeraire: row.numeraire, sender: row.sender, txFrom: row.txFrom,
+            assetDelta: row.assetDelta, numeraireDelta: row.numeraireDelta, sqrtPriceX96: row.sqrtPriceX96,
+            liquidity: row.liquidity, tick: row.tick, fee: row.fee, priceWad: row.priceWad, isBuyback: row.isBuyback,
+            blockNumber: row.blockNumber, timestamp: row.timestamp,
+          }).onConflictDoNothing();
+          break;
+
+        case 'pool_init':
+          await tx.insert(idxPoolInits).values({
+            chainId: row.chainId, txHash: row.txHash, logIndex: row.logIndex, poolId: row.poolId, asset: row.asset,
+            sqrtPriceX96: row.sqrtPriceX96, priceWad: row.priceWad, blockNumber: row.blockNumber, timestamp: row.timestamp,
+          }).onConflictDoNothing();
+          break;
+
+        case 'asset_transfer':
+          await tx.insert(idxAssetTransfers).values({
+            chainId: row.chainId, txHash: row.txHash, logIndex: row.logIndex, asset: row.asset,
+            fromAddr: row.fromAddr, toAddr: row.toAddr, value: row.value, blockNumber: row.blockNumber, timestamp: row.timestamp,
+          }).onConflictDoNothing();
+          break;
+
         case 'pfr_collection':
           await tx.insert(idxPfrCollections).values({
             chainId:            row.chainId,
@@ -192,6 +219,6 @@ export async function writeChunk(
       }
     }
 
-    await writeCheckpoint(tx, contractSet, blockNumber);
+    if (contractSet !== null) await writeCheckpoint(tx, contractSet, blockNumber);
   });
 }

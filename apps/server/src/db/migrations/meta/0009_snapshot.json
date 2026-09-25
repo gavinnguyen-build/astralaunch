@@ -1,0 +1,15 @@
+{
+  "id": "0009_market",
+  "prevId": "0008_timestamptz",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {},
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

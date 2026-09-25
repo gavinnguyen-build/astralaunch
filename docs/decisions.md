@@ -126,3 +126,26 @@ operator allow `http://127.0.0.1:4001` only; every other private target stays bl
 (Foundry account name or path) with a hidden password prompt or `<ROLE>_KEYSTORE_PASSWORD_FILE`, so mainnet
 keys never pass through the shell. The V3 decryption (scrypt/pbkdf2, aes-128-ctr, keccak MAC) is checked
 against the official Web3 Secret Storage test vectors (`astralaunch-anvil/src/keystore.test.ts`).
+
+## Market data for the web app (Phase A, 2026-09-25)
+
+**D-MK1.**
+- **Indexer.** Two new contract sets:
+  - `swaps`: PoolManager `Swap` and `Initialize`, filtered by the registered pool ids (topic1).
+  - `asset_transfers`: ERC-20 `Transfer` of registered assets, used for holders and supply.
+  A pool can trade between launch and `register()`. So when a new pool is discovered after these sets
+  have passed its launch, a targeted look-back backfill covers `[registration − INDEXER_SWAP_LOOKBACK_BLOCKS
+  (20,000), checkpoint]` for that pool and asset only.
+- **Buybacks.** A swap is a buyback when `Swap.sender == BuybackVault` (the vault swaps through
+  `PoolManager.unlock`).
+- **Prices.** Stored as exact 1e18 bigints (`price_wad`), the asset price in its numeraire.
+- **USD.** USDC pairs count 1 USDC as 1 USD. MON pairs use the Chainlink MON/USD feed; it is null when the
+  feed is stale beyond `MAX_ORACLE_STALENESS_S`. The **current** feed price is applied to historical
+  candles and trades (display only).
+- **24h change.** Last price vs the price 24h ago, or vs the launch price for tokens younger than 24h.
+- **Supply.** Mints minus burns (to 0x0 or 0x…dEaD) from indexed transfers. The burn address and 0x0 are
+  not counted as holders.
+- **Creator trading fees** are an estimate: the simulated `collectFees` total × `getShares`, the same method
+  the keeper uses.
+- **Endpoints.** `/api/creator/:wallet` and `/api/leaderboard` only include listed tokens (D-LF4). Leaderboard
+  ranking uses the shared clean-revenue rules (`services/cleanRevenue.ts`). Traders: coming soon.
