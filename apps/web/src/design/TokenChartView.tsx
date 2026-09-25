@@ -187,13 +187,9 @@ export function TokenChartView({ v }: { v: any }) {
 </div>
 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: '9px' }}>
 </div>
-<button onClick={v.onTrade} disabled={v.tradeDisabled} title={v.tradeTitle} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', height: '52px', borderRadius: '999px', border: '0', background: '#8B5CF6', fontFamily: 'Inter,system-ui,sans-serif', fontWeight: '700', letterSpacing: '-0.01em', fontSize: '16px', color: '#FFFFFF', cursor: 'pointer' }} className="dc-tokenchart-hover-6 dc-tokenchart-active-7">
-<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.75" strokeLinecap="round" strokeLinejoin="round"><path d="m16 3 4 4-4 4"></path><path d="M20 7H4"></path><path d="m8 21-4-4 4-4"></path><path d="M4 17h16"></path></svg>
-      Trade {v.symPlain}
-    </button>
+{v.swap}
 </aside>
 </div>
-{v.modal}
 <SiteFooter />
 </div>
   );

@@ -11,6 +11,11 @@ export interface PrivyWallet {
 
 export interface Clients { publicClient: PublicClient; walletClient: WalletClient; account: Address; config: ChainConfig }
 
+export function readClient(config: ChainConfig): PublicClient {
+  const chain = defineChain({ id: config.chainId, name: 'Monad', nativeCurrency: { name: 'MON', symbol: 'MON', decimals: 18 }, rpcUrls: { default: { http: [RPC_URL] } } });
+  return createPublicClient({ chain, transport: http(RPC_URL) }) as PublicClient;
+}
+
 export async function walletClients(wallet: PrivyWallet, config: ChainConfig): Promise<Clients> {
   const chain = defineChain({ id: config.chainId, name: 'Monad', nativeCurrency: { name: 'MON', symbol: 'MON', decimals: 18 }, rpcUrls: { default: { http: [RPC_URL] } } });
   await wallet.switchChain(config.chainId);

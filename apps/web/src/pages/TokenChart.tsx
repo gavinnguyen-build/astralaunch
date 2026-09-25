@@ -15,8 +15,8 @@ import { ago, compact, fmtUsd, serviceLabel, sig } from '../lib/format.js';
 import { Empty, ErrorBox, Loading } from '../components/State.js';
 import { PageShell } from './Token.js';
 import { AddrLink, TxLink } from '../components/Explorer.js';
-import { TradeModal } from '../components/TradeModal.js';
-import { PRIVY_ENABLED, useConnectedWallet } from '../components/Site.js';
+import { SwapPanel } from '../components/SwapPanel.js';
+import { useConnectedWallet, useLogin } from '../components/Site.js';
 import { get } from '../lib/api.js';
 import type { ChainConfig } from '../lib/launch.js';
 
@@ -51,8 +51,8 @@ export default function TokenChart() {
   const [scale, setScale] = useState<'pct' | 'log' | 'auto'>('auto');
   const [hover, setHover] = useState<Candle | null>(null);
   const [clock, setClock] = useState(() => new Date());
-  const [trading, setTrading] = useState(false);
   const wallet = useConnectedWallet();
+  const login = useLogin();
   const cfg = useQuery({ queryKey: ['config'], queryFn: () => get<ChainConfig>('/api/config') });
   const apiTf = TF.find((x) => x[0] === tf)![1]!;
 
@@ -235,13 +235,13 @@ export default function TokenChart() {
       { label: 'Holders', value: holderCount.toLocaleString('en-US') },
     ],
     windows, flows,
-    onTrade: () => setTrading(true),
-    tradeDisabled: !wallet || !cfg.data,
-    tradeTitle: !PRIVY_ENABLED ? 'Set VITE_PRIVY_APP_ID to connect a wallet' : !wallet ? 'Connect a wallet to trade' : `Buy or sell ${t.symbol}`,
-    modal: trading && wallet && cfg.data ? (
-      <TradeModal asset={t.asset as `0x${string}`} symbol={t.symbol} numSym={numSym === 'MON' ? 'MON' : 'USDC'} wallet={wallet} config={cfg.data}
-        initialSide="buy" onClose={() => { setTrading(false); trades.refetch(); candles.refetch(); }} />
-    ) : null,
+    swap: (
+      <SwapPanel asset={t.asset as `0x${string}`} symbol={t.symbol} numSym={numSym === 'MON' ? 'MON' : 'USDC'} config={cfg.data}
+        wallet={wallet} login={login}
+        usdPerNum={m?.priceUsd != null && m?.price && Number(m.price) > 0 ? Number(m.priceUsd) / Number(m.price) : null}
+        tokenUsd={m?.priceUsd != null ? Number(m.priceUsd) : null}
+        onSwapped={() => { trades.refetch(); candles.refetch(); token.refetch(); holders.refetch(); }} />
+    ),
   };
   return <TokenChartView v={v} />;
 }

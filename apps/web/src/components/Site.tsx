@@ -27,6 +27,14 @@ export function useConnectedWallet() {
 
 export const PRIVY_ENABLED = HAS_PRIVY;
 
+/** Opens the Privy login (null when Privy is not configured). */
+export function useLogin(): (() => void) | null {
+  if (!HAS_PRIVY) return null;
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const { ready, login } = usePrivy();
+  return ready ? login : null;
+}
+
 export function useWalletAddress(): string | null {
   if (!HAS_PRIVY) return null;
   // eslint-disable-next-line react-hooks/rules-of-hooks

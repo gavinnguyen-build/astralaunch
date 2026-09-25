@@ -287,3 +287,30 @@ accepted one, at 1-second resolution.
 **D-PD7. Slug pre-check at launch.** `planLaunch` checks `GET /api/services/:slug/manifest` and throws
 `slug_taken` before any transaction. Before this change, a taken slug was found only after the token was
 already launched.
+
+## Swap panel (2026-09-26)
+
+**D-SW1.** The chart page's Trade button and pop-up are replaced by an inline swap panel (`components/SwapPanel.tsx`).
+It keeps the interaction patterns of a DEX swap in Astralaunch's own visual design (CLAUDE.md: original design only).
+- Buy/Sell tabs and a flip button. Exact-in only. The pay-side input has 25% / 50% / Max buttons. Max on a native MON
+  buy keeps `gasPrice × 1M gas` for gas.
+- Quotes arrive as you type (300 ms debounce, v4 Quoter) and need no wallet. They refresh every 12 s.
+- Price impact is the execution price compared with a 1/1000-size quote, so the 2% fee cancels out. At 3% or more
+  the impact shows amber, at 10% or more red. At 15% or more the button turns red and the review requires a checkbox.
+- Min received and the 2% pool fee are always visible under the quote.
+- The single primary button's label follows the state: Connect wallet, Enter an amount, Not enough X,
+  Getting the price…, then Review swap.
+- The review dialog takes one wallet action per click: Approve (exact amount) → Sign permit → Buy/Sell,
+  with a stepper. The gas for each tx (simulated estimate × 1.1, shown in MON) is visible before the click that
+  sends it. The swap gas can only be simulated after the permit is signed, so it appears then.
+- The minimum received the user reviewed is the on-chain floor. If a refreshed quote is more than 0.1% worse,
+  a "Price updated" banner asks for acceptance before continuing.
+- Wallet errors map to one calm sentence: cancelled, slippage exceeded (`V4TooLittleReceived` / `InsufficientETH`),
+  not enough MON for gas, expired.
+- The success view shows the amount actually received: the balance difference, plus gas when the output is MON.
+
+Verified on a local Anvil fork with `apps/web/scripts/swap-harness` driven by headless Chrome:
+- USDC buy with a rejected-then-accepted approval, then permit, then swap.
+- USDC sell with permit only.
+- MON buy (one tx) and MON sell (permit, then swap).
+- The flip button, the insufficient-balance label, and the high-impact gate.

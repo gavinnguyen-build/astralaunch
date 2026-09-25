@@ -94,34 +94,53 @@ export interface TradePlan {
   needsApproval: boolean; needsPermit: boolean; permitNonce: number; balanceIn: bigint;
 }
 
-/** Quote + allowance/balance checks. No transaction. */
-export async function planTrade(pc: PublicClient, a: TradeAddrs, account: Address, r: TradeRequest): Promise<TradePlan> {
-  const key = await getPoolKey(pc, a, r.asset);
+export type TradeQuote = Omit<TradePlan, 'needsApproval' | 'needsPermit' | 'permitNonce' | 'balanceIn'> & {
+  /** Execution price vs the pool's marginal price, in bps (the 2% fee cancels out). */
+  priceImpactBps: number;
+};
+
+/** Quote only: no account needed (the swap panel quotes before a wallet is connected). */
+export async function quoteTrade(pc: PublicClient, a: TradeAddrs, r: TradeRequest & { key?: PoolKey }): Promise<TradeQuote> {
+  const key = r.key ?? await getPoolKey(pc, a, r.asset);
   const asset = getAddress(r.asset);
   const numeraire = getAddress(key.currency0) === asset ? getAddress(key.currency1) : getAddress(key.currency0);
   const isMonPair = numeraire === getAddress(a.wmon);
   const tokenIn = r.side === 'buy' ? numeraire : asset;
   const zeroForOne = getAddress(key.currency0) === tokenIn;
   const slippageBps = r.slippageBps ?? 100;
-  const quoteOut = await quote(pc, a, key, zeroForOne, r.amountIn);
+  const refIn = r.amountIn / 1000n > 0n ? r.amountIn / 1000n : 1n;
+  const [quoteOut, refOut] = await Promise.all([quote(pc, a, key, zeroForOne, r.amountIn), quote(pc, a, key, zeroForOne, refIn)]);
   const minOut = (quoteOut * BigInt(10_000 - slippageBps)) / 10_000n;
-  const payNative = r.side === 'buy' && isMonPair;
-  const balanceIn = payNative ? await pc.getBalance({ address: account })
-    : await pc.readContract({ address: tokenIn, abi: erc20Abi, functionName: 'balanceOf', args: [account] });
-  let needsApproval = false, needsPermit = false, permitNonce = 0;
-  if (!payNative) {
-    const allow = await pc.readContract({ address: tokenIn, abi: erc20Abi, functionName: 'allowance', args: [account, a.permit2] });
-    needsApproval = allow < r.amountIn;
-    const [amt, exp, nonce] = await pc.readContract({ address: a.permit2, abi: permit2Abi, functionName: 'allowance', args: [account, tokenIn, a.universalRouter] });
-    needsPermit = amt < r.amountIn || Number(exp) <= Math.floor(Date.now() / 1000) + 60;
-    permitNonce = Number(nonce);
-  }
+  const impact = refOut > 0n ? 10_000n - (quoteOut * refIn * 10_000n) / (r.amountIn * refOut) : 0n;
   return {
     side: r.side, asset, key, numeraire, isMonPair, zeroForOne,
-    inputToken: payNative ? 'MON' : tokenIn,
+    inputToken: r.side === 'buy' && isMonPair ? 'MON' : tokenIn,
     outputToken: r.side === 'sell' && isMonPair ? 'MON' : r.side === 'buy' ? asset : numeraire,
-    amountIn: r.amountIn, quoteOut, minOut, slippageBps, needsApproval, needsPermit, permitNonce, balanceIn,
+    amountIn: r.amountIn, quoteOut, minOut, slippageBps, priceImpactBps: Number(impact > 0n ? impact : 0n),
   };
+}
+
+/** Balance + ERC-20 → Permit2 allowance + Permit2 → router allowance for a quote. */
+export async function accountState(pc: PublicClient, a: TradeAddrs, account: Address, q: Pick<TradeQuote, 'inputToken' | 'amountIn'>) {
+  if (q.inputToken === 'MON') return { balanceIn: await pc.getBalance({ address: account }), needsApproval: false, needsPermit: false, permitNonce: 0 };
+  const tokenIn = q.inputToken;
+  const [balanceIn, allow, [amt, exp, nonce]] = await Promise.all([
+    pc.readContract({ address: tokenIn, abi: erc20Abi, functionName: 'balanceOf', args: [account] }),
+    pc.readContract({ address: tokenIn, abi: erc20Abi, functionName: 'allowance', args: [account, a.permit2] }),
+    pc.readContract({ address: a.permit2, abi: permit2Abi, functionName: 'allowance', args: [account, tokenIn, a.universalRouter] }),
+  ]);
+  return {
+    balanceIn,
+    needsApproval: allow < q.amountIn,
+    needsPermit: amt < q.amountIn || Number(exp) <= Math.floor(Date.now() / 1000) + 60,
+    permitNonce: Number(nonce),
+  };
+}
+
+/** Quote + allowance/balance checks. No transaction. */
+export async function planTrade(pc: PublicClient, a: TradeAddrs, account: Address, r: TradeRequest): Promise<TradePlan> {
+  const q = await quoteTrade(pc, a, r);
+  return { ...q, ...(await accountState(pc, a, account, q)) };
 }
 
 /** Permit2 PermitSingle for the Universal Router (EIP-712, signed by the wallet). */

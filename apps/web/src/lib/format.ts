@@ -18,7 +18,8 @@ export function compact(v: number | string | null | undefined, dp = 1): string {
 
 /** Small prices keep 3 significant digits: 0.0000025376 → "0.00000254". */
 export function sig(n: number, digits = 3): string {
-  if (n === 0) return '0';
+  if (n === 0 || !Number.isFinite(n)) return n === 0 ? '0' : '—';
+  if (Math.abs(n) >= 10 ** digits) return Math.round(n).toLocaleString('en-US');
   const s = n.toPrecision(digits);
   return s.includes('e') ? trim(n.toFixed(Math.min(20, digits - Math.floor(Math.log10(Math.abs(n))) - 1))) : trim(s);
 }
