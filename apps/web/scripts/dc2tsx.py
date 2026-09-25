@@ -134,7 +134,11 @@ class Conv(HTMLParser):
                 continue
             val = re.sub(r'/_blob/([0-9a-f]+)', lambda m: BLOBS.get(m.group(1), m.group(0)), val)
             items.append(f'{camel(k)}: {self.value_js(val)}')
-        return '{ ' + ', '.join(items) + ' }'
+        # CSS semantics: a later declaration of the same property wins (JS object keys must be unique)
+        dedup = {}
+        for it in items:
+            dedup[it.split(':', 1)[0]] = it
+        return '{ ' + ', '.join(dedup.values()) + ' }'
 
     def hover_rule(self, style, pseudo):
         self.hover_n += 1

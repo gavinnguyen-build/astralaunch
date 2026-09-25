@@ -15,6 +15,18 @@ const NAV = [
   { key: 'docs', label: 'Docs', href: '/docs' },
 ];
 
+/** The connected Privy wallet (or null), for signing and sending transactions. */
+export function useConnectedWallet() {
+  if (!HAS_PRIVY) return null;
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const { ready, authenticated } = usePrivy();
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const { wallets } = useWallets();
+  return ready && authenticated ? wallets[0] ?? null : null;
+}
+
+export const PRIVY_ENABLED = HAS_PRIVY;
+
 export function useWalletAddress(): string | null {
   if (!HAS_PRIVY) return null;
   // eslint-disable-next-line react-hooks/rules-of-hooks

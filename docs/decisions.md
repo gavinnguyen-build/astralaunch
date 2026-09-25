@@ -184,3 +184,38 @@ set, so read-only pages work without it; `/creator?wallet=0x…` shows any creat
   It is now anchored as `'^/s/'`.
 - `API_PROXY_TARGET` overrides the proxy target (default `http://localhost:3001`).
 - `PROBES_DISABLED=true` stops a read-only preview server from writing service probes.
+
+## Web Phase C: launch from the browser (2026-09-26)
+
+**D-LC1. One flow module.** `apps/web/src/lib/launch.ts` is framework-free and mirrors
+`astralaunch-anvil/src/mainnet-launch.ts` parameter for parameter:
+- supply, pool/vested split and vesting schedule
+- fee and tick spacing
+- sorted beneficiaries and exclusions
+- two curves from the fixed `INITIAL_MCAP_USD` (not shown in the UI)
+- no-op governance and migration; integrator = PlatformFeeReceiver
+- startTime recomputed from the latest block right before sending
+- the [600, 900] s cap-window check before `register`
+
+Contract addresses come from `GET /api/config`, i.e. the server's deployment env; the browser hardcodes none.
+
+**D-LC2. Order.**
+1. Launch fee: 10 MON to the treasury, skipped when the wallet has an unused receipt.
+2. `POST /api/launch-fee/verify`, retried while the tx is not finalized.
+3. `createMulticurve`.
+4. `register(asset, feeRecipient)`.
+5. Wait until the indexer consumed the fee (token listed, tokens row exists).
+6. Signed `POST /api/tokens` (details), then signed `POST /api/services`.
+   Both use the existing JSON messages and only the on-chain creator can sign them, so with a different
+   fee recipient these two steps are skipped with a note.
+
+Every tx is simulated first and sent with gas = estimate × 1.1. The 3-per-24h limit is checked before
+planning and on verify (HTTP 429).
+
+**D-LC3. Design fields without backend support.** Image upload, Health check path and Method are shown
+disabled. The token image is a URL saved as signed metadata; `tokenURI` stays `''` as in the script.
+ENS is not available on Monad, so the fee recipient must be a 0x address.
+
+**D-LC4. Fork testing.** `apps/web/scripts/fork-prepare.sh` prepares a fresh scratch DB and a fork env in
+the gitignored `astralaunch-anvil/.anvil-state/`. `scripts/fork-launch-test.ts` runs the flow from Node
+against a local RPC only.
