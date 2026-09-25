@@ -6,15 +6,15 @@ pragma solidity ^0.8.24;
 interface IAirlock {
     /// @notice Returns on-chain data for an asset launched through the Airlock.
     /// @param asset The launched ERC-20 token address.
-    /// @return numeraire          The quote token used in the pool (USDC on Revpad).
-    /// @return timelock           Timelock contract (unused in Revpad v1).
-    /// @return governance         Governance factory address (NoOpGovernanceFactory on Revpad).
-    /// @return liquidityMigrator  Migrator address (NoOpMigrator on Revpad).
-    /// @return poolInitializer    Initializer address (V4ScheduledMulticurveInitializer on Revpad).
+    /// @return numeraire          The quote token used in the pool (USDC or WMON on Astralaunch).
+    /// @return timelock           Timelock contract (unused in Astralaunch v1).
+    /// @return governance         Governance factory address (NoOpGovernanceFactory on Astralaunch).
+    /// @return liquidityMigrator  Migrator address (NoOpMigrator on Astralaunch).
+    /// @return poolInitializer    Initializer address (V4ScheduledMulticurveInitializer on Astralaunch).
     /// @return pool               Pool address / hook address.
     /// @return migrationPool      Post-migration pool (zero for NoOp).
-    /// @return numTokensToSell    Tokens in the pool (85% of supply on Revpad).
-    /// @return totalSupply        Total supply minted (1e27 = 1e9 * 1e18 on Revpad).
+    /// @return numTokensToSell    Tokens in the pool (85% of supply on Astralaunch).
+    /// @return totalSupply        Total supply minted (1e27 = 1e9 * 1e18 on Astralaunch).
     /// @return integrator         Integrator address registered with Doppler.
     function getAssetData(address asset)
         external

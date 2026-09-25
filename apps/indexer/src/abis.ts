@@ -1,7 +1,7 @@
 // Event ABI fragments for all indexed events.
 // Only event signatures — no full contract ABIs.
 
-// ── RevpadRegistry ───────────────────────────────────────────────────────────
+// ── AstralaunchRegistry ──────────────────────────────────────────────────────
 export const registeredEvent = {
   type: 'event',
   name: 'Registered',

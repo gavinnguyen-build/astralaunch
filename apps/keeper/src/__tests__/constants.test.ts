@@ -8,7 +8,7 @@ import {
   MAX_MON_PER_DAY_WEI,
   MIN_MON_BALANCE_WEI,
   SINGLE_TX_ALERT_WEI,
-} from '@revpad/shared';
+} from '@astralaunch/shared';
 
 describe('keeper-related constants', () => {
   it('BUYBACK_MIN_INTERVAL_S is 600 (matches Solidity)', () => {

@@ -3,14 +3,20 @@ pragma solidity ^0.8.24;
 
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
-import {RevpadConstants as C} from "./RevpadConstants.sol";
-import {IInitializer} from "./interfaces/IInitializer.sol";
+import {AstralaunchConstants as C} from "./AstralaunchConstants.sol";
+import {IFeeAdapter} from "./interfaces/IFeeAdapter.sol";
 import {IBuybackVault, SOURCE_FORFEIT} from "./interfaces/IBuybackVault.sol";
+import {IAggregatorV3} from "./interfaces/IAggregatorV3.sol";
 
 /// @title  FeeEscrow
-/// @notice Singleton that holds the 20 % escrowed creator fee share for every Revpad asset.
+/// @notice Singleton that holds the 20% escrowed creator fee share for every Astralaunch asset.
 ///         Trading fees (from Doppler) accumulate here when `collect` is called.
-///         Service revenue (from distribute) unlocks escrowed USDC at 0.2 : 1 ratio.
+///         Service revenue (from distribute) unlocks escrowed funds at 0.2 : 1 ratio.
+///
+///         v2: supports dual numeraire (USDC or WMON). For WMON-paired tokens,
+///         the numeraire side of trading fees is WMON. WMON escrow stays in WMON;
+///         claimable amount is valued via Chainlink MON/USD oracle at claim time.
+///         No keeper swap (O4) required.
 ///
 ///         SPEC §4.3 / §6.3.
 contract FeeEscrow is ReentrancyGuard {
@@ -21,20 +27,34 @@ contract FeeEscrow is ReentrancyGuard {
         address creator;
         uint48  launchTime;
         bool    forfeited;
-        uint128 usdcAccrued;      // USDC collected from Doppler trading fees
-        uint128 usdcClaimed;      // USDC already paid to creator
-        uint128 tokenPending;     // asset-denominated fees not yet swapped to USDC (O4)
-        uint128 recordedRevenue;  // cumulative USDC recorded by router.distribute()
-        bytes32 poolId;           // Uniswap v4 pool id for collectFees
+        uint128 usdcAccrued;         // USDC collected (for USDC pairs)
+        uint128 usdcClaimed;         // USDC already paid to creator
+        uint128 tokenPending;        // asset-denominated fees
+        uint128 recordedRevenue;     // cumulative USDC recorded by router.distribute()
+        bytes32 poolId;              // Uniswap v4 pool id for collectFees
+        address numeraire;           // USDC or WMON
+    }
+
+    /// @notice WMON-specific escrow data, stored separately to avoid stack-too-deep.
+    struct WmonData {
+        uint128 wmonAccrued;         // total WMON collected
+        uint128 wmonClaimed;         // WMON already paid to creator
+        uint128 wmonClaimedUsd;      // cumulative USD value of WMON claims (8 decimals)
     }
 
     mapping(address asset => TokenData) private _data;
+    mapping(address asset => WmonData)  private _wmon;
 
     // ── Singletons ────────────────────────────────────────────────────────────
     address         public immutable registry;
     address         public immutable buybackVault;
-    IInitializer    public immutable initializer;
+    IAggregatorV3   public immutable oracle;
+    uint256         public immutable maxStaleness;
     address         constant USDC = 0x754704Bc059F8C67012fEd69BC8A327a5aafb603;
+    address         constant WMON = 0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A;
+
+    /// @notice Fee adapter used for collectFees calls. Set at construction.
+    mapping(address asset => IFeeAdapter) private _adapters;
 
     // Addresses authorised to call recordRevenue (set of routers, maintained via registry)
     mapping(address router => bool) public authorizedRouters;
@@ -48,42 +68,58 @@ contract FeeEscrow is ReentrancyGuard {
     error ForfeitTooEarly();
     error AlreadyForfeited();
     error NothingToClaim();
+    error CollectFeesFailed();
+    error OracleZeroPrice();
+    error OracleStale();
 
     // ── Events ────────────────────────────────────────────────────────────────
-    event AssetRegistered(address indexed asset, address indexed creator, uint48 launchTime);
-    event FeeCollected(address indexed asset, uint256 usdcDelta, uint256 tokenDelta);
+    event AssetRegistered(address indexed asset, address indexed creator, uint48 launchTime, address numeraire);
+    event FeeCollected(address indexed asset, uint256 usdcDelta, uint256 tokenDelta, uint256 wmonDelta);
     event RevenueRecorded(address indexed asset, uint256 amt, uint256 newTotal);
     event Claimed(address indexed asset, address indexed creator, uint256 amt);
-    event Forfeited(address indexed asset, uint256 usdcMoved, uint256 tokenMoved);
+    event ClaimedWmon(address indexed asset, address indexed creator, uint256 wmonAmt, uint256 usdValue);
+    event Forfeited(address indexed asset, uint256 usdcMoved, uint256 tokenMoved, uint256 wmonMoved);
 
     // ── Constructor ───────────────────────────────────────────────────────────
-    constructor(address _registry, address _buybackVault, address _initializer) {
-        registry     = _registry;
-        buybackVault = _buybackVault;
-        initializer  = IInitializer(_initializer);
+    constructor(address _registry, address _buybackVault, address _oracle, uint256 _maxStaleness) {
+        registry      = _registry;
+        buybackVault  = _buybackVault;
+        oracle        = IAggregatorV3(_oracle);
+        maxStaleness  = _maxStaleness;
     }
 
     // ── Registry callbacks ────────────────────────────────────────────────────
-    /// @notice Register a new asset. Called once by RevpadRegistry after deploying the router.
-    function registerAsset(address asset, address creator, uint48 launchTime, bytes32 poolId)
-        external
-    {
+    /// @notice Register a new asset. Called once by AstralaunchRegistry after deploying the router.
+    function registerAsset(
+        address asset,
+        address creator,
+        uint48 launchTime,
+        bytes32 poolId,
+        address numeraire
+    ) external {
         if (msg.sender != registry) revert NotRegistry();
         if (_data[asset].launchTime != 0) revert AlreadyRegistered();
         _data[asset] = TokenData({
-            creator:         creator,
-            launchTime:      launchTime,
-            forfeited:       false,
-            usdcAccrued:     0,
-            usdcClaimed:     0,
-            tokenPending:    0,
-            recordedRevenue: 0,
-            poolId:          poolId
+            creator:          creator,
+            launchTime:       launchTime,
+            forfeited:        false,
+            usdcAccrued:      0,
+            usdcClaimed:      0,
+            tokenPending:     0,
+            recordedRevenue:  0,
+            poolId:           poolId,
+            numeraire:        numeraire
         });
-        emit AssetRegistered(asset, creator, launchTime);
+        emit AssetRegistered(asset, creator, launchTime, numeraire);
     }
 
-    /// @notice Authorize a router to call recordRevenue. Called by RevpadRegistry.
+    /// @notice Set the fee adapter for an asset. Called by AstralaunchRegistry at registration.
+    function setAdapter(address asset, address adapter) external {
+        if (msg.sender != registry) revert NotRegistry();
+        _adapters[asset] = IFeeAdapter(adapter);
+    }
+
+    /// @notice Authorize a router to call recordRevenue. Called by AstralaunchRegistry.
     function authorizeRouter(address router) external {
         if (msg.sender != registry) revert NotRegistry();
         authorizedRouters[router] = true;
@@ -91,38 +127,47 @@ contract FeeEscrow is ReentrancyGuard {
 
     // ── Collect trading fees ──────────────────────────────────────────────────
     /// @notice Pull the escrow's share of Doppler trading fees for `asset`.
-    ///         Anyone may trigger; the escrow calls collectFees as the beneficiary.
-    ///         Attribution: USDC and token deltas around the call belong to this asset.
     function collect(address asset) external nonReentrant {
         TokenData storage d = _data[asset];
         if (d.launchTime == 0) revert AssetNotRegistered();
 
-        uint256 usdcBefore  = USDC.balanceOf(address(this));
-        uint256 tokenBefore = asset.balanceOf(address(this));
+        address num = d.numeraire;
+        uint256 numeraireBefore = num.balanceOf(address(this));
+        uint256 tokenBefore     = asset.balanceOf(address(this));
 
-        initializer.collectFees(d.poolId);
+        (address target, bytes memory cdata) = _adapters[asset].collectFeesCall(d.poolId);
+        (bool ok,) = target.call(cdata);
+        if (!ok) revert CollectFeesFailed();
 
-        uint256 usdcDelta  = USDC.balanceOf(address(this)) - usdcBefore;
-        uint256 tokenDelta = asset.balanceOf(address(this)) - tokenBefore;
+        uint256 numeraireDelta = num.balanceOf(address(this)) - numeraireBefore;
+        uint256 tokenDelta     = asset.balanceOf(address(this)) - tokenBefore;
+
+        uint256 usdcDelta;
+        uint256 wmonDelta;
 
         if (d.forfeited) {
-            // Post-forfeit: route any new accruals directly to BuybackVault
-            if (usdcDelta > 0) {
-                USDC.safeTransfer(buybackVault, usdcDelta);
-                IBuybackVault(buybackVault).creditUSDC(asset, usdcDelta, SOURCE_FORFEIT);
+            if (num == USDC && numeraireDelta > 0) {
+                USDC.safeTransfer(buybackVault, numeraireDelta);
+                IBuybackVault(buybackVault).creditUSDC(asset, numeraireDelta, SOURCE_FORFEIT);
             }
-            // Token fees post-forfeit: just leave in contract; keeper can call forfeit again
+            if (num == WMON && numeraireDelta > 0) {
+                WMON.safeTransfer(buybackVault, numeraireDelta);
+            }
         } else {
-            if (usdcDelta  > 0) d.usdcAccrued   += uint128(usdcDelta);
-            if (tokenDelta > 0) d.tokenPending   += uint128(tokenDelta);
+            if (num == USDC) {
+                usdcDelta = numeraireDelta;
+                if (usdcDelta > 0) d.usdcAccrued += uint128(usdcDelta);
+            } else {
+                wmonDelta = numeraireDelta;
+                if (wmonDelta > 0) _wmon[asset].wmonAccrued += uint128(wmonDelta);
+            }
+            if (tokenDelta > 0) d.tokenPending += uint128(tokenDelta);
         }
 
-        emit FeeCollected(asset, usdcDelta, tokenDelta);
+        emit FeeCollected(asset, usdcDelta, tokenDelta, wmonDelta);
     }
 
     // ── Revenue recording ─────────────────────────────────────────────────────
-    /// @notice Called by the asset's RevenueRouter after distribute().
-    ///         Records full distribution amount so escrow unlock (0.2 × revenue) can be computed.
     function recordRevenue(address asset, uint256 amt) external {
         if (!authorizedRouters[msg.sender]) revert NotRouter();
         TokenData storage d = _data[asset];
@@ -132,29 +177,38 @@ contract FeeEscrow is ReentrancyGuard {
     }
 
     // ── Claim ─────────────────────────────────────────────────────────────────
-    /// @notice Returns how many USDC the creator may claim right now.
-    ///         = min(recordedRevenue × ESCROW_UNLOCK_BPS / 10000, usdcAccrued) − usdcClaimed
     function claimable(address asset) external view returns (uint256) {
         return _claimable(_data[asset]);
     }
 
-    /// @notice Creator claims available escrowed USDC.
+    function claimableWmon(address asset) external view returns (uint256) {
+        (uint256 wmonAmt,) = _computeClaimableWmon(asset);
+        return wmonAmt;
+    }
+
     function claim(address asset) external nonReentrant {
         TokenData storage d = _data[asset];
         if (d.launchTime == 0) revert AssetNotRegistered();
         if (msg.sender != d.creator) revert NotCreator();
 
-        uint256 amt = _claimable(d);
-        if (amt == 0) revert NothingToClaim();
-
-        d.usdcClaimed += uint128(amt);
-        USDC.safeTransfer(d.creator, amt);
-
-        emit Claimed(asset, d.creator, amt);
+        if (d.numeraire == USDC) {
+            uint256 amt = _claimable(d);
+            if (amt == 0) revert NothingToClaim();
+            d.usdcClaimed += uint128(amt);
+            USDC.safeTransfer(d.creator, amt);
+            emit Claimed(asset, d.creator, amt);
+        } else {
+            (uint256 wmonAmt, uint256 usdValue) = _computeClaimableWmon(asset);
+            if (wmonAmt == 0) revert NothingToClaim();
+            WmonData storage w = _wmon[asset];
+            w.wmonClaimed    += uint128(wmonAmt);
+            w.wmonClaimedUsd += uint128(usdValue);
+            WMON.safeTransfer(d.creator, wmonAmt);
+            emit ClaimedWmon(asset, d.creator, wmonAmt, usdValue);
+        }
     }
 
     // ── Forfeit ───────────────────────────────────────────────────────────────
-    /// @notice After launchTime + 365 days, anyone may move unclaimed escrow to BuybackVault.
     function forfeit(address asset) external nonReentrant {
         TokenData storage d = _data[asset];
         if (d.launchTime == 0) revert AssetNotRegistered();
@@ -166,8 +220,11 @@ contract FeeEscrow is ReentrancyGuard {
         uint256 usdcRemaining  = uint256(d.usdcAccrued) - uint256(d.usdcClaimed);
         uint256 tokenRemaining = uint256(d.tokenPending);
 
+        WmonData storage w = _wmon[asset];
+        uint256 wmonRemaining = uint256(w.wmonAccrued) - uint256(w.wmonClaimed);
+
         if (usdcRemaining > 0) {
-            d.usdcAccrued = d.usdcClaimed; // zero out available balance
+            d.usdcAccrued = d.usdcClaimed;
             USDC.safeTransfer(buybackVault, usdcRemaining);
             IBuybackVault(buybackVault).creditUSDC(asset, usdcRemaining, SOURCE_FORFEIT);
         }
@@ -175,13 +232,21 @@ contract FeeEscrow is ReentrancyGuard {
             d.tokenPending = 0;
             asset.safeTransfer(buybackVault, tokenRemaining);
         }
+        if (wmonRemaining > 0) {
+            w.wmonAccrued = w.wmonClaimed;
+            WMON.safeTransfer(buybackVault, wmonRemaining);
+        }
 
-        emit Forfeited(asset, usdcRemaining, tokenRemaining);
+        emit Forfeited(asset, usdcRemaining, tokenRemaining, wmonRemaining);
     }
 
     // ── View ──────────────────────────────────────────────────────────────────
     function tokenData(address asset) external view returns (TokenData memory) {
         return _data[asset];
+    }
+
+    function wmonData(address asset) external view returns (WmonData memory) {
+        return _wmon[asset];
     }
 
     // ── Internal ──────────────────────────────────────────────────────────────
@@ -192,5 +257,29 @@ contract FeeEscrow is ReentrancyGuard {
         uint256 already    = uint256(d.usdcClaimed);
         if (maxPayable <= already) return 0;
         return maxPayable - already;
+    }
+
+    function _computeClaimableWmon(address asset) internal view returns (uint256 wmonAmt, uint256 usdValue) {
+        TokenData storage d = _data[asset];
+        WmonData storage w  = _wmon[asset];
+
+        if (d.forfeited || d.launchTime == 0 || d.numeraire != WMON) return (0, 0);
+
+        uint256 allowanceUsd8 = (uint256(d.recordedRevenue) * C.ESCROW_UNLOCK_BPS * 100) / 10_000;
+
+        uint256 remainingUsd8 = allowanceUsd8 > uint256(w.wmonClaimedUsd)
+            ? allowanceUsd8 - uint256(w.wmonClaimedUsd)
+            : 0;
+        if (remainingUsd8 == 0) return (0, 0);
+
+        (, int256 answer,, uint256 updatedAt,) = oracle.latestRoundData();
+        if (answer <= 0) revert OracleZeroPrice();
+        if (block.timestamp - updatedAt > maxStaleness) revert OracleStale();
+        uint256 monPriceUsd8 = uint256(answer);
+
+        uint256 maxWmon = (remainingUsd8 * 1e18) / monPriceUsd8;
+        uint256 availableWmon = uint256(w.wmonAccrued) - uint256(w.wmonClaimed);
+        wmonAmt = maxWmon < availableWmon ? maxWmon : availableWmon;
+        usdValue = (wmonAmt * monPriceUsd8) / 1e18;
     }
 }

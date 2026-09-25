@@ -2,13 +2,13 @@
 pragma solidity ^0.8.24;
 
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
-import {RevpadConstants as C} from "./RevpadConstants.sol";
+import {AstralaunchConstants as C} from "./AstralaunchConstants.sol";
 import {IFeeEscrow} from "./interfaces/IFeeEscrow.sol";
 import {IBuybackVault, SOURCE_REVENUE} from "./interfaces/IBuybackVault.sol";
 
 /// @title  RevenueRouter
 /// @notice Per-asset contract used as the x402 `payTo` address.
-///         Deployed as an EIP-1167 minimal proxy clone by RevpadRegistry.
+///         Deployed as an EIP-1167 minimal proxy clone by AstralaunchRegistry.
 ///         Splits every USDC inflow between provider, cost recipient, buyback, and treasury.
 ///
 /// Split rule (SPEC §4.2, CLAUDE.md rule 1):
@@ -65,7 +65,7 @@ contract RevenueRouter {
     }
 
     // ── Initializer (called by clone factory, not constructor) ────────────────
-    /// @notice One-time setup. Called by RevpadRegistry immediately after cloning.
+    /// @notice One-time setup. Called by AstralaunchRegistry immediately after cloning.
     function initialize(
         address _asset,
         address _creator,

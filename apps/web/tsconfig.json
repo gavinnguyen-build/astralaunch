@@ -18,7 +18,7 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
-      "@revpad/shared": ["../../packages/shared/src/index.ts"]
+      "@astralaunch/shared": ["../../packages/shared/src/index.ts"]
     }
   },
   "include": ["src"],

@@ -3,7 +3,7 @@
  * Requires POSTGRES_URL env var pointing to a Postgres instance with createdb/dropdb permissions.
  * Skipped if POSTGRES_URL is not set.
  *
- * Usage: POSTGRES_URL=postgres://user:pass@localhost:5432 pnpm -F @revpad/indexer test
+ * Usage: POSTGRES_URL=postgres://user:pass@localhost:5432 pnpm -F @astralaunch/indexer test
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execSync } from 'node:child_process';
@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const POSTGRES_URL = process.env.POSTGRES_URL;
-const DB_NAME = `revpad_migration_test_${Date.now()}`;
+const DB_NAME = `astralaunch_migration_test_${Date.now()}`;
 
 // Skip entirely if no Postgres connection available
 const describeWithDb = POSTGRES_URL ? describe : describe.skip;

@@ -4,15 +4,15 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: revpad
-      POSTGRES_PASSWORD: revpad
-      POSTGRES_DB: revpad
+      POSTGRES_USER: astralaunch
+      POSTGRES_PASSWORD: astralaunch
+      POSTGRES_DB: astralaunch
     ports:
       - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U revpad']
+      test: ['CMD-SHELL', 'pg_isready -U astralaunch']
       interval: 5s
       timeout: 5s
       retries: 5

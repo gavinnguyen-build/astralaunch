@@ -3,8 +3,8 @@ import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { services } from '../db/schema.js';
-import { createServiceSchema, updateServiceSchema, serviceRegistrationMessage } from '@revpad/shared';
-import { MONAD_NETWORK, USDC } from '@revpad/shared';
+import { createServiceSchema, updateServiceSchema, serviceRegistrationMessage } from '@astralaunch/shared';
+import { MONAD_NETWORK, USDC } from '@astralaunch/shared';
 import { assertSafeUpstream, SsrfError } from '../lib/ssrf.js';
 import { generateSecret } from '../lib/hmac.js';
 import { REGISTRY_ADDR, RPC_URL, CHAIN_ID, USDC_ADDR, PAYMENT_TIMEOUT_S } from '../env.js';
@@ -57,7 +57,7 @@ app.post('/', zValidator('json', createServiceSchema), async (c) => {
     return c.json({ error: 'Invalid creator signature' }, 401);
   }
 
-  // 3. Verify token is registered in RevpadRegistry on-chain
+  // 3. Verify token is registered in AstralaunchRegistry on-chain
   let router: Address;
   try {
     router = await publicClient.readContract({
@@ -67,10 +67,10 @@ app.post('/', zValidator('json', createServiceSchema), async (c) => {
       args: [body.asset as Address],
     });
     if (router === '0x0000000000000000000000000000000000000000') {
-      return c.json({ error: 'Token not registered in RevpadRegistry' }, 400);
+      return c.json({ error: 'Token not registered in AstralaunchRegistry' }, 400);
     }
   } catch {
-    return c.json({ error: 'Failed to read RevpadRegistry' }, 502);
+    return c.json({ error: 'Failed to read AstralaunchRegistry' }, 502);
   }
 
   // 4. Check slug uniqueness

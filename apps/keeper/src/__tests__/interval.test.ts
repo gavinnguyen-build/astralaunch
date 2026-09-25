@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { KEEPER_DEFAULT_INTERVAL_S, KEEPER_MIN_INTERVAL_S } from '@revpad/shared';
+import { KEEPER_DEFAULT_INTERVAL_S, KEEPER_MIN_INTERVAL_S } from '@astralaunch/shared';
 
 describe('keeper interval constants', () => {
   it('default interval is 600s (10 min)', () => {

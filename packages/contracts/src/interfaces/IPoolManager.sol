@@ -23,7 +23,7 @@ struct SwapParams {
     uint160 sqrtPriceLimitX96;  // 0 for no limit (use MIN/MAX_SQRT_RATIO ± 1 in practice)
 }
 
-/// @notice Minimal IPoolManager interface for Revpad contracts (BuybackVault swap path).
+/// @notice Minimal IPoolManager interface for Astralaunch contracts (BuybackVault swap path).
 /// Uniswap v4 PoolManager: 0x188d586ddcf52439676ca21a244753fa19f9ea8e on Monad mainnet.
 interface IPoolManager {
     /// @notice Acquire the lock; calls `IUnlockCallback.unlockCallback(data)` on msg.sender.

@@ -1,6 +1,6 @@
 import { config } from 'dotenv';
 import { readFileSync } from 'node:fs';
-import { USDC, FACILITATOR_SUBMITTERS } from '@revpad/shared';
+import { USDC, FACILITATOR_SUBMITTERS } from '@astralaunch/shared';
 
 config({ path: '../../.env' });
 config({ path: '.env', override: false });

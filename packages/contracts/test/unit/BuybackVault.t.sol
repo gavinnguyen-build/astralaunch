@@ -3,34 +3,13 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {BuybackVault} from "../../src/BuybackVault.sol";
-import {RevpadConstants as C} from "../../src/RevpadConstants.sol";
+import {AstralaunchConstants as C} from "../../src/AstralaunchConstants.sol";
+import {IFeeAdapter} from "../../src/interfaces/IFeeAdapter.sol";
 import {PoolKey} from "../../src/interfaces/IInitializer.sol";
 import {SOURCE_REVENUE, SOURCE_TRADING, SOURCE_FORFEIT} from "../../src/interfaces/IBuybackVault.sol";
 import {SwapParams, BalanceDelta} from "../../src/interfaces/IPoolManager.sol";
 
 // ── Stubs ─────────────────────────────────────────────────────────────────────
-contract MockInitializerVault {
-    MockUSDCVault usdc;
-    mapping(bytes32 => mapping(address => uint256)) public usdcPending;
-
-    constructor(address _usdc) { usdc = MockUSDCVault(_usdc); }
-
-    function setUSDCPending(bytes32 poolId, address who, uint256 amt) external {
-        usdcPending[poolId][who] = amt;
-    }
-
-    function collectFees(bytes32 poolId) external returns (uint128, uint128) {
-        uint256 u = usdcPending[poolId][msg.sender];
-        if (u > 0) {
-            usdcPending[poolId][msg.sender] = 0;
-            usdc.mint(msg.sender, u);
-        }
-        return (uint128(u), 0);
-    }
-
-    function getShares(bytes32, address) external pure returns (uint256) { return 0; }
-    function getPoolKey(address) external pure returns (PoolKey memory k) { return k; }
-}
 
 contract MockUSDCVault {
     mapping(address => uint256) public balanceOf;
@@ -43,26 +22,81 @@ contract MockUSDCVault {
     }
 }
 
+contract MockWMONVault {
+    mapping(address => uint256) public balanceOf;
+    function mint(address to, uint256 amt) external { balanceOf[to] += amt; }
+    function transfer(address to, uint256 amt) external returns (bool) {
+        require(balanceOf[msg.sender] >= amt);
+        balanceOf[msg.sender] -= amt;
+        balanceOf[to]         += amt;
+        return true;
+    }
+    function deposit() external payable {
+        balanceOf[msg.sender] += msg.value;
+    }
+}
+
+/// @dev Implements IFeeAdapter for test use.
+contract MockInitializerVault is IFeeAdapter {
+    MockUSDCVault usdc;
+    mapping(bytes32 => mapping(address => uint256)) public usdcPending;
+
+    constructor(address _usdc) { usdc = MockUSDCVault(_usdc); }
+
+    function setUSDCPending(bytes32 poolId, address who, uint256 amt) external {
+        usdcPending[poolId][who] = amt;
+    }
+
+    /// @dev Called by beneficiary via raw .call() — msg.sender is the beneficiary.
+    function doCollect(bytes32 poolId) external returns (uint128, uint128) {
+        uint256 u = usdcPending[poolId][msg.sender];
+        if (u > 0) {
+            usdcPending[poolId][msg.sender] = 0;
+            usdc.mint(msg.sender, u);
+        }
+        return (uint128(u), 0);
+    }
+
+    function collectFeesCall(bytes32 poolId)
+        external view override
+        returns (address target, bytes memory data)
+    {
+        return (address(this), abi.encodeCall(this.doCollect, (poolId)));
+    }
+
+    function getShares(bytes32, address) external pure override returns (uint256) { return 0; }
+
+    function getState(address)
+        external pure override
+        returns (address, uint8, PoolKey memory, int24)
+    {
+        PoolKey memory k;
+        return (address(0), 0, k, 0);
+    }
+}
+
 /// @dev PoolManager stub: swap just returns tokens to vault without touching real v4.
+///      Supports both single-hop and two-hop (via isWmonPair flag in encoded data).
 contract MockPoolManager {
     MockAssetToken asset_;
     uint256 public swapUsdcIn;
     uint256 public swapTokenOut;
-    address public vaultAddr;
+    address payable public vaultAddr;
 
     constructor(address _asset) { asset_ = MockAssetToken(_asset); }
 
     function unlock(bytes calldata data) external returns (bytes memory) {
-        vaultAddr = msg.sender;
-        (address assetAddr, uint256 usdcIn, uint256 minOut) = abi.decode(data, (address,uint256,uint256));
+        vaultAddr = payable(msg.sender);
+        (address assetAddr, uint256 usdcIn, uint256 minOut, bool isWmonPair) =
+            abi.decode(data, (address, uint256, uint256, bool));
         swapUsdcIn  = usdcIn;
         // Simulate receiving tokens
         uint256 tokensOut = usdcIn * 100; // 100:1 rate for testing
         require(tokensOut >= minOut, "slippage");
         swapTokenOut = tokensOut;
 
-        // Call unlockCallback on vault — passes back decoded data
-        bytes memory cbData = abi.encode(assetAddr, usdcIn, minOut);
+        // Call unlockCallback on vault -- passes back decoded data
+        bytes memory cbData = abi.encode(assetAddr, usdcIn, minOut, isWmonPair);
         bytes memory ret = BuybackVaultHarness(vaultAddr).unlockCallback(cbData);
         return ret;
     }
@@ -70,7 +104,7 @@ contract MockPoolManager {
     function swap(PoolKey memory, SwapParams calldata, bytes calldata) external pure
         returns (BalanceDelta delta)
     {
-        return BalanceDelta.wrap(0); // handled by unlock stub; zero delta → no tokens owed
+        return BalanceDelta.wrap(0); // handled by unlock stub; zero delta -> no tokens owed
     }
     function settle() external payable returns (uint256) { return 0; }
     function sync(address) external {}
@@ -81,14 +115,16 @@ contract MockPoolManager {
 
 /// @dev Thin wrapper so tests can call unlockCallback (which is external).
 contract BuybackVaultHarness is BuybackVault {
-    constructor(address r, address i, address pm) BuybackVault(r, i, pm) {}
+    constructor(address r, address pm, address g, PoolKey memory mk)
+        BuybackVault(r, pm, g, mk) {}
 }
 
 contract MockAssetToken {
     mapping(address => uint256) public balanceOf;
     uint256 public burnedTotal;
-    // Returns 0 so block.timestamp >= 0 == balanceLimitEnd, cap window is always past.
-    function balanceLimitEnd() external pure returns (uint48) { return 0; }
+
+    mapping(address => bool) public isExcludedFromBalanceLimit;
+
     function mint(address to, uint256 amt) external { balanceOf[to] += amt; }
     function burn(uint256 amt) external {
         require(balanceOf[msg.sender] >= amt);
@@ -101,22 +137,28 @@ contract MockAssetToken {
         balanceOf[to]         += amt;
         return true;
     }
+    function setExcluded(address who, bool val) external { isExcludedFromBalanceLimit[who] = val; }
 }
 
 // ── Test contract ─────────────────────────────────────────────────────────────
 contract BuybackVaultTest is Test {
-    BuybackVaultHarness vault;
+    address constant USDC_ADDR = 0x754704Bc059F8C67012fEd69BC8A327a5aafb603;
+    address constant WMON_ADDR = 0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A;
+
+    BuybackVaultHarness  vault;
     MockInitializerVault init_;
     MockUSDCVault        usdc;
     MockAssetToken       token;
     MockPoolManager      pm;
 
-    address registry = address(this);
-    address router1  = address(0xAB1);
+    address registry  = address(this);
+    address guardian_  = address(0x6A2D);
+    address router1   = address(0xAB1);
     address asset;
     bytes32 poolId = keccak256("pool");
 
     PoolKey poolKey;
+    PoolKey monUsdcKey; // dummy MON/USDC key for unit tests
 
     function setUp() public {
         // Warp past MIN_INTERVAL so first execute call is not in cooldown
@@ -126,42 +168,56 @@ contract BuybackVaultTest is Test {
 
         // Etch canonical USDC first so init_ and vault use the same address
         MockUSDCVault tmpUsdc = new MockUSDCVault();
-        vm.etch(0x754704Bc059F8C67012fEd69BC8A327a5aafb603, address(tmpUsdc).code);
-        usdc = MockUSDCVault(0x754704Bc059F8C67012fEd69BC8A327a5aafb603);
+        vm.etch(USDC_ADDR, address(tmpUsdc).code);
+        usdc = MockUSDCVault(USDC_ADDR);
+
+        // Etch WMON at canonical address (with deposit() support)
+        MockWMONVault tmpWmon = new MockWMONVault();
+        vm.etch(WMON_ADDR, address(tmpWmon).code);
 
         init_ = new MockInitializerVault(address(usdc));
         pm    = new MockPoolManager(address(token));
 
-        vault = new BuybackVaultHarness(registry, address(init_), address(pm));
+        monUsdcKey = PoolKey(address(0), USDC_ADDR, 500, 10, address(0));
+        vault = new BuybackVaultHarness(registry, address(pm), guardian_, monUsdcKey);
         asset = address(token);
 
         // Build PoolKey (USDC < asset or not; use canonical USDC address)
         poolKey = PoolKey({
-            currency0:   0x754704Bc059F8C67012fEd69BC8A327a5aafb603 < asset
-                             ? 0x754704Bc059F8C67012fEd69BC8A327a5aafb603
-                             : asset,
-            currency1:   0x754704Bc059F8C67012fEd69BC8A327a5aafb603 < asset
-                             ? asset
-                             : 0x754704Bc059F8C67012fEd69BC8A327a5aafb603,
+            currency0:   USDC_ADDR < asset ? USDC_ADDR : asset,
+            currency1:   USDC_ADDR < asset ? asset : USDC_ADDR,
             fee:         20_000,
             tickSpacing: 200,
             hooks:       address(0)
         });
 
-        vault.registerAsset(asset, poolKey, poolId);
+        // v2 registerAsset: extra numeraire param
+        vault.registerAsset(asset, poolKey, poolId, USDC_ADDR);
+        vault.setAdapter(asset, address(init_));
         vault.authorize(router1);
     }
 
     // ── registerAsset ─────────────────────────────────────────────────────────
+    function test_register_setsNumeraire() public view {
+        assertEq(vault.assetData(asset).numeraire, USDC_ADDR);
+    }
+
     function test_register_revertsIfDuplicate() public {
         vm.expectRevert(BuybackVault.AlreadyRegistered.selector);
-        vault.registerAsset(asset, poolKey, poolId);
+        vault.registerAsset(asset, poolKey, poolId, USDC_ADDR);
     }
 
     function test_register_revertsIfNotRegistry() public {
         vm.prank(address(0x999));
         vm.expectRevert(BuybackVault.NotRegistry.selector);
-        vault.registerAsset(address(0x1), poolKey, poolId);
+        vault.registerAsset(address(0x1), poolKey, poolId, USDC_ADDR);
+    }
+
+    // ── setAdapter ────────────────────────────────────────────────────────────
+    function test_setAdapter_revertsIfNotRegistry() public {
+        vm.prank(address(0x999));
+        vm.expectRevert(BuybackVault.NotRegistry.selector);
+        vault.setAdapter(asset, address(init_));
     }
 
     // ── collect ───────────────────────────────────────────────────────────────
@@ -195,30 +251,15 @@ contract BuybackVaultTest is Test {
         assertEq(vault.assetData(asset).buybackFromTrading, 500_000);
     }
 
-    // ── execute ───────────────────────────────────────────────────────────────
-    function test_execute_revertsIfCapWindow() public {
-        // Etch a version of the token that reports balanceLimitEnd in the future
-        // (setUp already warped to BUYBACK_MIN_INTERVAL + 100, so block.timestamp > 0).
-        // We patch balanceLimitEnd to return a future timestamp.
-        vm.mockCall(
-            asset,
-            abi.encodeWithSelector(MockAssetToken.balanceLimitEnd.selector),
-            abi.encode(uint48(block.timestamp + 1000))
-        );
-        usdc.mint(address(vault), 1e6);
-        vm.prank(router1);
-        vault.creditUSDC(asset, 1e6, 0);
-        vm.expectRevert(BuybackVault.CapWindowActive.selector);
-        vault.execute(asset, 1e6, 0);
-    }
+    // ── execute (USDC pair) ──────────────────────────────────────────────────
 
     function test_execute_revertsIfCooldown() public {
         usdc.mint(address(vault), 10e6);
         vm.prank(router1);
         vault.creditUSDC(asset, 10e6, SOURCE_REVENUE);
-        vault.execute(asset, 1e6, 0);
+        vault.execute(asset, 1e6, 0, 0);
         vm.expectRevert(BuybackVault.CooldownActive.selector);
-        vault.execute(asset, 1e6, 0);
+        vault.execute(asset, 1e6, 0, 0);
     }
 
     function test_execute_revertsIfExceedsMax() public {
@@ -227,12 +268,12 @@ contract BuybackVaultTest is Test {
         vm.prank(router1);
         vault.creditUSDC(asset, bigAmt, SOURCE_REVENUE);
         vm.expectRevert(BuybackVault.ExceedsMaxPerCall.selector);
-        vault.execute(asset, bigAmt, 0);
+        vault.execute(asset, bigAmt, 0, 0);
     }
 
     function test_execute_revertsIfInsufficient() public {
         vm.expectRevert(BuybackVault.InsufficientBalance.selector);
-        vault.execute(asset, 1e6, 0);
+        vault.execute(asset, 1e6, 0, 0);
     }
 
     function test_execute_reducesBalance() public {
@@ -240,19 +281,20 @@ contract BuybackVaultTest is Test {
         usdc.mint(address(vault), amt);
         vm.prank(router1);
         vault.creditUSDC(asset, amt, SOURCE_REVENUE);
-        vault.execute(asset, amt, 0);
+        vault.execute(asset, amt, 0, 0);
         assertEq(vault.assetData(asset).balanceUSDC, 0);
+    }
+
+    // ── receive() ────────────────────────────────────────────────────────────
+    function test_receive_acceptsNativeMON() public {
+        vm.deal(address(this), 1 ether);
+        (bool ok,) = address(vault).call{value: 1 ether}("");
+        assertTrue(ok);
     }
 
     // ── burnTokens ────────────────────────────────────────────────────────────
     function test_burnTokens_burnsAccumulated() public {
-        // Simulate tokens arriving via collect (mint directly to vault for this unit test)
-        token.mint(address(vault), 1_000e18);
-        // Manually set tokenBalance via collect path
-        init_.setUSDCPending(poolId, address(vault), 0);
-        // We need to set tokenBalance; collect doesn't give tokens in this stub.
-        // Test via execute path (execute burns tokens received from swap)
-        // Here just test burnTokens is a no-op when 0
+        // burnTokens is a no-op when tokenBalance is 0
         vault.burnTokens(asset);
         assertEq(token.burnedTotal(), uint256(0));
     }
@@ -283,7 +325,81 @@ contract BuybackVaultTest is Test {
         vm.prank(router1);
         vault.creditUSDC(asset, amt, SOURCE_REVENUE);
         uint256 before = vault.assetData(asset).balanceUSDC;
-        vault.execute(asset, amt, 0);
+        vault.execute(asset, amt, 0, 0);
         assertLe(vault.assetData(asset).balanceUSDC, before);
+    }
+
+    // ── MON/USDC key governance ─────────────────────────────────────────────
+
+    function test_proposeMonUsdcKey_byRegistry() public {
+        PoolKey memory newKey = PoolKey(address(0), USDC_ADDR, 3000, 60, address(0));
+        vault.proposeMonUsdcKey(newKey);
+        assertGt(vault.monUsdcProposalExecAt(), 0);
+    }
+
+    function test_proposeMonUsdcKey_revertsIfNotRegistry() public {
+        PoolKey memory newKey = PoolKey(address(0), USDC_ADDR, 3000, 60, address(0));
+        vm.prank(address(0x999));
+        vm.expectRevert(BuybackVault.NotRegistry.selector);
+        vault.proposeMonUsdcKey(newKey);
+    }
+
+    function test_proposeMonUsdcKey_revertsIfAlreadyActive() public {
+        PoolKey memory newKey = PoolKey(address(0), USDC_ADDR, 3000, 60, address(0));
+        vault.proposeMonUsdcKey(newKey);
+        vm.expectRevert(BuybackVault.ProposalAlreadyActive.selector);
+        vault.proposeMonUsdcKey(newKey);
+    }
+
+    function test_acceptMonUsdcKey_afterDelay() public {
+        PoolKey memory newKey = PoolKey(address(0), USDC_ADDR, 3000, 60, address(0));
+        vault.proposeMonUsdcKey(newKey);
+        vm.warp(block.timestamp + C.TREASURY_CHANGE_DELAY);
+        vault.acceptMonUsdcKey();
+        (address c0,,uint24 fee, int24 ts,) = vault.monUsdcPoolKey();
+        assertEq(c0, address(0));
+        assertEq(fee, 3000);
+        assertEq(ts, 60);
+        assertEq(vault.monUsdcProposalExecAt(), 0);
+    }
+
+    function test_acceptMonUsdcKey_revertsBeforeDelay() public {
+        PoolKey memory newKey = PoolKey(address(0), USDC_ADDR, 3000, 60, address(0));
+        vault.proposeMonUsdcKey(newKey);
+        vm.expectRevert(BuybackVault.ProposalNotReady.selector);
+        vault.acceptMonUsdcKey();
+    }
+
+    function test_acceptMonUsdcKey_revertsIfNoProposal() public {
+        vm.expectRevert(BuybackVault.NoActiveProposal.selector);
+        vault.acceptMonUsdcKey();
+    }
+
+    function test_cancelMonUsdcKey_byRegistry() public {
+        PoolKey memory newKey = PoolKey(address(0), USDC_ADDR, 3000, 60, address(0));
+        vault.proposeMonUsdcKey(newKey);
+        vault.cancelMonUsdcKeyProposal();
+        assertEq(vault.monUsdcProposalExecAt(), 0);
+    }
+
+    function test_cancelMonUsdcKey_byGuardian() public {
+        PoolKey memory newKey = PoolKey(address(0), USDC_ADDR, 3000, 60, address(0));
+        vault.proposeMonUsdcKey(newKey);
+        vm.prank(guardian_);
+        vault.cancelMonUsdcKeyProposal();
+        assertEq(vault.monUsdcProposalExecAt(), 0);
+    }
+
+    function test_cancelMonUsdcKey_revertsIfUnauthorized() public {
+        PoolKey memory newKey = PoolKey(address(0), USDC_ADDR, 3000, 60, address(0));
+        vault.proposeMonUsdcKey(newKey);
+        vm.prank(address(0x999));
+        vm.expectRevert(BuybackVault.NotRegistryOrGuardian.selector);
+        vault.cancelMonUsdcKeyProposal();
+    }
+
+    function test_cancelMonUsdcKey_revertsIfNoProposal() public {
+        vm.expectRevert(BuybackVault.NoActiveProposal.selector);
+        vault.cancelMonUsdcKeyProposal();
     }
 }

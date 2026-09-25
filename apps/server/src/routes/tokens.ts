@@ -19,7 +19,7 @@ import {
   idxRegistrations, idxDistributions, idxBuybacks, idxEscrowClaims,
   idxEscrowForfeits, idxUsdcTransfers, idxCheckpoints,
 } from '../db/schema.js';
-import { addressSchema } from '@revpad/shared';
+import { addressSchema } from '@astralaunch/shared';
 import { RPC_URL, CHAIN_ID, REGISTRY_ADDR, SUBMITTERS } from '../env.js';
 
 // ── viem client ───────────────────────────────────────────────────────────────
@@ -214,7 +214,7 @@ app.post('/', zValidator('json', createTokenSchema), async (c) => {
   const body = c.req.valid('json');
   const assetAddr = body.asset.toLowerCase() as Address;
 
-  // Verify on-chain that this asset is registered in RevpadRegistry
+  // Verify on-chain that this asset is registered in AstralaunchRegistry
   let router: Address;
   try {
     router = await publicClient.readContract({
@@ -224,10 +224,10 @@ app.post('/', zValidator('json', createTokenSchema), async (c) => {
       args:    [assetAddr],
     });
     if (router === '0x0000000000000000000000000000000000000000') {
-      return c.json({ error: 'Asset not registered in RevpadRegistry' }, 400);
+      return c.json({ error: 'Asset not registered in AstralaunchRegistry' }, 400);
     }
   } catch {
-    return c.json({ error: 'Failed to read RevpadRegistry' }, 502);
+    return c.json({ error: 'Failed to read AstralaunchRegistry' }, 502);
   }
 
   // Read creator from FeeEscrow tokenData (populated by register)

@@ -19,7 +19,7 @@ export const publicClient = createPublicClient({
   transport: http(RPC_URL),
 });
 
-// ── RevpadRegistry ABI (minimal) ──────────────────────────────────────────────
+// ── AstralaunchRegistry ABI (minimal) ─────────────────────────────────────────
 export const registryAbi = [
   { type: 'function', name: 'register',      stateMutability: 'nonpayable',
     inputs: [{ name: 'asset', type: 'address' }, { name: 'creator', type: 'address' }],

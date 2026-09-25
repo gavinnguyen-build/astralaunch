@@ -1,5 +1,5 @@
 /**
- * Revpad server — Hono on Node.js
+ * Astralaunch server — Hono on Node.js
  *
  * Routes:
  *   GET  /health                              — liveness + DB check
@@ -59,7 +59,7 @@ app.onError((err, c) => {
 // Verify contract addresses before accepting traffic.
 verifyContracts().then(() => {
   serve({ fetch: app.fetch, port: PORT }, () => {
-    console.log(`Revpad server listening on http://0.0.0.0:${PORT}`);
+    console.log(`Astralaunch server listening on http://0.0.0.0:${PORT}`);
   });
 }).catch((e) => {
   console.error(e.message);

@@ -1,7 +1,8 @@
 {
-  "name": "revpad",
+  "name": "astralaunch",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@12.5.1",
   "pnpm": {
     "onlyBuiltDependencies": ["esbuild"]
   },

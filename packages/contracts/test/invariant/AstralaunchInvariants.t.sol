@@ -7,7 +7,8 @@ import {LibClone} from "solady/utils/LibClone.sol";
 import {RevenueRouter} from "../../src/RevenueRouter.sol";
 import {FeeEscrow} from "../../src/FeeEscrow.sol";
 import {BuybackVault} from "../../src/BuybackVault.sol";
-import {RevpadConstants as C} from "../../src/RevpadConstants.sol";
+import {AstralaunchConstants as C} from "../../src/AstralaunchConstants.sol";
+import {IFeeAdapter} from "../../src/interfaces/IFeeAdapter.sol";
 import {PoolKey} from "../../src/interfaces/IInitializer.sol";
 import {SOURCE_REVENUE, SOURCE_TRADING} from "../../src/interfaces/IBuybackVault.sol";
 
@@ -23,10 +24,32 @@ contract InvMockUSDC {
     }
 }
 
-contract InvMockInit {
-    function collectFees(bytes32) external pure returns (uint128, uint128) { return (0, 0); }
-    function getShares(bytes32, address) external pure returns (uint256) { return 0; }
-    function getPoolKey(address) external pure returns (PoolKey memory k) { return k; }
+/// @dev Implements IFeeAdapter for invariant test use.
+contract InvMockInit is IFeeAdapter {
+    function doCollect(bytes32) external pure returns (uint128, uint128) { return (0, 0); }
+
+    function collectFeesCall(bytes32 poolId)
+        external view override
+        returns (address target, bytes memory data)
+    {
+        return (address(this), abi.encodeCall(this.doCollect, (poolId)));
+    }
+
+    function getShares(bytes32, address) external pure override returns (uint256) { return 0; }
+    function getState(address)
+        external pure override
+        returns (address, uint8, PoolKey memory, int24)
+    {
+        PoolKey memory k;
+        return (address(0), 0, k, 0);
+    }
+}
+
+contract InvMockOracle {
+    function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80) {
+        return (1, 2500000, 0, block.timestamp, 1); // $0.025 MON/USD, 8 decimals
+    }
+    function decimals() external pure returns (uint8) { return 8; }
 }
 
 contract InvMockPM {
@@ -39,7 +62,7 @@ contract InvMockPM {
 
 /// @notice Handler contract that performs all state-changing operations.
 ///         Invariant fuzzer calls functions on this handler.
-contract RevpadHandler is Test {
+contract AstralaunchHandler is Test {
     RevenueRouter  router;
     FeeEscrow      escrow;
     BuybackVault   vault;
@@ -96,15 +119,15 @@ contract RevpadHandler is Test {
 }
 
 // ── Invariant test contract ───────────────────────────────────────────────────
-contract RevpadInvariantsTest is StdInvariant, Test {
-    RevenueRouter  routerImpl;
-    RevenueRouter  router;
-    FeeEscrow      escrow;
-    BuybackVault   vault;
-    InvMockUSDC    usdc;
-    InvMockInit    init_;
-    InvMockPM      pm;
-    RevpadHandler  handler;
+contract AstralaunchInvariantsTest is StdInvariant, Test {
+    RevenueRouter      routerImpl;
+    RevenueRouter      router;
+    FeeEscrow          escrow;
+    BuybackVault       vault;
+    InvMockUSDC        usdc;
+    InvMockInit        init_;
+    InvMockPM          pm;
+    AstralaunchHandler handler;
 
     address asset    = address(0xA55E7);
     address creator  = address(0xC8EA7012);
@@ -123,8 +146,10 @@ contract RevpadInvariantsTest is StdInvariant, Test {
         vm.etch(0x754704Bc059F8C67012fEd69BC8A327a5aafb603, address(usdc).code);
         usdc = InvMockUSDC(0x754704Bc059F8C67012fEd69BC8A327a5aafb603);
 
-        escrow = new FeeEscrow(registry, address(0), address(init_));
-        vault  = new BuybackVault(registry, address(init_), address(pm));
+        InvMockOracle orc = new InvMockOracle();
+        escrow = new FeeEscrow(registry, address(0), address(orc), 3600);
+        PoolKey memory monKey = PoolKey(address(0), 0x754704Bc059F8C67012fEd69BC8A327a5aafb603, 500, 10, address(0));
+        vault  = new BuybackVault(registry, address(pm), address(0x6A2D), monKey);
 
         routerImpl = new RevenueRouter();
         address clone = LibClone.clone(address(routerImpl));
@@ -133,13 +158,16 @@ contract RevpadInvariantsTest is StdInvariant, Test {
 
         poolKey = PoolKey({currency0:address(0), currency1:address(0), fee:0, tickSpacing:0, hooks:address(0)});
 
-        escrow.registerAsset(asset, creator, uint48(block.timestamp), poolId);
+        // v2 registerAsset: extra numeraire param
+        escrow.registerAsset(asset, creator, uint48(block.timestamp), poolId, 0x754704Bc059F8C67012fEd69BC8A327a5aafb603);
+        escrow.setAdapter(asset, address(init_));
         escrow.authorizeRouter(address(router));
-        vault.registerAsset(asset, poolKey, poolId);
+        vault.registerAsset(asset, poolKey, poolId, 0x754704Bc059F8C67012fEd69BC8A327a5aafb603);
+        vault.setAdapter(asset, address(init_));
         vault.authorize(address(router));
         vault.authorize(address(escrow));
 
-        handler = new RevpadHandler(router, escrow, vault, usdc, provider, treasury, creator, asset);
+        handler = new AstralaunchHandler(router, escrow, vault, usdc, provider, treasury, creator, asset);
 
         // Fund handler for test
         usdc.mint(address(handler), 1_000_000e6);
@@ -150,13 +178,13 @@ contract RevpadInvariantsTest is StdInvariant, Test {
     /// @notice No funds accumulate in the escrow beyond what was collected.
     function invariant_escrowNeverOwesMoreThanAccrued() public view {
         FeeEscrow.TokenData memory d = escrow.tokenData(asset);
-        // claimed ≤ accrued
+        // claimed <= accrued
         assertLe(uint256(d.usdcClaimed), uint256(d.usdcAccrued));
-        // claimable + claimed ≤ accrued
+        // claimable + claimed <= accrued
         assertLe(escrow.claimable(asset) + uint256(d.usdcClaimed), uint256(d.usdcAccrued));
     }
 
-    /// @notice Escrow unlock allowance ≤ ESCROW_UNLOCK_BPS/10000 of recorded revenue.
+    /// @notice Escrow unlock allowance <= ESCROW_UNLOCK_BPS/10000 of recorded revenue.
     function invariant_escrowAllowanceBoundedByRevenue() public view {
         FeeEscrow.TokenData memory d = escrow.tokenData(asset);
         uint256 allowance = (uint256(d.recordedRevenue) * C.ESCROW_UNLOCK_BPS) / 10_000;
@@ -169,12 +197,12 @@ contract RevpadInvariantsTest is StdInvariant, Test {
         assertLe(vault.assetData(asset).balanceUSDC, type(uint128).max);
     }
 
-    /// @notice Router balance ≤ funded-but-not-distributed amounts + rounding dust.
+    /// @notice Router balance <= funded-but-not-distributed amounts + rounding dust.
     function invariant_routerDustAccountable() public view {
         uint256 routerBal = usdc.balanceOf(address(router));
         // routerBal comprises:
         //   (a) sub-threshold amounts from fundRouter that never triggered distribute
-        //   (b) rounding dust left after each distribute call (≤ 3 wei per call)
+        //   (b) rounding dust left after each distribute call (<= 3 wei per call)
         // Upper bound: totalFunded + MIN_DISTRIBUTE (generous allowance for dust accumulation)
         assertLt(routerBal, handler.totalFunded() + C.MIN_DISTRIBUTE);
     }

@@ -1,5 +1,5 @@
 {
-  "name": "@revpad/server",
+  "name": "@astralaunch/server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,7 +16,7 @@
   "dependencies": {
     "@hono/node-server": "^1.13.0",
     "@hono/zod-validator": "^0.4.1",
-    "@revpad/shared": "workspace:*",
+    "@astralaunch/shared": "workspace:*",
     "@x402/core": "2.26.0",
     "@x402/evm": "2.26.0",
     "dotenv": "^16.4.5",

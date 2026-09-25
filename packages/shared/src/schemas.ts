@@ -13,7 +13,7 @@ export const bytes32Schema = z
 // ── Service registration ───────────────────────────────────────────────────────
 
 export const createServiceSchema = z.object({
-  /** Token address (must be registered in RevpadRegistry). */
+  /** Token address (must be registered in AstralaunchRegistry). */
   asset:        addressSchema,
   /** Creator wallet — must match the vesting recipient of the token. */
   creator:      addressSchema,
@@ -39,7 +39,7 @@ export const createServiceSchema = z.object({
 
 /** Build the message that the creator must sign for service registration. */
 export function serviceRegistrationMessage(slug: string, asset: string): string {
-  return `Revpad: register service "${slug}" for token ${asset.toLowerCase()}`;
+  return `Astralaunch: register service "${slug}" for token ${asset.toLowerCase()}`;
 }
 
 export type CreateServiceInput = z.infer<typeof createServiceSchema>;

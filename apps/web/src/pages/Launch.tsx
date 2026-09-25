@@ -1,17 +1,24 @@
 /**
- * Launch page (SPEC §7)
+ * Launch page (SPEC §7) — Astralaunch v2
  *
- * Step 1: Creator fills token metadata + optional service details.
+ * Step 1: Creator fills token metadata + launch config (pairing, start mcap)
+ *         + optional service details.
  * Step 2: Frontend shows fixed economics + MON gas estimate.
- * Step 3: On confirm → Doppler SDK launch (in wallet) → registry.register → POST /api/tokens.
+ * Step 3: On confirm -> Doppler SDK launch (in wallet) -> registry.register -> POST /api/tokens.
  *
  * NOTE: The actual Doppler SDK launch call requires the full SDK integration and a connected
- * wallet's WalletClient. For the hackathon, this page provides the full UI/UX flow;
- * the actual SDK call is stubbed with a TODO comment indicating where it goes.
+ * wallet's WalletClient. This page provides the full UI/UX flow; the actual SDK call is
+ * stubbed with a TODO comment indicating where it goes.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { API_BASE } from '../env.js';
 
+// Known addresses (from packages/shared/src/addresses.ts)
+const USDC_ADDR  = '0x754704Bc059F8C67012fEd69BC8A327a5aafb603' as const;
+const WMON_ADDR  = '0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A' as const;
+
+type Pairing = 'USDC' | 'MON';
 type Step = 'form' | 'review' | 'launching' | 'done';
 
 interface FormData {
@@ -21,6 +28,9 @@ interface FormData {
   imageUrl:    string;
   website:     string;
   twitter:     string;
+  // Launch config
+  pairing:         Pairing;
+  startMarketCap:  string; // human-readable USD, e.g. "50000"
   // Service (optional)
   attachService:  boolean;
   serviceSlug:    string;
@@ -32,6 +42,7 @@ interface FormData {
 
 const DEFAULTS: FormData = {
   name: '', symbol: '', description: '', imageUrl: '', website: '', twitter: '',
+  pairing: 'USDC', startMarketCap: '50000',
   attachService: false, serviceSlug: '', serviceName: '', serviceDesc: '',
   upstreamUrl: '', priceUsdc: '1.00',
 };
@@ -46,10 +57,28 @@ const ECONOMICS = [
   { label: 'Platform share',        value: '0.60% of volume' },
   { label: 'Supply',                value: '1,000,000,000 tokens' },
   { label: 'Pool allocation',       value: '85% (850M tokens)' },
-  { label: 'Creator vesting',       value: '15% (150M) · 30-day cliff · 365 days' },
+  { label: 'Creator vesting',       value: '15% (150M) -- 30-day cliff -- 365 days' },
   { label: 'Balance cap',           value: '1% per wallet for first ~12 minutes' },
   { label: 'Gas estimate',          value: '~0.52 MON (~5M gas @ 100 gwei)' },
 ];
+
+/** Derive numeraire config from pairing choice */
+function numeraireConfig(pairing: Pairing, monPrice: number | null) {
+  if (pairing === 'MON') {
+    return {
+      numeraire:         WMON_ADDR,
+      numeraireSymbol:   'MON',
+      numeraireDecimals: 18,
+      numerairePrice:    monPrice ?? 0, // MON/USD
+    };
+  }
+  return {
+    numeraire:         USDC_ADDR,
+    numeraireSymbol:   'USDC',
+    numeraireDecimals: 6,
+    numerairePrice:    1,
+  };
+}
 
 export default function Launch() {
   const { authenticated, login } = usePrivy();
@@ -58,12 +87,61 @@ export default function Launch() {
   const [step, setStep] = useState<Step>('form');
   const [result, _setResult] = useState<{ asset: string; router: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [monPrice, setMonPrice] = useState<number | null>(null);
+  const [monPriceLoading, setMonPriceLoading] = useState(false);
 
   const wallet = wallets[0];
+  const nc = numeraireConfig(form.pairing, monPrice);
+
+  // Fetch MON/USD price when MON pairing is selected
+  useEffect(() => {
+    if (form.pairing !== 'MON') return;
+    if (monPrice !== null) return; // already fetched
+
+    let cancelled = false;
+    setMonPriceLoading(true);
+
+    // Try server API first, fall back to CoinGecko-style endpoint
+    (async () => {
+      try {
+        // Try our own API
+        const res = await fetch(`${API_BASE}/api/prices/mon`);
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled && typeof data.priceUsd === 'number') {
+            setMonPrice(data.priceUsd);
+            setMonPriceLoading(false);
+            return;
+          }
+        }
+      } catch { /* fall through */ }
+
+      try {
+        // Fallback: CoinGecko
+        const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=monad&vs_currencies=usd');
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled && data.monad?.usd) {
+            setMonPrice(data.monad.usd);
+          }
+        }
+      } catch { /* ignore */ }
+
+      if (!cancelled) setMonPriceLoading(false);
+    })();
+
+    return () => { cancelled = true; };
+  }, [form.pairing, monPrice]);
 
   function set<K extends keyof FormData>(k: K, v: FormData[K]) {
     setForm(f => ({ ...f, [k]: v }));
   }
+
+  // Compute start price in numeraire from market cap
+  const startMcapUsd = Number(form.startMarketCap) || 0;
+  const startPriceNumeraire = nc.numerairePrice > 0
+    ? (startMcapUsd / 1_000_000_000) / nc.numerairePrice
+    : 0;
 
   async function handleLaunch() {
     if (!wallet) return;
@@ -81,13 +159,22 @@ export default function Launch() {
       //   - supply: 1e9 tokens; numTokensToSell: 850M; vested: 150M
       //   - vestingCliff: 30 days, vestingDuration: 365 days
       //   - balanceLimitEnd: startTime + 720s (target ~12 min)
-      //   - numeraire: USDC; integrator: treasury
+      //   - numeraire: nc.numeraire (USDC or WMON based on pairing choice)
+      //   - numeraireDecimals: nc.numeraireDecimals
+      //   - startPriceNumeraire: computed from start market cap / supply / numerairePrice
+      //   - integrator: treasury
       //
       // const walletClient = createWalletClient({ account: wallet.address as Address, chain: monadChain, transport: custom(await wallet.getEthereumProvider()) });
-      // const { asset } = await dopplerSdk.launch({ walletClient, ... });
+      // const launchConfig = {
+      //   walletClient,
+      //   numeraire: nc.numeraire,
+      //   startPrice: startPriceNumeraire,
+      //   ...
+      // };
+      // const { asset } = await dopplerSdk.launch(launchConfig);
       //
       // For now, throw to indicate manual integration needed:
-      throw new Error('Doppler SDK launch not yet integrated. Connect your wallet and use the Doppler SDK directly. See SPEC §7 and the revpad-anvil/ scripts for the correct SDK params.');
+      throw new Error('Doppler SDK launch not yet integrated. Connect your wallet and use the Doppler SDK directly. See SPEC §7 for the correct SDK params.');
 
       // ── Step 2: Register on-chain ──────────────────────────────────────────
       // After SDK returns `asset`:
@@ -122,7 +209,7 @@ export default function Launch() {
   if (step === 'done' && result) {
     return (
       <div className="card" style={{ maxWidth: 500, margin: '2rem auto', textAlign: 'center' }}>
-        <div style={{ fontSize: '32px', marginBottom: '1rem' }}>✓</div>
+        <div style={{ fontSize: '32px', marginBottom: '1rem' }}>Done</div>
         <h2 style={{ margin: '0 0 .5rem', fontSize: '18px' }}>Token launched</h2>
         <p style={{ color: 'var(--color-muted)', margin: '0 0 1.5rem', fontSize: '13px', fontFamily: 'monospace' }}>
           {result.asset}
@@ -142,23 +229,94 @@ export default function Launch() {
             <Field label="Name *" hint="e.g. My AI Service Token">
               <input value={form.name} onChange={e => set('name', e.target.value)} placeholder="My Service Token" />
             </Field>
-            <Field label="Symbol *" hint="3–8 chars, e.g. MST">
+            <Field label="Symbol *" hint="3-8 chars, e.g. MST">
               <input value={form.symbol} onChange={e => set('symbol', e.target.value.toUpperCase())} placeholder="MST" maxLength={8} />
             </Field>
             <Field label="Description">
               <textarea rows={3} value={form.description} onChange={e => set('description', e.target.value)} placeholder="What does your service do?" />
             </Field>
             <Field label="Image URL">
-              <input value={form.imageUrl} onChange={e => set('imageUrl', e.target.value)} placeholder="https://…" />
+              <input value={form.imageUrl} onChange={e => set('imageUrl', e.target.value)} placeholder="https://..." />
             </Field>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.75rem' }}>
               <Field label="Website">
-                <input value={form.website} onChange={e => set('website', e.target.value)} placeholder="https://…" />
+                <input value={form.website} onChange={e => set('website', e.target.value)} placeholder="https://..." />
               </Field>
               <Field label="Twitter">
-                <input value={form.twitter} onChange={e => set('twitter', e.target.value)} placeholder="https://x.com/…" />
+                <input value={form.twitter} onChange={e => set('twitter', e.target.value)} placeholder="https://x.com/..." />
               </Field>
             </div>
+          </div>
+        </div>
+
+        {/* Launch configuration */}
+        <div className="card">
+          <h2 style={{ margin: '0 0 1rem', fontSize: '16px', fontWeight: 600 }}>Launch configuration</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '.75rem' }}>
+
+            {/* Pairing choice */}
+            <Field label="Pairing" hint="Which token to pair against in the Uniswap v4 pool">
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '4px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px' }}>
+                  <input
+                    type="radio"
+                    name="pairing"
+                    value="USDC"
+                    checked={form.pairing === 'USDC'}
+                    onChange={() => set('pairing', 'USDC')}
+                    style={{ width: 'auto' }}
+                  />
+                  <span style={{ fontWeight: form.pairing === 'USDC' ? 600 : 400 }}>USDC</span>
+                  <span style={{ fontSize: '11px', color: 'var(--color-muted)' }}>(6 decimals, $1.00)</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px' }}>
+                  <input
+                    type="radio"
+                    name="pairing"
+                    value="MON"
+                    checked={form.pairing === 'MON'}
+                    onChange={() => set('pairing', 'MON')}
+                    style={{ width: 'auto' }}
+                  />
+                  <span style={{ fontWeight: form.pairing === 'MON' ? 600 : 400 }}>MON</span>
+                  <span style={{ fontSize: '11px', color: 'var(--color-muted)' }}>
+                    (18 decimals{monPrice !== null ? `, $${monPrice.toFixed(2)}` : monPriceLoading ? ', loading price...' : ''})
+                  </span>
+                </label>
+              </div>
+            </Field>
+
+            {form.pairing === 'MON' && monPrice === null && !monPriceLoading && (
+              <div style={{ padding: '8px 12px', borderRadius: '8px', background: '#2D2D10',
+                border: '1px solid #A89332', fontSize: '12px', color: '#E8D44D' }}>
+                Could not fetch MON/USD price. The start market cap calculation requires an accurate MON price.
+                You may enter it manually or retry.
+              </div>
+            )}
+
+            {/* Start market cap */}
+            <Field label="Start market cap (USD) *" hint="Fully-diluted valuation at launch">
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
+                  color: 'var(--color-muted)', fontSize: '14px', pointerEvents: 'none' }}>$</span>
+                <input
+                  type="number"
+                  min="1000"
+                  step="1000"
+                  value={form.startMarketCap}
+                  onChange={e => set('startMarketCap', e.target.value)}
+                  placeholder="50000"
+                  style={{ paddingLeft: '24px' }}
+                />
+              </div>
+              {startMcapUsd > 0 && nc.numerairePrice > 0 && (
+                <div style={{ fontSize: '11px', color: 'var(--color-muted)', marginTop: '4px' }}>
+                  Start price: {startPriceNumeraire.toFixed(nc.numeraireDecimals === 18 ? 12 : 6)} {nc.numeraireSymbol} per token
+                  (${(startMcapUsd / 1_000_000_000).toFixed(9)} USD per token)
+                </div>
+              )}
+            </Field>
+
           </div>
         </div>
 
@@ -199,7 +357,7 @@ export default function Launch() {
 
         <button
           className="btn btn-primary"
-          disabled={!form.name || !form.symbol || step === 'launching'}
+          disabled={!form.name || !form.symbol || !form.startMarketCap || step === 'launching'}
           onClick={() => setStep(step === 'form' ? 'review' : 'form')}
           style={{ alignSelf: 'flex-start' }}
         >
@@ -208,26 +366,56 @@ export default function Launch() {
 
         {(step === 'review' || step === 'launching') && (
           <button className="btn btn-primary" onClick={handleLaunch} disabled={step === 'launching'} style={{ alignSelf: 'flex-start' }}>
-            {step === 'launching' ? 'Launching…' : 'Confirm launch (~0.52 MON)'}
+            {step === 'launching' ? 'Launching...' : 'Confirm launch (~0.52 MON)'}
           </button>
         )}
       </div>
 
-      {/* Fixed economics panel */}
-      <div className="card" style={{ alignSelf: 'start' }}>
-        <h3 style={{ margin: '0 0 1rem', fontSize: '14px', fontWeight: 600 }}>Fixed economics</h3>
-        <p style={{ color: 'var(--color-muted)', fontSize: '11px', margin: '0 0 1rem' }}>
-          These are not configurable. This is how Astralaunch works.
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          {ECONOMICS.map(({ label, value }) => (
-            <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', fontSize: '12px' }}>
-              <span style={{ color: 'var(--color-muted)' }}>{label}</span>
-              <span style={{ textAlign: 'right', maxWidth: '180px' }}>{value}</span>
-            </div>
-          ))}
+      {/* Right side panel */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignSelf: 'start' }}>
+        {/* Launch summary */}
+        <div className="card">
+          <h3 style={{ margin: '0 0 1rem', fontSize: '14px', fontWeight: 600 }}>Launch summary</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
+            <SummaryRow label="Pairing" value={`TOKEN / ${nc.numeraireSymbol}`} />
+            <SummaryRow label="Numeraire" value={nc.numeraire.slice(0, 6) + '...' + nc.numeraire.slice(-4)} />
+            <SummaryRow label="Numeraire decimals" value={String(nc.numeraireDecimals)} />
+            <SummaryRow label="Numeraire price" value={nc.numerairePrice > 0 ? `$${nc.numerairePrice.toFixed(2)}` : 'unknown'} />
+            <SummaryRow label="Start market cap" value={startMcapUsd > 0 ? `$${startMcapUsd.toLocaleString()}` : '--'} />
+            <SummaryRow label="Start price" value={
+              startPriceNumeraire > 0
+                ? `${startPriceNumeraire.toFixed(nc.numeraireDecimals === 18 ? 12 : 6)} ${nc.numeraireSymbol}`
+                : '--'
+            } />
+
+          </div>
+        </div>
+
+        {/* Fixed economics panel */}
+        <div className="card">
+          <h3 style={{ margin: '0 0 1rem', fontSize: '14px', fontWeight: 600 }}>Fixed economics</h3>
+          <p style={{ color: 'var(--color-muted)', fontSize: '11px', margin: '0 0 1rem' }}>
+            These are not configurable. This is how Astralaunch works.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {ECONOMICS.map(({ label, value }) => (
+              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', fontSize: '12px' }}>
+                <span style={{ color: 'var(--color-muted)' }}>{label}</span>
+                <span style={{ textAlign: 'right', maxWidth: '180px' }}>{value}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
+      <span style={{ color: 'var(--color-muted)' }}>{label}</span>
+      <span style={{ fontWeight: 500, textAlign: 'right' }}>{value}</span>
     </div>
   );
 }
@@ -237,7 +425,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
     <div>
       <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px', color: 'var(--color-muted)' }}>
         {label}
-        {hint && <span style={{ fontWeight: 400, marginLeft: '6px' }}>— {hint}</span>}
+        {hint && <span style={{ fontWeight: 400, marginLeft: '6px' }}>-- {hint}</span>}
       </label>
       {children}
     </div>

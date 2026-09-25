@@ -1,4 +1,38 @@
-/** Formatting helpers for USDC amounts (6 dec) and token amounts (18 dec). */
+/** Formatting helpers for USDC amounts (6 dec), MON/WMON (18 dec), and token amounts (18 dec). */
+
+// ── Known tokens ─────────────────────────────────────────────────────────────
+const USDC_ADDR = '0x754704Bc059F8C67012fEd69BC8A327a5aafb603'.toLowerCase();
+const WMON_ADDR = '0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A'.toLowerCase();
+
+/** Map of known token addresses to display metadata. */
+export const KNOWN_TOKENS: Record<string, { symbol: string; name: string; decimals: number }> = {
+  [USDC_ADDR]: { symbol: 'USDC',  name: 'USD Coin',    decimals: 6  },
+  [WMON_ADDR]: { symbol: 'WMON',  name: 'Wrapped MON', decimals: 18 },
+};
+
+/** Look up a known token by address (case-insensitive). Returns undefined if not known. */
+export function knownToken(addr: string | null | undefined) {
+  if (!addr) return undefined;
+  return KNOWN_TOKENS[addr.toLowerCase()];
+}
+
+/** Format a raw amount for a known numeraire token (auto-detects decimals). */
+export function fmtNumeraire(raw: bigint | string | null | undefined, tokenAddr: string): string {
+  const info = knownToken(tokenAddr);
+  if (!info) return fmtUsdc(raw, ''); // fallback to 6-dec without prefix
+  if (info.decimals === 6) return fmtUsdc(raw, '$');
+  // 18 decimals (WMON / MON)
+  return fmtMon(raw);
+}
+
+/** Format raw 18-dec bigint as "X.XXXX MON" */
+export function fmtMon(raw: bigint | string | null | undefined): string {
+  if (raw == null) return '--';
+  const n = typeof raw === 'string' ? BigInt(raw) : raw;
+  const int  = n / 10n ** 18n;
+  const frac = (n % 10n ** 18n).toString().padStart(18, '0').slice(0, 4);
+  return `${int.toLocaleString()}.${frac} MON`;
+}
 
 /** Format raw 6-dec bigint or string as "$X.XX" */
 export function fmtUsdc(raw: bigint | string | null | undefined, prefix = '$'): string {

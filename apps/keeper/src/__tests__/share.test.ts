@@ -11,10 +11,12 @@ vi.mock('../chain.js', () => ({
   ESCROW: '0x0000000000000000000000000000000000000001',
   VAULT: '0x0000000000000000000000000000000000000002',
   PLATFORM_FEE_RECEIVER: '0x0000000000000000000000000000000000000003',
+  WMON: '0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A',
   sendTx: vi.fn().mockResolvedValue({ hash: '0x00', gasBuffered: 0n, monCost: 0n }),
   DRY_RUN: false,
   simulatePendingFees: vi.fn(),
   getBeneficiaryShare: vi.fn(),
+  getAssetNumeraire: vi.fn().mockResolvedValue('0x754704Bc059F8C67012fEd69BC8A327a5aafb603'),
 }));
 
 // Mock telegram
@@ -31,7 +33,7 @@ vi.mock('../spend.js', () => ({
 
 import { runAssetJobs, _resetCadenceForTest } from '../jobs.js';
 import { publicClient, sendTx, simulatePendingFees, getBeneficiaryShare } from '../chain.js';
-import { ESCROW_SHARE_WAD, BUYBACK_SHARE_WAD, TREASURY_SHARE_WAD, WAD } from '@revpad/shared';
+import { ESCROW_SHARE_WAD, BUYBACK_SHARE_WAD, TREASURY_SHARE_WAD, WAD } from '@astralaunch/shared';
 import type { Address } from 'viem';
 
 const ASSET = '0x1111111111111111111111111111111111111111' as Address;
