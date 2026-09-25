@@ -10,6 +10,7 @@ import {RevenueRouter} from "../src/RevenueRouter.sol";
 import {AstralaunchConstants as C} from "../src/AstralaunchConstants.sol";
 import {AstralaunchRegistry} from "../src/AstralaunchRegistry.sol";
 import {InitializerV1Adapter} from "../src/InitializerV1Adapter.sol";
+import {PoolKey} from "../src/interfaces/IInitializer.sol";
 
 /// @notice Deploy all Astralaunch v2 contracts.
 ///
@@ -89,8 +90,14 @@ contract DeployAstralaunch is Script {
         address futureVault    = vm.computeCreateAddress(msg.sender, nonce + 1);
         address futureRegistry = vm.computeCreateAddress(msg.sender, nonce + 5);
 
+        // MON/USDC v4 pool key for leg-1 buyback swaps (verified pool id 0x18a9fc87...)
+        PoolKey memory monUsdcKey = PoolKey({
+            currency0: address(0), currency1: address(0x754704Bc059F8C67012fEd69BC8A327a5aafb603),
+            fee: 500, tickSpacing: 10, hooks: address(0)
+        });
+
         FeeEscrow     escrow     = new FeeEscrow(futureRegistry, futureVault, C.MON_USD_ORACLE, C.MAX_ORACLE_STALENESS); // N+0
-        BuybackVault  vault      = new BuybackVault(futureRegistry, address(POOL_MANAGER));                  // N+1
+        BuybackVault  vault      = new BuybackVault(futureRegistry, address(POOL_MANAGER), guardian_, monUsdcKey); // N+1
         PlatformFeeReceiver pfr  = new PlatformFeeReceiver(futureRegistry, treasury, admin, guardian_);      // N+2
         RevenueRouter routerImpl = new RevenueRouter();                                                       // N+3
         InitializerV1Adapter adapter = new InitializerV1Adapter(INITIALIZER);                                 // N+4

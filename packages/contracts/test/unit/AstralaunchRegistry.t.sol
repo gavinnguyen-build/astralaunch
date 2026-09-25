@@ -224,7 +224,8 @@ contract AstralaunchRegistryTest is Test {
         pm         = new MockPoolManagerReg();  // +5
         MockOracleReg orc = new MockOracleReg(); // +6
         escrow     = new FeeEscrow(futureRegistry, address(0), address(orc), 3600);  // +7
-        vault      = new BuybackVault(futureRegistry, address(pm));  // +8
+        PoolKey memory monKey = PoolKey(address(0), USDC_ADDR, 500, 10, address(0));
+        vault      = new BuybackVault(futureRegistry, address(pm), guardian, monKey);  // +8
         pfr        = new PlatformFeeReceiver(futureRegistry, treasury, admin, guardian); // +9
         routerImpl = new RevenueRouter();  // +10
         registry   = new AstralaunchRegistry(  // +11

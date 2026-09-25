@@ -59,8 +59,6 @@ library AstralaunchConstants {
     // ── Oracle (MON/USD Chainlink) ────────────────────────────────────────────
     address constant MON_USD_ORACLE     = 0xBcD78f76005B7515837af6b50c7C52BCf73822fb;
     uint256 constant MAX_ORACLE_STALENESS = 1 hours;
-    uint24  constant MON_USDC_FEE       = 500;
-    int24   constant MON_USDC_TICK_SPACING = 10;
 
     // ── Wash-check compile-time assertion (CLAUDE.md rule 2) ─────────────────
     // ESCROW_UNLOCK_BPS < 10_000 - PROVIDER_BPS

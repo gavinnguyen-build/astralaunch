@@ -148,7 +148,8 @@ contract AstralaunchInvariantsTest is StdInvariant, Test {
 
         InvMockOracle orc = new InvMockOracle();
         escrow = new FeeEscrow(registry, address(0), address(orc), 3600);
-        vault  = new BuybackVault(registry, address(pm));
+        PoolKey memory monKey = PoolKey(address(0), 0x754704Bc059F8C67012fEd69BC8A327a5aafb603, 500, 10, address(0));
+        vault  = new BuybackVault(registry, address(pm), address(0x6A2D), monKey);
 
         routerImpl = new RevenueRouter();
         address clone = LibClone.clone(address(routerImpl));

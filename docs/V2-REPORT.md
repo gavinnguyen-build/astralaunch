@@ -100,8 +100,8 @@ Error: Dev buys require a DopplerHookInitializer or Rehype initializer; 'schedul
 | `AstralaunchConstants.sol` | Renamed from RevpadConstants. Same economics values. |
 | `AstralaunchRegistry.sol` | New. Dual numeraire (USDC/WMON). Initializer allowlist with 48h timelock. Guardian role (cancel-only). Balance-limit exclusion checks. Per-token numeraire + initializer storage. |
 | `RevenueRouter.sol` | Import updated to AstralaunchConstants. No logic changes (revenue is always USDC). |
-| `FeeEscrow.sol` | Rewritten. Per-token numeraire support. WMON fees park as `numerairePending`. `creditNumeraireSwap()` for keeper O4 swaps. Adapter pattern for fee collection. |
-| `BuybackVault.sol` | Rewritten. WMON-paired tokens revert `BuybackNotAvailable()`. Removed CapWindowActive guard (Decision #6). Adapter pattern. |
+| `FeeEscrow.sol` | Rewritten. Per-token numeraire support. WMON escrow with Chainlink MON/USD oracle for claim valuation. `claimableWmon()` view. Adapter pattern for fee collection. |
+| `BuybackVault.sol` | Rewritten. Two-hop buyback for WMON pairs (USDC → native MON → WMON → token → burn). Governed MON/USDC pool key (propose/48h/accept + guardian cancel). PoolKey extracted to separate mapping. Adapter pattern. |
 | `PlatformFeeReceiver.sol` | Rewritten. Guardian can cancel treasury/admin proposals. Forwards USDC + WMON + tokens to treasury. Adapter pattern. |
 | `IFeeAdapter.sol` | New interface. `collectFeesCall(poolId)` returns `(target, calldata)` so beneficiary calls initializer directly (preserves msg.sender for Doppler fee payouts). |
 | `InitializerV1Adapter.sol` | New. Wraps V4ScheduledMulticurveInitializer behind IFeeAdapter. `collectFeesCall` returns initializer address + `abi.encodeCall(collectFees, poolId)`. |
@@ -117,8 +117,8 @@ All v1 contracts copied to `deployments/legacy-revpad/`.
 ```
 forge test -vv --no-match-path "test/fork/*"
 
-Ran 8 test suites in 6.81s (14.32s CPU time):
-  197 tests passed, 0 failed, 0 skipped (197 total tests)
+Ran 8 test suites in 6.37s (13.63s CPU time):
+  211 tests passed, 0 failed, 0 skipped (211 total tests)
 
 Invariant tests: 4 invariants, 500 runs, 50,000 calls, 0 reverts
 ```
@@ -127,8 +127,8 @@ Invariant tests: 4 invariants, 500 runs, 50,000 calls, 0 reverts
 
 - **AstralaunchRegistry.t.sol**: 79 tests — dual numeraire, initializer allowlist (propose/accept/cancel with 48h delay), guardian restrictions, balance-limit exclusion checks, all airlock/pool/beneficiary/vesting/cap error paths
 - **RevenueRouter.t.sol**: 15 tests (2 fuzz) — distribute splits, dust accounting, costBps
-- **FeeEscrow.t.sol**: 23 tests (2 fuzz) — USDC and WMON collect, numerairePending, claim/forfeit with WMON
-- **BuybackVault.t.sol**: 17 tests (2 fuzz) — BuybackNotAvailable for WMON, cooldown, max-per-call, adapter
+- **FeeEscrow.t.sol**: 28 tests (2 fuzz) — USDC and WMON collect, Chainlink oracle valuation (fresh/stale/zero reverts), partial claims, forfeit with WMON to vault
+- **BuybackVault.t.sol**: 26 tests (2 fuzz) — two-hop for WMON pairs, MON/USDC pool key governance (propose/accept/cancel by registry/guardian), cooldown, max-per-call, adapter
 - **PlatformFeeReceiver.t.sol**: 54 tests (2 fuzz) — guardian cancel, WMON forwarding, treasury change delay, admin transfer
 - **AstralaunchInvariants.t.sol**: 4 invariants — escrow allowance bounded, no overpayment, router dust, vault balance
 - **InitializerV1Adapter.t.sol**: 7 tests + 1 proof test — constructor, collectFeesCall target/calldata, caller identity, getShares/getState delegation, second-initializer proof
@@ -215,15 +215,14 @@ pnpm test:       4 tasks successful
 
 ### Tasks 1d-f, 2, 3: Fork Tests (Executed)
 
-**Fork test results (Anvil fork, block 107229260):**
+**Fork test results (Anvil fork, block 107229260, updated 2026-09-25):**
 
 ```
-Ran 4 test suites in 131.80ms: 30 tests passed, 0 failed, 5 skipped (35 total tests)
+Ran 3 test suites in 1.14s (1.12s CPU time): 33 tests passed, 0 failed, 0 skipped (33 total tests)
 
-RegistryFork.t.sol:  24 passed, 0 failed
-WmonFork.t.sol:       4 passed, 0 failed
-LiquidityProbe.t.sol: 2 passed, 0 failed
-DevBuyFork.t.sol:     0 passed, 0 failed, 5 skipped
+RegistryFork.t.sol:   24 passed, 0 failed
+WmonFork.t.sol:        6 passed, 0 failed
+LiquidityProbe.t.sol:  3 passed, 0 failed
 ```
 
 **Task 2 — isExcludedFromBalanceLimit: CONFIRMED**
@@ -240,18 +239,37 @@ The `excludedFromBalanceLimit` array passed in `tokenConfig()` at launch time is
 
 Dev buys require DopplerHookInitializer or Rehype (not V4ScheduledMulticurveInitializer). All dev buy code removed from codebase: `launch-devbuy.ts`, `DevBuyFork.t.sol`, BUNDLER address, Launch.tsx dev buy fields. Returns with Rehype initializer via the allowlist.
 
-**WMON-Paired Token: CONFIRMED WORKING**
+**WMON-Paired Token: CONFIRMED WORKING (two-hop buyback, oracle escrow)**
 
 - `test_register_wmonNumeraire` PASSED: `registry.assetNumeraires(asset) == WMON`
 - `test_collect_receivesWMON` PASSED: escrow received `3999999999999999` WMON (~0.004 WMON from 1 WMON swap at 2%)
-- `test_execute_revertsForWMON` PASSED: vault correctly reverts `BuybackNotAvailable`
+- `test_twoHopBuyback_burnTokens` PASSED: 3 USDC revenue → vault gets 3 USDC via distribute → two-hop buyback (USDC → native MON via real v4 pool fee=500 ts=10 → wrap → WMON → token → burn). **3,751,468,154,800,126,370,883,698 tokens burned.**
+- `test_claimWmon_oracleValuation` PASSED: 100 USDC revenue recorded, 5 WMON trading fees collected, Chainlink oracle answer=2707267 ($0.0271/MON). Creator claimed `19999999999999999` WMON (~0.02 WMON), `wmonClaimedUsd=54145` (8 dec).
+- `test_washCheck_wmonPair` PASSED: `ESCROW_UNLOCK_BPS (2000) < 10000 - PROVIDER_BPS (4000)` — wash constraint holds.
 - `test_pfr_forwardsWMON` PASSED: treasury received `5999999999999999` WMON (~0.006 WMON, the 30% PFR share)
 
-**Other fork test highlights:**
+**USDC-Paired Token: CONFIRMED WORKING (single-hop buyback)**
+
 - Real 10 USDC swap generates correct fee splits: escrow 39,999 (20%), vault 19,999 (10%)
 - PFR collect forwards 59,999 USDC to treasury (30% share)
 - Buyback burns 953,017,632,543,025,721,665,867 tokens for 10 USDC
 - Wash constraint holds: 1 USDC self-pay → 0.6 provider + 0.2 escrow = 0.8 received, net loss 0.2
+
+**Liquidity Probe (fork-verified, 2026-09-25):**
+
+Native MON/USDC v4 pools found on Monad (currency0=address(0)):
+
+| Fee | Tick Spacing | sqrtPriceX96 | Liquidity | Notes |
+|-----|-------------|--------------|-----------|-------|
+| 100 | 1 | 11824554402319638109187 | 622545667 | Shallow |
+| **500** | **10** | **13031725198633156476928** | **21593306817506544910** | **Deepest — selected for buyback** |
+| 3000 | 60 | 13032700921217581491474 | 20997613533631895 | Moderate |
+| 10000 | 200 | 13046220933358555838126 | 5374262084909219 | Low |
+
+WMON/USDC v3 pool: fee=3000, sqrtPriceX96=4295128740, liquidity=0 (empty).
+
+PoolKey for selected pool: `(address(0), 0x754704Bc059F8C67012fEd69BC8A327a5aafb603, 500, 10, address(0))`
+PoolId: `0x18a9fc874581f3ba12b7898f80a683c66fd5877fd74b26a85ba9a3a79c549954` (verified via keccak256(abi.encode(PoolKey))).
 
 ### Task 5: USDC/MON Liquidity Measurement (Redone 2026-09-25)
 
@@ -302,7 +320,7 @@ Dev buys require DopplerHookInitializer or Rehype (not V4ScheduledMulticurveInit
 | # | Decision | Rationale |
 |---|----------|-----------|
 | A1 | IFeeAdapter.collectFeesCall + InitializerV1Adapter | Replaced `collectFees(poolId)` with `collectFeesCall(poolId) → (target, calldata)`. Beneficiaries do `target.call(calldata)` to preserve msg.sender identity for Doppler payouts. InitializerV1Adapter wraps the V4ScheduledMulticurveInitializer. Deploy.s.sol deploys adapter at nonce N+4, registry at N+5. |
-| A2 | WMON-paired buyback: accumulate USDC, revert on execute() | Per autonomous mode instructions: no USDC/WMON v4 pool → skip swap, don't invent DEX integration. |
-| A3 | FeeEscrow.creditNumeraireSwap: authorized by routers/registry | The keeper needs to call this after swapping WMON → USDC. Using the same authorization mechanism as recordRevenue (authorized routers). |
+| A2 | ~~WMON-paired buyback: accumulate USDC, revert on execute()~~ **SUPERSEDED** | Two-hop buyback now implemented: USDC → native MON (v4 pool fee=500 ts=10) → wrap → WMON → token → burn. MON/USDC pool key is a governed constructor param (propose/48h/accept + guardian cancel). |
+| A3 | ~~FeeEscrow.creditNumeraireSwap: authorized by routers/registry~~ **SUPERSEDED** | Removed. FeeEscrow now holds WMON directly and values claims via Chainlink MON/USD oracle. No keeper swap needed. |
 | A4 | Guardian is immutable (set at deploy, cannot be changed) | Conservative choice per CLAUDE.md: the guardian is a safety mechanism, not an operational role. Changing the guardian would require a full redeploy. |
 | A5 | Start market cap not checked by registry | Per Decision #2: follow what Doppler allows; creator sets it at launch. The registry verifies beneficiaries, vesting, supply, and pool config — not pricing. |

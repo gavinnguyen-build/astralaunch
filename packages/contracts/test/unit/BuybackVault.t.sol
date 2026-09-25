@@ -115,7 +115,8 @@ contract MockPoolManager {
 
 /// @dev Thin wrapper so tests can call unlockCallback (which is external).
 contract BuybackVaultHarness is BuybackVault {
-    constructor(address r, address pm) BuybackVault(r, pm) {}
+    constructor(address r, address pm, address g, PoolKey memory mk)
+        BuybackVault(r, pm, g, mk) {}
 }
 
 contract MockAssetToken {
@@ -150,12 +151,14 @@ contract BuybackVaultTest is Test {
     MockAssetToken       token;
     MockPoolManager      pm;
 
-    address registry = address(this);
-    address router1  = address(0xAB1);
+    address registry  = address(this);
+    address guardian_  = address(0x6A2D);
+    address router1   = address(0xAB1);
     address asset;
     bytes32 poolId = keccak256("pool");
 
     PoolKey poolKey;
+    PoolKey monUsdcKey; // dummy MON/USDC key for unit tests
 
     function setUp() public {
         // Warp past MIN_INTERVAL so first execute call is not in cooldown
@@ -175,7 +178,8 @@ contract BuybackVaultTest is Test {
         init_ = new MockInitializerVault(address(usdc));
         pm    = new MockPoolManager(address(token));
 
-        vault = new BuybackVaultHarness(registry, address(pm));
+        monUsdcKey = PoolKey(address(0), USDC_ADDR, 500, 10, address(0));
+        vault = new BuybackVaultHarness(registry, address(pm), guardian_, monUsdcKey);
         asset = address(token);
 
         // Build PoolKey (USDC < asset or not; use canonical USDC address)
@@ -323,5 +327,79 @@ contract BuybackVaultTest is Test {
         uint256 before = vault.assetData(asset).balanceUSDC;
         vault.execute(asset, amt, 0, 0);
         assertLe(vault.assetData(asset).balanceUSDC, before);
+    }
+
+    // ── MON/USDC key governance ─────────────────────────────────────────────
+
+    function test_proposeMonUsdcKey_byRegistry() public {
+        PoolKey memory newKey = PoolKey(address(0), USDC_ADDR, 3000, 60, address(0));
+        vault.proposeMonUsdcKey(newKey);
+        assertGt(vault.monUsdcProposalExecAt(), 0);
+    }
+
+    function test_proposeMonUsdcKey_revertsIfNotRegistry() public {
+        PoolKey memory newKey = PoolKey(address(0), USDC_ADDR, 3000, 60, address(0));
+        vm.prank(address(0x999));
+        vm.expectRevert(BuybackVault.NotRegistry.selector);
+        vault.proposeMonUsdcKey(newKey);
+    }
+
+    function test_proposeMonUsdcKey_revertsIfAlreadyActive() public {
+        PoolKey memory newKey = PoolKey(address(0), USDC_ADDR, 3000, 60, address(0));
+        vault.proposeMonUsdcKey(newKey);
+        vm.expectRevert(BuybackVault.ProposalAlreadyActive.selector);
+        vault.proposeMonUsdcKey(newKey);
+    }
+
+    function test_acceptMonUsdcKey_afterDelay() public {
+        PoolKey memory newKey = PoolKey(address(0), USDC_ADDR, 3000, 60, address(0));
+        vault.proposeMonUsdcKey(newKey);
+        vm.warp(block.timestamp + C.TREASURY_CHANGE_DELAY);
+        vault.acceptMonUsdcKey();
+        (address c0,,uint24 fee, int24 ts,) = vault.monUsdcPoolKey();
+        assertEq(c0, address(0));
+        assertEq(fee, 3000);
+        assertEq(ts, 60);
+        assertEq(vault.monUsdcProposalExecAt(), 0);
+    }
+
+    function test_acceptMonUsdcKey_revertsBeforeDelay() public {
+        PoolKey memory newKey = PoolKey(address(0), USDC_ADDR, 3000, 60, address(0));
+        vault.proposeMonUsdcKey(newKey);
+        vm.expectRevert(BuybackVault.ProposalNotReady.selector);
+        vault.acceptMonUsdcKey();
+    }
+
+    function test_acceptMonUsdcKey_revertsIfNoProposal() public {
+        vm.expectRevert(BuybackVault.NoActiveProposal.selector);
+        vault.acceptMonUsdcKey();
+    }
+
+    function test_cancelMonUsdcKey_byRegistry() public {
+        PoolKey memory newKey = PoolKey(address(0), USDC_ADDR, 3000, 60, address(0));
+        vault.proposeMonUsdcKey(newKey);
+        vault.cancelMonUsdcKeyProposal();
+        assertEq(vault.monUsdcProposalExecAt(), 0);
+    }
+
+    function test_cancelMonUsdcKey_byGuardian() public {
+        PoolKey memory newKey = PoolKey(address(0), USDC_ADDR, 3000, 60, address(0));
+        vault.proposeMonUsdcKey(newKey);
+        vm.prank(guardian_);
+        vault.cancelMonUsdcKeyProposal();
+        assertEq(vault.monUsdcProposalExecAt(), 0);
+    }
+
+    function test_cancelMonUsdcKey_revertsIfUnauthorized() public {
+        PoolKey memory newKey = PoolKey(address(0), USDC_ADDR, 3000, 60, address(0));
+        vault.proposeMonUsdcKey(newKey);
+        vm.prank(address(0x999));
+        vm.expectRevert(BuybackVault.NotRegistryOrGuardian.selector);
+        vault.cancelMonUsdcKeyProposal();
+    }
+
+    function test_cancelMonUsdcKey_revertsIfNoProposal() public {
+        vm.expectRevert(BuybackVault.NoActiveProposal.selector);
+        vault.cancelMonUsdcKeyProposal();
     }
 }

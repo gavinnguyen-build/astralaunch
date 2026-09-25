@@ -621,7 +621,7 @@ contract RegistryForkTest is Test {
     /// @dev Clear all registration state for `a` so that register() can be called
     ///      again in tests even if npm run launch pre-registered the token.
     ///
-    ///      v2 storage layout:
+    ///      v2 storage layout (PoolKey extracted from AssetData):
     ///
     ///      AstralaunchRegistry:
     ///        allowedInitializers (slot0), feeAdapters (slot1), pendingInitializer (slot2-4),
@@ -634,10 +634,11 @@ contract RegistryForkTest is Test {
     ///        _data mapping (slot0); base = keccak256(abi.encode(asset, 0))
     ///        base+0: creator(addr20)+launchTime(uint48)+forfeited(bool)
     ///
-    ///      BuybackVault:
+    ///      BuybackVault (Solady ReentrancyGuard uses custom high slot, not slot 0):
     ///        _assets mapping (slot0); base = keccak256(abi.encode(asset, 0))
-    ///        PoolKey fields: currency0 (base+0), currency1+fee+tickSpacing (base+1), hooks (base+2)
-    ///        poolId (base+3), registered+numeraire+balanceUSDC packed (base+4)
+    ///        base+0: poolId (bytes32)
+    ///        base+1: registered(bool) + numeraire(address) packed
+    ///        _poolKeys mapping (slot1)
     ///
     ///      PlatformFeeReceiver:
     ///        admin(0), treasury(1), proposedTreasury(2), proposalExecutableAt(3),
@@ -650,9 +651,9 @@ contract RegistryForkTest is Test {
         bytes32 eBase = keccak256(abi.encode(a, uint256(0)));
         vm.store(address(escrow), eBase, bytes32(0));
 
-        // 3. BuybackVault._assets[a] base+4 (clears registered flag and balanceUSDC)
+        // 3. BuybackVault._assets[a] base+1 (clears registered flag and numeraire)
         bytes32 vBase = keccak256(abi.encode(a, uint256(0)));
-        vm.store(address(vault), bytes32(uint256(vBase) + 4), bytes32(0));
+        vm.store(address(vault), bytes32(uint256(vBase) + 1), bytes32(0));
 
         // 4. PlatformFeeReceiver.assetPoolIds[a] -- mapping at slot 5
         vm.store(address(pfr), keccak256(abi.encode(a, uint256(5))), bytes32(0));

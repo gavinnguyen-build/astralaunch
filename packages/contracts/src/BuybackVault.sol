@@ -23,6 +23,9 @@ interface IWMON {
 ///         v2: dual numeraire. USDC pairs: single-hop. WMON pairs: two-hop
 ///         (USDC → native MON → wrap → WMON → token → burn).
 ///
+///         The MON/USDC v4 pool key used for leg-1 swaps is set at construction and
+///         changeable only via propose → 48h delay → accept (guardian can cancel).
+///
 ///         SPEC §6.4.
 contract BuybackVault is ReentrancyGuard, IUnlockCallback {
     using SafeTransferLib for address;
@@ -45,6 +48,7 @@ contract BuybackVault is ReentrancyGuard, IUnlockCallback {
 
     // ── Singletons ────────────────────────────────────────────────────────────
     address          public immutable registry;
+    address          public immutable guardian;
     IPoolManager     public immutable poolManager;
     address          constant USDC = 0x754704Bc059F8C67012fEd69BC8A327a5aafb603;
     address          constant WMON = 0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A;
@@ -52,12 +56,18 @@ contract BuybackVault is ReentrancyGuard, IUnlockCallback {
     mapping(address asset => IFeeAdapter) private _adapters;
     mapping(address => bool) public authorizedCallers;
 
+    // ── MON/USDC pool key (governed) ────────────────────────────────────────
+    PoolKey  public monUsdcPoolKey;
+    PoolKey  private _proposedMonUsdcKey;
+    uint256  public  monUsdcProposalExecAt;
+
     // Transient swap context
     uint256  private _swapMinMonOut;
 
     // ── Errors ────────────────────────────────────────────────────────────────
     error NotRegistry();
     error NotAuthorized();
+    error NotRegistryOrGuardian();
     error AssetNotRegistered();
     error AlreadyRegistered();
     error CooldownActive();
@@ -66,6 +76,10 @@ contract BuybackVault is ReentrancyGuard, IUnlockCallback {
     error InsufficientBalance();
     error CollectFeesFailed();
     error Leg1SlippageTooHigh();
+    error ZeroAddress();
+    error NoActiveProposal();
+    error ProposalNotReady();
+    error ProposalAlreadyActive();
 
     // ── Events ────────────────────────────────────────────────────────────────
     event AssetRegistered(address indexed asset, bytes32 poolId, address numeraire);
@@ -74,11 +88,17 @@ contract BuybackVault is ReentrancyGuard, IUnlockCallback {
     event USDCCredited(address indexed asset, uint256 amt, uint8 sourceTag);
     event BuybackExecuted(address indexed asset, uint256 usdcIn, uint256 tokensBurned, uint8 sourceTag);
     event TokensBurned(address indexed asset, uint256 amt);
+    event MonUsdcKeyProposed(bytes32 indexed poolId, uint256 executableAt);
+    event MonUsdcKeyAccepted(bytes32 indexed oldPoolId, bytes32 indexed newPoolId);
+    event MonUsdcKeyProposalCancelled(bytes32 indexed cancelledPoolId);
 
     // ── Constructor ───────────────────────────────────────────────────────────
-    constructor(address _registry, address _poolManager) {
+    constructor(address _registry, address _poolManager, address _guardian, PoolKey memory _monUsdcKey) {
+        if (_guardian == address(0)) revert ZeroAddress();
         registry    = _registry;
         poolManager = IPoolManager(_poolManager);
+        guardian    = _guardian;
+        monUsdcPoolKey = _monUsdcKey;
     }
 
     receive() external payable {}
@@ -103,6 +123,52 @@ contract BuybackVault is ReentrancyGuard, IUnlockCallback {
         if (msg.sender != registry) revert NotRegistry();
         authorizedCallers[caller] = true;
         emit CallerAuthorized(caller);
+    }
+
+    // ── MON/USDC pool key governance (propose → 48h → accept, guardian cancel) ──
+
+    /// @notice Propose a new MON/USDC v4 pool key. Registry-only.
+    function proposeMonUsdcKey(PoolKey calldata newKey) external {
+        if (msg.sender != registry) revert NotRegistry();
+        if (monUsdcProposalExecAt != 0) revert ProposalAlreadyActive();
+        _proposedMonUsdcKey = newKey;
+        monUsdcProposalExecAt = block.timestamp + C.TREASURY_CHANGE_DELAY;
+        bytes32 proposedId = keccak256(abi.encode(newKey));
+        emit MonUsdcKeyProposed(proposedId, monUsdcProposalExecAt);
+    }
+
+    /// @notice Accept the proposed MON/USDC key after 48h delay. Registry-only.
+    function acceptMonUsdcKey() external {
+        if (msg.sender != registry) revert NotRegistry();
+        if (monUsdcProposalExecAt == 0) revert NoActiveProposal();
+        if (block.timestamp < monUsdcProposalExecAt) revert ProposalNotReady();
+
+        bytes32 oldId = keccak256(abi.encode(monUsdcPoolKey));
+        monUsdcPoolKey = _proposedMonUsdcKey;
+        bytes32 newId = keccak256(abi.encode(monUsdcPoolKey));
+
+        // Clear proposal
+        delete _proposedMonUsdcKey;
+        monUsdcProposalExecAt = 0;
+
+        emit MonUsdcKeyAccepted(oldId, newId);
+    }
+
+    /// @notice Cancel a pending MON/USDC key proposal. Registry or guardian.
+    function cancelMonUsdcKeyProposal() external {
+        if (msg.sender != registry && msg.sender != guardian) revert NotRegistryOrGuardian();
+        if (monUsdcProposalExecAt == 0) revert NoActiveProposal();
+
+        bytes32 cancelledId = keccak256(abi.encode(_proposedMonUsdcKey));
+        delete _proposedMonUsdcKey;
+        monUsdcProposalExecAt = 0;
+
+        emit MonUsdcKeyProposalCancelled(cancelledId);
+    }
+
+    /// @notice View the pending MON/USDC key proposal.
+    function pendingMonUsdcKey() external view returns (PoolKey memory key, uint256 executableAt) {
+        return (_proposedMonUsdcKey, monUsdcProposalExecAt);
     }
 
     // ── Collect trading fees ──────────────────────────────────────────────────
@@ -184,9 +250,6 @@ contract BuybackVault is ReentrancyGuard, IUnlockCallback {
     }
 
     // ── Shared swap primitive ────────────────────────────────────────────────
-    /// @dev Executes a swap, settles the input token, and takes the output token.
-    ///      Returns (inputOwed, outputReceived). Minimizes stack depth by
-    ///      handling settle+take inline.
     function _swapAndSettle(
         PoolKey memory key,
         bool zeroForOne,
@@ -228,14 +291,11 @@ contract BuybackVault is ReentrancyGuard, IUnlockCallback {
         return abi.encode(tokenOut);
     }
 
-    /// @notice Leg 1: USDC → native MON via v4 MON/USDC pool.
+    /// @notice Leg 1: USDC → native MON via governed MON/USDC v4 pool.
     function _leg1_usdcToMon(uint256 usdcIn) internal returns (uint256 monOut) {
-        PoolKey memory monUsdcKey = PoolKey({
-            currency0: address(0), currency1: USDC,
-            fee: C.MON_USDC_FEE, tickSpacing: C.MON_USDC_TICK_SPACING, hooks: address(0)
-        });
-        // Sell USDC (currency1) → buy native MON (currency0); zeroForOne=false
-        monOut = _swapAndSettle(monUsdcKey, false, usdcIn, USDC, address(0));
+        PoolKey memory monKey = monUsdcPoolKey;
+        // native MON is currency0 (address(0)), USDC is currency1; zeroForOne=false
+        monOut = _swapAndSettle(monKey, false, usdcIn, USDC, address(0));
         if (monOut < _swapMinMonOut) revert Leg1SlippageTooHigh();
     }
 

@@ -307,7 +307,7 @@ Rules in `execute`:
 - `usdcIn ≤ min(balanceUSDC[asset], MAX_PER_CALL)`; at most once per `MIN_INTERVAL` (e.g. 10 min) per asset.
 - **USDC pairs:** single-hop swap USDC → `asset` through `PoolManager.unlock()` → `unlockCallback`. Settles USDC, takes the asset.
 - **WMON pairs:** two-hop via `PoolManager.unlock()`:
-  1. Leg 1: swap USDC → native MON via v4 MON/USDC pool (PoolKey: `address(0), USDC, fee=500, ts=10, hooks=0`). Settle USDC, take native MON. Check `monOut >= minMonOut`.
+  1. Leg 1: swap USDC → native MON via the stored `monUsdcPoolKey`. Settle USDC, take native MON. Check `monOut >= minMonOut`.
   2. Wrap: `IWMON(WMON).deposit{value: monOut}()` — native MON → WMON.
   3. Leg 2: swap WMON → token via the Doppler pool. Settle WMON, take token, burn. Check `tokenOut >= minTokenOut`.
   Both legs happen inside the same `unlock()` call.
@@ -315,6 +315,12 @@ Rules in `execute`:
 - Require `minTokenOut`; burn all received tokens with DopplerERC20V1 `burn`.
 - Track `buybackFromRevenue` vs `buybackFromTrading` per asset and emit `BuybackExecuted(asset, usdcIn, tokensBurned, sourceTag)`.
 - Known cost: the swap pays the 2% pool fee (≈1.75% net leakage after the vault's own share returns). Accept for v1.
+
+**MON/USDC pool key governance:**
+- `monUsdcPoolKey` is set at construction (initial value: `address(0), USDC, 500, 10, address(0)` — the deepest v4 native MON/USDC pool on Monad).
+- Changeable only via `proposeMonUsdcKey(PoolKey)` → 48h delay → `acceptMonUsdcKey()`. Same pattern as PlatformFeeReceiver treasury changes.
+- Only `registry` or `guardian` can propose. Guardian can also `cancelMonUsdcKeyProposal()`.
+- Emits `MonUsdcKeyProposed`, `MonUsdcKeyAccepted`, `MonUsdcKeyProposalCancelled`.
 
 ### 6.5 `PlatformFeeReceiver` (singleton, D21)
 
