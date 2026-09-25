@@ -121,7 +121,6 @@ services:
       MIN_DISTRIBUTE_USDC: ${MIN_DISTRIBUTE_USDC:-}
       MIN_BUYBACK_USDC: ${MIN_BUYBACK_USDC:-}
       DRY_RUN: ${DRY_RUN:-false}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}   # secret, optional: unset = alerts logged only
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
     entrypoint: ['/bin/sh', '-c', ': "$${POSTGRES_PASSWORD:?FATAL: POSTGRES_PASSWORD is not set}" "$${KEEPER_PRIVATE_KEY:?FATAL: KEEPER_PRIVATE_KEY is not set}"; exec "$$@"', 'require-secrets']
     command: ['node_modules/.bin/tsx', 'src/index.ts']   # = image CMD
