@@ -349,7 +349,7 @@ SLUG=my-svc SERVICE_PATH=/json SERVER_URL=http://localhost:3001 \
 `PRICE_USDC` is human USDC (0.01), not raw units; above 100 USDC it needs `ALLOW_HIGH_PRICE=1`.
 The pay script refuses when `payTo` is not `registry.routers(asset)` on chain, or the wallet lacks USDC.
 
-### Demo loop: SIGHT → /sight/signals, FEED → /feed/digest (2026-09-25)
+### Demo loop: SIGHT → /sight/signals, FEED → /feed/digest (2026-09-25; re-pointed 2026-09-26)
 
 Prerequisites: SIGHT and FEED listed (legacy listing script above); `apps/server/.env.mainnet` contains
 `UPSTREAM_ALLOWLIST=http://127.0.0.1:4001` (demo-services on the same host as the server; if they run in
@@ -367,11 +367,11 @@ pnpm start:mainnet
 
 # 3. register both services, signed by the on-chain creator keystore (hidden password prompt, then "yes")
 cd astralaunch-anvil
-export SERVER_URL=http://localhost:3001 UPSTREAM_URL=http://127.0.0.1:4001 PRICE_USDC=0.5 CREATOR_KEYSTORE=astralaunch-deployer
-ASSET=0x30Ae380593A04C14aBFa994969B718a78A6105aD SLUG=nullsight \
+export SERVER_URL=http://localhost:3001 PRICE_USDC=0.5 CREATOR_KEYSTORE=astralaunch-deployer
+ASSET=0x30Ae380593A04C14aBFa994969B718a78A6105aD SLUG=nullsight UPSTREAM_URL=http://127.0.0.1:4001/sight \
   DESCRIPTION="Ranked X-style signals for a handle (sample data)" \
   RESPONSE_SCHEMA=../apps/demo-services/schemas/sight-signals.json npx tsx src/mainnet-register-service.ts
-ASSET=0x2686619d5569AEbcdfeC774e8a2167dE78376dDf SLUG=nullfeed \
+ASSET=0x2686619d5569AEbcdfeC774e8a2167dE78376dDf SLUG=nullfeed UPSTREAM_URL=http://127.0.0.1:4001/feed \
   DESCRIPTION="Latest 5 arXiv papers for a topic" \
   RESPONSE_SCHEMA=../apps/demo-services/schemas/feed-digest.json npx tsx src/mainnet-register-service.ts
 unset CREATOR_KEYSTORE
@@ -379,8 +379,8 @@ unset CREATOR_KEYSTORE
 # 4. pay once for each, from an agent wallet that is NOT the creator (needs >= 1 USDC, no MON)
 read -s AGENT_PRIVATE_KEY && export AGENT_PRIVATE_KEY     # or: export AGENT_KEYSTORE=<foundry account>
 export MONAD_RPC_URL="$(grep '^MONAD_RPC_URL=' ../apps/server/.env.mainnet | cut -d= -f2-)"
-SLUG=nullsight SERVICE_PATH='/sight/signals?handle=nullsight' npx tsx src/mainnet-pay.ts
-SLUG=nullfeed  SERVICE_PATH='/feed/digest?topic=agent%20payments' npx tsx src/mainnet-pay.ts
+SLUG=nullsight SERVICE_PATH='/signals?handle=nullsight' npx tsx src/mainnet-pay.ts
+SLUG=nullfeed  SERVICE_PATH='/digest?topic=agent%20payments' npx tsx src/mainnet-pay.ts
 unset AGENT_PRIVATE_KEY
 
 # 5. keeper: dry run, then one live tick (KEEPER_PRIVATE_KEY etc. in apps/keeper/.env.mainnet)
@@ -392,6 +392,28 @@ export MIN_BUYBACK_USDC=0.1     # one 0.5 USDC payment leaves 0.15 USDC in the v
 pnpm exec tsx src/start-mainnet.ts --dry-run --once
 pnpm exec tsx src/start-mainnet.ts --once
 ```
+
+**Re-point the demo services to their own path prefix (2026-09-26).** Both were first registered
+with the same upstream base `http://127.0.0.1:4001`, so `/s/nullfeed/sight/signals` reached the SIGHT
+endpoint. Each upstreamUrl now carries a prefix and the gateway never leaves it
+(`/s/nullsight/<path>` → `http://127.0.0.1:4001/sight/<path>`). Deploy the new server and
+demo-services first (the old gateway ignores the prefix), then send a signed PATCH per service. The
+price is left unchanged when `PRICE_USDC` is not set:
+
+```bash
+cd astralaunch-anvil
+export SERVER_URL=http://localhost:3001 CREATOR_KEYSTORE=astralaunch-deployer
+unset PRICE_USDC
+ASSET=0x30Ae380593A04C14aBFa994969B718a78A6105aD SLUG=nullsight UPSTREAM_URL=http://127.0.0.1:4001/sight \
+  npx tsx src/mainnet-register-service.ts
+ASSET=0x2686619d5569AEbcdfeC774e8a2167dE78376dDf SLUG=nullfeed UPSTREAM_URL=http://127.0.0.1:4001/feed \
+  npx tsx src/mainnet-register-service.ts
+unset CREATOR_KEYSTORE
+```
+
+Public paths after the change: `/s/nullsight/signals?handle=…` and `/s/nullfeed/digest?topic=…`.
+The old `/s/nullsight/sight/signals` now reaches `…/sight/sight/signals` (404 upstream → 502, not charged).
+In containers use the internal origin instead: `http://demo-services:4001/sight` and `…/feed`.
 
 ### Start (port 3001)
 

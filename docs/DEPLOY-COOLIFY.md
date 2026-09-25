@@ -129,7 +129,8 @@ backfills from block `107840649`, and the healthcheck allows a 10-minute start p
 | `DEMO_SERVICES_PORT` | public | fixed `4001` |
 
 Demo services registered in the DB must use upstream URLs on `http://demo-services:4001/…`
-(for example `http://demo-services:4001/feed/digest`). If they were registered as
+with their own path prefix: `http://demo-services:4001/sight` (nullsight) and
+`http://demo-services:4001/feed` (nullfeed). The gateway keeps each service inside its prefix. If they were registered as
 `http://127.0.0.1:4001/…`, update them with `PATCH /api/services/:id`. Otherwise the gateway
 blocks them as private IPs, because only the allowlisted origin passes.
 

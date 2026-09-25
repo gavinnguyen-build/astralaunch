@@ -314,3 +314,28 @@ Verified on a local Anvil fork with `apps/web/scripts/swap-harness` driven by he
 - USDC sell with permit only.
 - MON buy (one tx) and MON sell (permit, then swap).
 - The flip button, the insufficient-balance label, and the high-impact gate.
+
+## Gateway: response schema and upstream path prefix (2026-09-26)
+
+**D-GW3. Schema check before settle.** Found in mainnet testing: nullsight and nullfeed shared the upstream
+base `http://127.0.0.1:4001`, so `/s/nullfeed/sight/signals` returned SIGHT data and would have charged FEED's
+router. The gateway now reads the upstream body (max 10 MB) before settling. When the service has a `responseSchema`:
+- a body that is not JSON → `response_not_json`
+- a schema mismatch → `schema_mismatch`
+- a schema that cannot be used → `schema_invalid`
+
+In each case it returns 502, does NOT settle and logs the error code, so the buyer is not charged. Services
+without a schema behave as before. Creator schemas are untrusted, so they are interpreted by
+`@cfworker/json-schema` and never compiled to code. They are checked at registration (400 when unusable).
+They cannot be changed by PATCH (signed message format unchanged).
+
+**D-GW4. Upstream path prefix.** `upstreamUrl` may include a path (e.g. `http://127.0.0.1:4001/sight`). The gateway
+maps `/s/{slug}/<path>?<query>` to `<upstreamUrl>/<path>?<query>`, keeping the raw query and repeated keys.
+Requests are refused with 400 before any payment when:
+- the path contains encoded `/` or `\` (the incoming URL is already dot-normalised);
+- the target would leave the prefix.
+
+At create/update, an `upstreamUrl` with a query, fragment or credentials is rejected. Health probes call
+`<upstreamUrl>/health`, so demo-services also serves `/sight/health` and `/feed/health`. The register script
+keeps the current price on an update when `PRICE_USDC` is unset.
+

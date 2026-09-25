@@ -43,7 +43,7 @@ export function TryApiModal({ asset, slug, wallet, config, onClose }: {
       {!plan && !out && (
         <div>
           <label style={{ fontSize: '13px', color: '#A7A2BD' }}>Request path (appended to /s/{slug})
-            <input value={path} onChange={(e) => setPath(e.target.value)} placeholder="/sight/signals?handle=nullsight" style={{ ...inputStyle, marginTop: 6 }} /></label>
+            <input value={path} onChange={(e) => setPath(e.target.value)} placeholder="/signals?handle=monad" style={{ ...inputStyle, marginTop: 6 }} /></label>
           <p style={{ margin: '10px 0 0', fontSize: '12px', color: '#8C87A3' }}>You sign a USDC payment authorization (no gas). The gateway only settles it if the API answers successfully.</p>
           <ErrorLine msg={err} />
           <Actions><button type="button" style={btnStyle(false)} onClick={onClose}>Cancel</button><button type="button" style={btnStyle(true)} onClick={prepare} disabled={busy}>{busy ? 'Checking…' : 'Get price'}</button></Actions>
