@@ -1,4 +1,4 @@
-# Revpad Contracts — Spike Results & Decisions
+# Astralaunch Contracts — Spike Results & Decisions
 
 Spike run: 2026-09-22
 Anvil fork of Monad mainnet at block 107059291
@@ -25,7 +25,7 @@ All fields readable. `getAssetData(address asset)` exists on Airlock at
 | totalSupply | 1,000,000,000 × 10^18 ✓ |
 | integrator | treasury address |
 
-**Decision D1 — NOGOV constant**: The constant previously named `NOGOV` in RevpadRegistry was
+**Decision D1 — NOGOV constant**: The constant previously named `NOGOV` in AstralaunchRegistry was
 `0xb4deE32EB70A5E55f3D2d861F49Fb3D79f7a14d9`, which is the **NoOpGovernanceFactory** address
 (confirmed in Doppler SDK chain-143 config). The value stored in `Airlock.getAssetData.governance`
 for a token launched with `.withGovernance({ type: 'noOp' })` is actually
@@ -51,7 +51,7 @@ equivalent function exists on the V4ScheduledMulticurveInitializer.
 
 **Decision D2 — register() requires poolId parameter**:
 
-Since there is no on-chain function to look up poolId by asset address, `RevpadRegistry.register()`
+Since there is no on-chain function to look up poolId by asset address, `AstralaunchRegistry.register()`
 must accept `poolId` as a caller-supplied parameter. The registry verifies the supplied poolId by:
 
 1. Calling `INITIALIZER.getPoolKey(poolId)` → checking `fee == POOL_FEE` and `tickSpacing == TICK_SPACING`
@@ -155,7 +155,7 @@ function register(address asset, address creator) external returns (address rout
 **Finding**: `DopplerERC20V1` exposes:
 - `totalAllocatedOf(address beneficiary) → uint256` — total vesting allocation for an address
 - `vestedTotalAmount() → uint256` — sum of all vesting schedule totals
-- `vestingScheduleCount() → uint256` — number of schedules (1 for Revpad tokens)
+- `vestingScheduleCount() → uint256` — number of schedules (1 for Astralaunch tokens)
 
 On-chain values confirmed for test token `0xad50518E…`:
 - `totalAllocatedOf(creator)` = 150,000,000 × 10^18 ✓
@@ -170,7 +170,7 @@ Registry now checks both `totalAllocatedOf(creator) == VESTED_TOKENS_NUM` and `v
 
 **Finding (v0.3)**: `balanceLimitEnd - vestingStart = 7199 s` on the Anvil fork of Monad mainnet block 107059290.
 
-**Root cause**: `DopplerERC20V1` sets `vestingStart = block.timestamp` at deploy time (= the Anvil fork block timestamp, a historical Monad value). The launch script (`revpad-anvil/src/02-launch.ts`) previously set `startTime = Math.max(blockTimestamp, Date.now()/1000) + 2`, so on a historical fork where `Date.now() >> blockTimestamp`, `balanceLimitEnd = Date.now()/1000 + 602` (wall-clock time). The gap `balanceLimitEnd - vestingStart = (Date.now()/1000 + 602) - forkBlockTimestamp ≈ 7199 s`.
+**Root cause**: `DopplerERC20V1` sets `vestingStart = block.timestamp` at deploy time (= the Anvil fork block timestamp, a historical Monad value). The launch script (`astralaunch-anvil/src/02-launch.ts`) previously set `startTime = Math.max(blockTimestamp, Date.now()/1000) + 2`, so on a historical fork where `Date.now() >> blockTimestamp`, `balanceLimitEnd = Date.now()/1000 + 602` (wall-clock time). The gap `balanceLimitEnd - vestingStart = (Date.now()/1000 + 602) - forkBlockTimestamp ≈ 7199 s`.
 
 **Fix (v0.4)**: The launch script now syncs Anvil's block timestamp to real time (`testClient.setNextBlockTimestamp({ timestamp: BigInt(realNow) })`) before deploying, so `block.timestamp_at_deploy ≈ Date.now()/1000` and `balanceLimitEnd - vestingStart ≈ 602 s ≤ 900 s`.
 
@@ -184,7 +184,7 @@ Fork tests verify both bounds via `vm.mockCall`.
 
 ## I. Integrator check (Decision D17)
 
-`Airlock.getAssetData(asset).integrator` returns the integrator address recorded at launch. For all Revpad tokens, this equals the treasury address (confirmed in spike section A). Registry now checks `integrator == treasury` and reverts with `WrongIntegrator(got, expected)`.
+`Airlock.getAssetData(asset).integrator` returns the integrator address recorded at launch. For all Astralaunch tokens, this equals the treasury address (confirmed in spike section A). Registry now checks `integrator == treasury` and reverts with `WrongIntegrator(got, expected)`.
 
 ---
 
@@ -220,7 +220,7 @@ to the zero address (silent loss, not a revert).
 **Decision**: Pre-compute `futureVault = vm.computeCreateAddress(msg.sender, nonce + 1)` and
 pass it to the FeeEscrow constructor. Add post-deploy assertions that revert if any immutable
 is mismatched. Write deployed addresses and deployer nonce to
-`../../revpad-anvil/.anvil-state/contracts.json` so fork tests and the launch script no longer
+`../../astralaunch-anvil/.anvil-state/contracts.json` so fork tests and the launch script no longer
 hardcode the nonce "633".
 
 Fork test `test_deploy_immutablesWiredCorrectly` verifies the wiring on every setUp.

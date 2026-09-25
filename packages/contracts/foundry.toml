@@ -16,7 +16,7 @@ network = "monad"   # Foundry >=1.8: Monad execution model (opcode pricing, gas-
 # Mainnet broadcast logs: set FOUNDRY_BROADCAST=broadcast-mainnet to avoid colliding
 # with fork logs in broadcast/ (which is gitignored).
 fs_permissions = [
-    { access = "read-write", path = "../../revpad-anvil/.anvil-state/" },
+    { access = "read-write", path = "../../astralaunch-anvil/.anvil-state/" },
     { access = "read-write", path = "deployments/" },
 ]
 

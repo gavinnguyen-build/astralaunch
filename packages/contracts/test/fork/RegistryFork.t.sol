@@ -19,13 +19,13 @@ import {IAirlock} from "../../src/interfaces/IAirlock.sol";
 ///
 ///         Required setup:
 ///           1. anvil/start-fork.sh
-///           2. DEPLOY_OUTPUT=../../revpad-anvil/.anvil-state/contracts.json \
+///           2. DEPLOY_OUTPUT=../../astralaunch-anvil/.anvil-state/contracts.json \
 ///              forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 \
 ///                --broadcast --private-key $PRIVATE_KEY
 ///           3. npm run launch
 ///
 ///         Run:
-///           CONTRACTS_JSON_PATH=../../revpad-anvil/.anvil-state/contracts.json \
+///           CONTRACTS_JSON_PATH=../../astralaunch-anvil/.anvil-state/contracts.json \
 ///           forge test --match-path "test/fork/**" --fork-url http://127.0.0.1:8545 -vv
 ///
 ///         Required env vars:
@@ -48,14 +48,14 @@ contract RegistryForkTest is Test {
     address constant NOMIG        = 0x5F3bA43D44375286296Cb85F1EA2EBfa25dde731;
     address constant NOGOV        = 0x000000000000000000000000000000000000dEaD;
 
-    // Anvil default accounts (match the mnemonic in revpad-anvil/src/env.ts)
+    // Anvil default accounts (match the mnemonic in astralaunch-anvil/src/env.ts)
     address constant ADMIN    = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266; // account[0]
     address constant CREATOR  = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266; // same as ADMIN
 
     // Default JSON paths -- relative to packages/contracts/ (Foundry project root).
     // fs_permissions in foundry.toml grants read access to this directory.
-    string constant CONTRACTS_JSON_DEFAULT = "../../revpad-anvil/.anvil-state/contracts.json";
-    string constant STATE_JSON_DEFAULT     = "../../revpad-anvil/.anvil-state/state.json";
+    string constant CONTRACTS_JSON_DEFAULT = "../../astralaunch-anvil/.anvil-state/contracts.json";
+    string constant STATE_JSON_DEFAULT     = "../../astralaunch-anvil/.anvil-state/state.json";
 
     FeeEscrow           escrow;
     BuybackVault        vault;

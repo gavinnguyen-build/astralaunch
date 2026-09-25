@@ -1,4 +1,4 @@
-// Register an already-launched token on RevpadRegistry (mainnet).
+// Register an already-launched token on AstralaunchRegistry (mainnet).
 // Use this to retry registration after mainnet-launch.ts launched the token
 // but register() failed or was skipped.
 //

@@ -1,4 +1,4 @@
-// Mainnet paid call — one x402 payment through the Revpad gateway.
+// Mainnet paid call — one x402 payment through the Astralaunch gateway.
 //
 //   read -s AGENT_PRIVATE_KEY && export AGENT_PRIVATE_KEY
 //   SERVER_URL=http://localhost:3001 \

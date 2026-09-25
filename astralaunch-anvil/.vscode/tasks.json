@@ -28,7 +28,7 @@
       "problemMatcher": []
     },
     { "label": "Test 01: check environment", "type": "shell", "command": "npm run check", "problemMatcher": [] },
-    { "label": "Test 02: launch token (Revpad config)", "type": "shell", "command": "npm run launch", "problemMatcher": [] },
+    { "label": "Test 02: launch token (Astralaunch config)", "type": "shell", "command": "npm run launch", "problemMatcher": [] },
     {
       "label": "Test 03: buy + sell",
       "type": "shell",
@@ -57,12 +57,12 @@
       "problemMatcher": []
     },
     {
-      "label": "Revpad: full flow (fund → check → launch → trade → fees → vesting)",
+      "label": "Astralaunch: full flow (fund → check → launch → trade → fees → vesting)",
       "dependsOrder": "sequence",
       "dependsOn": [
         "Anvil: fund test wallets (USDC)",
         "Test 01: check environment",
-        "Test 02: launch token (Revpad config)",
+        "Test 02: launch token (Astralaunch config)",
         "Test 03: buy + sell",
         "Test 04: fee split per beneficiary",
         "Test 05: vesting cliff + schedule"

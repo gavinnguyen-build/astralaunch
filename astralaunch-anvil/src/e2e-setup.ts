@@ -155,7 +155,7 @@ async function main() {
     address: contracts.vault as Address, abi: vaultAbi, functionName: 'assetData',
     args: [state.token as Address],
   });
-  const COOLDOWN = 600n; // RevpadConstants.BUYBACK_MIN_INTERVAL = 10 min
+  const COOLDOWN = 600n; // AstralaunchConstants.BUYBACK_MIN_INTERVAL = 10 min
   const minForCooldown = vaultData.lastExecuteTime > 0n
     ? vaultData.lastExecuteTime + COOLDOWN + 1n
     : 0n;

@@ -1,4 +1,4 @@
-// Test 02 — launch with Revpad's fixed economics (SPEC §4, §6.1, §17)
+// Test 02 — launch with Astralaunch's fixed economics (SPEC §4, §6.1, §17)
 // 2% fee, 5/35/20/10/30 beneficiaries, 85% pool / 15% vested (30d cliff, 1y), no migration.
 import { DopplerSDK, getAirlockOwner, sortBeneficiaries } from '@whetstone-research/doppler-sdk/evm';
 import type { Address } from 'viem';
@@ -40,7 +40,7 @@ async function main() {
   if (!contracts.escrow || !contracts.vault || !contracts.platformFeeReceiver) {
     throw new Error(
       `contracts.json is missing required addresses (escrow, vault, and/or platformFeeReceiver).\n` +
-      `Run: DEPLOY_OUTPUT=../../revpad-anvil/.anvil-state/contracts.json forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --private-key $PRIVATE_KEY\n` +
+      `Run: DEPLOY_OUTPUT=../../astralaunch-anvil/.anvil-state/contracts.json forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --private-key $PRIVATE_KEY\n` +
       `Expected file: .anvil-state/contracts.json\n` +
       `Got: escrow=${contracts.escrow ?? 'MISSING'}, vault=${contracts.vault ?? 'MISSING'}, platformFeeReceiver=${contracts.platformFeeReceiver ?? 'MISSING'}`
     );
@@ -83,9 +83,9 @@ async function main() {
   const params = sdk
     .buildMulticurveAuction()
     .tokenConfig({
-      name: 'Revpad Test',
-      symbol: 'RVPT',
-      tokenURI: 'ipfs://revpad-test',
+      name: 'Astralaunch Test',
+      symbol: 'ASLT',
+      tokenURI: 'ipfs://astralaunch-test',
       // Per-wallet cap window: 1% of supply, 12 min target (720 s).
       // Registry accepts [600, 900] s.  On Monad (0.4 s blocks) the tx lands
       // ~1 s after reading `now`, giving vestingStart ≈ now + 1; window ≈ 721 s.
@@ -171,14 +171,14 @@ async function main() {
     sellVolumeToken: '0',
   });
 
-  // ── Register on RevpadRegistry ────────────────────────────────────────────
-  console.log('\nRegistering on RevpadRegistry...');
+  // ── Register on AstralaunchRegistry ──────────────────────────────────────
+  console.log('\nRegistering on AstralaunchRegistry...');
   if (!contracts.registry) {
     throw new Error('contracts.json is missing registry address. Re-deploy contracts first.');
   }
   const registryAddr = contracts.registry as Address;
 
-  // Inline ABI for register() — sourced from packages/contracts/out/RevpadRegistry.sol/RevpadRegistry.json
+  // Inline ABI for register() — sourced from packages/contracts/out/AstralaunchRegistry.sol/AstralaunchRegistry.json
   const registryAbi = [
     {
       type: 'function', name: 'register', stateMutability: 'nonpayable',

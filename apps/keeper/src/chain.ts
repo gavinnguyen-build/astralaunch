@@ -25,7 +25,7 @@ function need(k: string): string {
 
 /** Accept both new and legacy env var name for the registry address. */
 function needRegistry(): string {
-  const v = process.env.ASTRALAUNCH_REGISTRY_ADDRESS ?? process.env.REVPAD_REGISTRY_ADDRESS;
+  const v = process.env.ASTRALAUNCH_REGISTRY_ADDRESS;
   if (!v) throw new Error('Missing env var ASTRALAUNCH_REGISTRY_ADDRESS');
   return v;
 }

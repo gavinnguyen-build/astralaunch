@@ -1,4 +1,4 @@
-# Revpad — SPEC
+# Astralaunch (formerly Revpad) — SPEC
 
 > Status: draft v0.3 (updated 2026-09-23: Fix 1-3 implemented, integrator check, SPEC catches up with code) · Target: Monad mainnet (chainId 143) · Hackathon deadline: 2026-10-13
 > Source of truth for product + economics. `CLAUDE.md` holds working rules for the coding agent.
@@ -11,8 +11,8 @@
 ### Locked
 | # | Decision |
 |---|---|
-| D1 | Every service on Revpad has a token. A token may exist without a service (attach later). No pre-token / gateway-only mode. |
-| D2 | Launch is permissionless, anytime, no revenue gate. Revpad charges no launch fee; creator pays Monad gas only (~0.5 MON, §4.6). |
+| D1 | Every service on Astralaunch has a token. A token may exist without a service (attach later). No pre-token / gateway-only mode. |
+| D2 | Launch is permissionless, anytime, no revenue gate. Astralaunch charges no launch fee; creator pays Monad gas only (~0.5 MON, §4.6). |
 | D3 | Revenue is measured **only after launch**, through the service's RevenueRouter. No revenue-anchored start price. |
 | D4 | Trading fee = **2%** of volume. Doppler beneficiary shares: Doppler 5% / creator-liquid 35% / creator-escrow 20% / buyback 10% / platform 30%. **Verified on fork**: fees = 2.000% in both currencies, split exact. |
 | D5 | Service revenue split: provider 60% / buyback 30% / platform 10%. Agents pay the provider's list price, no surcharge. |
@@ -21,16 +21,16 @@
 | D8 | Buyback buys the token from its own pool and burns it. Execution is permissionless. |
 | D9 | Doppler multicurve (Uniswap v4), lockable beneficiaries, no migration, pool paired with USDC. |
 | D10 | **Initializer: `V4ScheduledMulticurveInitializer`.** Monad has no standard or decay multicurve initializer (SDK 1.0.43, confirmed on fork). Tick spacing 200. Dev buy (via Bundler) is supported only by DopplerHookInitializer and Rehype initializer — not available with V4ScheduledMulticurveInitializer. Returns with Rehype. |
-| D11 | **Launch via Doppler SDK, then register on-chain.** The frontend creates the token with the SDK; `RevpadRegistry.register(asset)` verifies the on-chain config and only then deploys the router and lists the token (§6.1). Replaces "factory calls Airlock". |
+| D11 | **Launch via Doppler SDK, then register on-chain.** The frontend creates the token with the SDK; `AstralaunchRegistry.register(asset)` verifies the on-chain config and only then deploys the router and lists the token (§6.1). Replaces "factory calls Airlock". |
 | D12 | **Anti-snipe v1 = DopplerERC20V1 per-wallet balance cap: 1% of supply for the first 12 minutes** (`balanceLimitEnd = startTime + 720 s`; registry accepts [600, 900] s). Verified: over-cap buy reverts, succeeds after the window. Weak against multi-wallet bots; accepted for v1. |
 | D13 | **x402 facilitator = Monad official** `https://x402-facilitator.molandak.org` (x402 v2 only). Always call it through the SDK `HTTPFacilitatorClient`. Self-hosted facilitator (SDK `registerExactEvmScheme`) is the fallback. |
 | D14 | **Contracts swap through `PoolManager.unlock()` directly** (IUnlockCallback), not Universal Router/Permit2. Universal Router is for user wallets only. |
 | D15 | Each fee beneficiary contract (FeeEscrow, BuybackVault) must call `collectFees` on the initializer itself; Doppler releases a beneficiary's share only to the caller (verified). |
-| D16 | **`DOPPLER_HOOK` is constant across launches.** The V4ScheduledMulticurveInitializer's hook address (`0x580ca49389d83b019d07E17e99454f2F218e2dc0`) is the same for every token launched through it on Monad mainnet. Confirmed across 4+ distinct token launches in testing. `RevpadRegistry.register` now takes `(address asset, address creator)` — `poolId` is computed on-chain from `INITIALIZER.getState(asset).poolKey`. The registry adds `WrongPool` error when the pool's hook ≠ `DOPPLER_HOOK`. |
-| D17 | **Integrator must equal the Revpad treasury.** `Airlock.getAssetData(asset).integrator` is recorded at launch time by the Doppler SDK. For every Revpad token, the integrator is the treasury address. `RevpadRegistry.register` now checks this and reverts with `WrongIntegrator` on mismatch. |
+| D16 | **`DOPPLER_HOOK` is constant across launches.** The V4ScheduledMulticurveInitializer's hook address (`0x580ca49389d83b019d07E17e99454f2F218e2dc0`) is the same for every token launched through it on Monad mainnet. Confirmed across 4+ distinct token launches in testing. `AstralaunchRegistry.register` now takes `(address asset, address creator)` — `poolId` is computed on-chain from `INITIALIZER.getState(asset).poolKey`. The registry adds `WrongPool` error when the pool's hook ≠ `DOPPLER_HOOK`. |
+| D17 | **Integrator must equal the Astralaunch treasury.** `Airlock.getAssetData(asset).integrator` is recorded at launch time by the Doppler SDK. For every Astralaunch token, the integrator is the treasury address. `AstralaunchRegistry.register` now checks this and reverts with `WrongIntegrator` on mismatch. |
 | D18 | **Balance cap window: registry enforces [600, 900] s; launch script targets 720 s.** `DopplerERC20V1.vestingStart` = `block.timestamp` at deploy. On Monad (0.4 s blocks) the tx lands ~1 s after `startTime`, giving `window ≈ 721 s`. On Anvil (1 s blocks + SDK lag ~26 s) `window ≈ 696 s`. Both inside [600, 900]. Using 900 caused `WrongBalanceCap` on Monad because the window was 901 s (decisions.md D20). |
-| D21 | **PlatformFeeReceiver replaces treasury wallet as beneficiary/integrator/router destination.** A singleton whose address is fixed forever; it forwards collected funds to a changeable `treasury` via a two-step 48h-delay pattern (`proposeTreasury → acceptTreasury`). Treasury changes are effective for ALL tokens (old and new) without touching existing contracts. RevpadRegistry no longer has `setTreasury()`; the treasury is managed through PlatformFeeReceiver. |
-| D22 | **Two-step admin transfer on RevpadRegistry and PlatformFeeReceiver.** `transferAdmin(newAdmin)` sets `pendingAdmin`; only `pendingAdmin` can call `acceptAdmin()` to finalize. `cancelAdminTransfer()` by current admin. No delay (admin transfer is already gated by the new admin accepting). FeeEscrow, BuybackVault, RevenueRouter have no admin. |
+| D21 | **PlatformFeeReceiver replaces treasury wallet as beneficiary/integrator/router destination.** A singleton whose address is fixed forever; it forwards collected funds to a changeable `treasury` via a two-step 48h-delay pattern (`proposeTreasury → acceptTreasury`). Treasury changes are effective for ALL tokens (old and new) without touching existing contracts. AstralaunchRegistry no longer has `setTreasury()`; the treasury is managed through PlatformFeeReceiver. |
+| D22 | **Two-step admin transfer on AstralaunchRegistry and PlatformFeeReceiver.** `transferAdmin(newAdmin)` sets `pendingAdmin`; only `pendingAdmin` can call `acceptAdmin()` to finalize. `cancelAdminTransfer()` by current admin. No delay (admin transfer is already gated by the new admin accepting). FeeEscrow, BuybackVault, RevenueRouter have no admin. |
 | D23 | **Keeper safety: 10-min interval, per-beneficiary pre-check, 6h collect cadence, spend guards.** 24 Sep incident: keeper drained ~2.8 MON in ~4 min (30s poll, unconditional collect at ~1M gas each, Monad bills gas limit). Fix: default `POLL_INTERVAL_S=600`, min 300s on non-localhost; simulate `collectFees` + `getShares` for per-beneficiary pending, skip if < 1 USDC; 6h cadence per beneficiary per asset; rolling 24h spend guard (0.2 MON/day); `--dry-run` mode. Job order: distribute → buyback → collect → forfeit. |
 | D24 | **Custom indexer replaces Envio.** Low event volume (~1 event/10 min at scale) makes a custom Node + viem + Drizzle indexer simpler than running Envio's Docker stack. Writes to the same Postgres. Three contract sets (static, routers, usdc_transfers) with checkpoint-based resume. Backfill + follow modes. |
 
@@ -45,17 +45,17 @@
 | O7 | Can the creator change the provider payout address? | Yes, creator-only, emits event |
 | ~~O8~~ | ~~Facilitator submitter addresses~~ | **Locked.** `0x7f6a2850669202519f0FE8aa912451238820Db86` recorded in `addresses.ts` and `.env.example`. Server reads via `FACILITATOR_SUBMITTER_ADDRESSES` env var for clean-revenue filtering (§13). |
 | O9 | Payers with EIP-7702-delegated wallets (ERC-1271 path in the facilitator) | Not yet tested on real Monad; add one payment test before mainnet |
-| O10 | Multi-asset quote pairs (forex stablecoins such as EURC, then tokenised stocks) | EURC is not natively deployed on Monad as of 2026-09; no liquid USDC pool exists. Deferred until Revpad v1 ships and a liquid quote token appears on Monad. See §21 for scope. |
+| O10 | Multi-asset quote pairs (forex stablecoins such as EURC, then tokenised stocks) | EURC is not natively deployed on Monad as of 2026-09; no liquid USDC pool exists. Deferred until Astralaunch v1 ships and a liquid quote token appears on Monad. See §21 for scope. |
 | O11 | Keeper and server availability SLA | Single-instance confirmed acceptable for hackathon (23 Sep — keeper verified collect/distribute/buyback in one tick). Mainnet requires dual-region or decentralised keeper; deferred to §21. |
 
 When an open item is decided, move it to "Locked" and update the relevant section.
 
 ## 1. Summary
 
-Revpad is a token launchpad on Monad for **x402 services** (APIs that charge per request via HTTP 402 + USDC). Each service is paired with a token. Two money flows exist per token:
+Astralaunch is a token launchpad on Monad for **x402 services** (APIs that charge per request via HTTP 402 + USDC). Each service is paired with a token. Two money flows exist per token:
 
 1. **Trading fees (2%)** from people trading the token → split between Doppler, the creator (part liquid, part escrowed), buyback, and the platform.
-2. **Service revenue** from agents paying for calls through the Revpad gateway → split between provider, buyback, and platform. Every 1 USDC of revenue also unlocks 0.2 USDC of the creator's escrowed trading fees.
+2. **Service revenue** from agents paying for calls through the Astralaunch gateway → split between provider, buyback, and platform. Every 1 USDC of revenue also unlocks 0.2 USDC of the creator's escrowed trading fees.
 
 Effect: a creator earns from hype immediately (liquid share), but the escrowed share only becomes theirs when the service has paying users. Tokens without real usage eventually hand their escrow to holders via buyback.
 
@@ -68,10 +68,10 @@ Positioning (internal, not a tagline): same launch ease as agent-token launchpad
 | Term | Meaning |
 |---|---|
 | Asset | The launched ERC-20 token (Doppler DERC20). |
-| Service | An x402 endpoint registered on Revpad and bound to one asset. |
+| Service | An x402 endpoint registered on Astralaunch and bound to one asset. |
 | Provider | Address that receives the provider share of service revenue. Defaults to the creator. |
-| Gateway | Revpad's HTTP proxy that returns 402, verifies payment, forwards to upstream, settles on success. |
-| Upstream | The provider's real API (BYO) or a Revpad-hosted template runtime. |
+| Gateway | Astralaunch's HTTP proxy that returns 402, verifies payment, forwards to upstream, settles on success. |
+| Upstream | The provider's real API (BYO) or an Astralaunch-hosted template runtime. |
 | RevenueRouter | Per-asset contract used as x402 `payTo`. Splits inflows. |
 | FeeEscrow | Singleton holding the 20% escrowed creator fee share per asset. |
 | BuybackVault | Singleton holding buyback funds per asset; buys + burns. |
@@ -82,13 +82,13 @@ Positioning (internal, not a tagline): same launch ease as agent-token launchpad
 
 ## 3. Invariants (never violate)
 
-1. Revpad never custodies user funds. Every flow is contract-enforced; no admin function can move escrow, buyback, or router balances to an arbitrary address.
+1. Astralaunch never custodies user funds. Every flow is contract-enforced; no admin function can move escrow, buyback, or router balances to an arbitrary address.
 2. `ESCROW_UNLOCK_BPS < 10000 - PROVIDER_BPS`. With provider 6000, unlock must be < 4000. Current value 2000. This keeps self-paid ("wash") revenue loss-making.
 3. Gateway settles payment **only after** the upstream returns a successful response. Failed calls are never charged.
 4. Contracts count **all** USDC inflows to a RevenueRouter as revenue (economically safe, no oracle). Wash filtering happens only at display level.
 5. BuybackVault can only (a) swap USDC → its own asset through that asset's pool and (b) burn the asset.
 6. Split math: sum of outputs == input, rounding dust stays in the contract and is carried to the next distribution.
-7. All Monad transactions sent by Revpad code (frontend, keeper, scripts) set an explicit gas limit = estimate + small buffer. Monad bills the gas **limit**, not gas used.
+7. All Monad transactions sent by Astralaunch code (frontend, keeper, scripts) set an explicit gas limit = estimate + small buffer. Monad bills the gas **limit**, not gas used.
 8. `@x402/evm` must be ≥ 2.12.0 (2.9.0–2.11.0 point to a proxy address not deployed on Monad and fail silently at settle).
 9. No hardcoded contract addresses outside `packages/shared/src/addresses.ts`; every entry has a source comment.
 
@@ -110,7 +110,7 @@ Positioning (internal, not a tagline): same launch ease as agent-token launchpad
 - Beneficiaries must be sorted by address ascending (SDK does this); shares must sum to 1e18.
 - Fees arrive in both currencies: buyers pay fees in USDC, sellers pay fees in the asset.
 - Uniswap v4 fee units: 2% = `20000` (hundredths of a bip), tick spacing `200`. Verified on the scheduled multicurve (pool state fee=20000, tickSpacing=200).
-- Verified on fork (250 USDC buys, 8.87M tokens sold): USDC-side fees = 2.000% of buy volume, token-side fees = 2.000% of sell volume; the four Revpad beneficiaries received exactly 35/20/10/30 of the 95% after Doppler.
+- Verified on fork (250 USDC buys, 8.87M tokens sold): USDC-side fees = 2.000% of buy volume, token-side fees = 2.000% of sell volume; the four Astralaunch beneficiaries received exactly 35/20/10/30 of the 95% after Doppler.
 - A beneficiary receives its share only when **it** calls `collectFees`. Contract beneficiaries must implement this call.
 
 ### 4.2 Service revenue
@@ -118,7 +118,7 @@ Positioning (internal, not a tagline): same launch ease as agent-token launchpad
 | Recipient | BPS | Notes |
 |---|---|---|
 | Provider | 6000 − costBps | costBps = 0 for BYO APIs |
-| Cost recipient (Revpad) | costBps | Only for Revpad-hosted templates; covers inference. Capped (§10) |
+| Cost recipient (Astralaunch) | costBps | Only for Astralaunch-hosted templates; covers inference. Capped (§10) |
 | BuybackVault | 3000 | |
 | Platform treasury | 1000 | |
 
@@ -152,7 +152,7 @@ Creator self-pays 1 USDC through gateway (or transfers directly to router):
 
 ### 4.6 Launch cost
 
-- No Revpad fee. Creator pays Monad gas for the launch transaction.
+- No Astralaunch fee. Creator pays Monad gas for the launch transaction.
 - Measured on real Monad (`eth_estimateGas`, no tx): launch **4,589,375 gas**; gasLimit ×1.1 = **~5.05M** (well under the 30M per-tx limit).
 - Monad bills `gasLimit × gasPrice`. At 100 gwei base + a few gwei priority: **~0.51–0.55 MON per launch**.
 - Other measured costs: USDC approve 87,715 gas; USDC transfer 83,195; x402 settle (`transferWithAuthorization`) 136,409 gas, paid by the facilitator.
@@ -176,7 +176,7 @@ Platform per day at 200K total volume and 500 USDC total service revenue: 0.60% 
 ```
                  ┌──────────────────────────── Monad ────────────────────────────┐
  Creator ──SDK launch──▶ Doppler Airlock ──▶ DopplerERC20V1 + v4 pool (USDC, scheduled multicurve)
-                 │   then register(asset) ▶ RevpadRegistry ─ verifies config, deploys RevenueRouter (clone)
+                 │   then register(asset) ▶ AstralaunchRegistry ─ verifies config, deploys RevenueRouter (clone)
                  │                                             │ fees (both currencies) ▼
                  │                          Doppler beneficiaries: Airlock owner · creator ·
                  │                          FeeEscrow · BuybackVault · Treasury
@@ -197,7 +197,7 @@ Monorepo (pnpm workspace):
 apps/web          Vite + React + TS (Privy auth, viem)
 apps/server       Hono: public API + x402 gateway routes + hosted template runtime
 apps/keeper       Node worker: scheduled on-chain jobs
-packages/contracts  Foundry: RevpadRegistry, RevenueRouter, FeeEscrow, BuybackVault
+packages/contracts  Foundry: AstralaunchRegistry, RevenueRouter, FeeEscrow, BuybackVault
 packages/indexer    Envio HyperIndex config + handlers
 packages/shared     constants (fees, bps), addresses, zod schemas, fee math, types
 ```
@@ -210,12 +210,12 @@ Infra: Hetzner + Coolify, Cloudflare Tunnel, Postgres. LLM calls for hosted temp
 
 Solidity ^0.8.24, Foundry. Custom errors, events on every state change, NatSpec on public functions. USDC has 6 decimals.
 
-### 6.1 `RevpadRegistry` (launch via SDK, verify, then register)
+### 6.1 `AstralaunchRegistry` (launch via SDK, verify, then register)
 
 Why: re-implementing the Doppler multicurve encoding in Solidity is long and error-prone. The SDK launch path is already verified on the fork. The registry enforces the same guarantees by **checking** the result on-chain instead of **building** it.
 
 Flow:
-1. Frontend launches with the Doppler SDK using the fixed Revpad config (§4): scheduled multicurve, fee 20000, tick spacing 200, beneficiaries [Airlock owner 5%, creator 35%, FeeEscrow 20%, BuybackVault 10%, PlatformFeeReceiver 30%], supply 1e9 with 85/15, vesting 30d/365d, balance cap 1% for 12 min (720 s target; registry accepts 10–15 min), noOp governance and migration, numeraire USDC, integrator = PlatformFeeReceiver.
+1. Frontend launches with the Doppler SDK using the fixed Astralaunch config (§4): scheduled multicurve, fee 20000, tick spacing 200, beneficiaries [Airlock owner 5%, creator 35%, FeeEscrow 20%, BuybackVault 10%, PlatformFeeReceiver 30%], supply 1e9 with 85/15, vesting 30d/365d, balance cap 1% for 12 min (720 s target; registry accepts 10–15 min), noOp governance and migration, numeraire USDC, integrator = PlatformFeeReceiver.
 2. Anyone calls `register(asset, creator)`. No `poolId` parameter — it is derived on-chain (D16).
 
 ```solidity
@@ -330,7 +330,7 @@ function proposeTreasury(address newTreasury) external;   // admin, 48h delay
 function acceptTreasury() external;                       // admin, after delay
 function cancelProposal() external;                       // admin
 function pendingTreasury() external view returns (address proposed, uint256 executableAt);
-function registerAsset(address asset, bytes32 poolId) external; // only RevpadRegistry
+function registerAsset(address asset, bytes32 poolId) external; // only AstralaunchRegistry
 function transferAdmin(address newAdmin) external;              // admin, two-step (D22)
 function acceptAdmin() external;                                // pendingAdmin only
 function cancelAdminTransfer() external;                        // admin
@@ -358,7 +358,7 @@ Removed in v0.2. DopplerERC20V1 provides vesting with a cliff natively (§4.5).
 2. Fills: name, symbol, image, description, links. Optional: attach a service now (§8).
 3. Frontend shows fixed economics (fee split, supply, vesting, cliff claim date, balance cap) — not editable.
 4. Frontend builds the SDK params (§6.1), simulates, shows the MON gas estimate (~0.5 MON), sends with gasLimit = estimate × 1.1. The SDK waits for 2 confirmations.
-5. Frontend (or server) calls `RevpadRegistry.register(asset)`. On `Registered`: server creates the token record; if a service was configured, it becomes active with `payTo = router`.
+5. Frontend (or server) calls `AstralaunchRegistry.register(asset)`. On `Registered`: server creates the token record; if a service was configured, it becomes active with `payTo = router`.
 6. Trading opens at the scheduled start time with the 1%-per-wallet balance cap active for ~12 minutes.
 
 ## 8. Service attach flow
@@ -367,11 +367,11 @@ A token has at most one active service in v1.
 
 ### 8.1 BYO API
 Fields: upstream base URL, route(s), HTTP method, price per call (USDC), request/response JSON schema, health path, description, category, tags.
-- Server generates `upstreamSecret`; gateway signs forwarded requests with HMAC header `X-Revpad-Signature` (timestamp + body hash). Provider is encouraged to reject unsigned calls.
-- Public URL: `https://gw.revpad.xyz/s/{slug}/{route}` (domain TBD).
+- Server generates `upstreamSecret`; gateway signs forwarded requests with HMAC header `X-Astralaunch-Signature` (timestamp + body hash). Provider is encouraged to reject unsigned calls.
+- Public URL: `https://gw.astralaunch.xyz/s/{slug}/{route}` (domain TBD).
 
 ### 8.2 Hosted Prompt template (§10)
-Fields: system prompt, model (allowlist), max input/output tokens, price, description. Revpad hosts and runs it.
+Fields: system prompt, model (allowlist), max input/output tokens, price, description. Astralaunch hosts and runs it.
 
 Changing price or upstream: creator-only, logged, visible on token page history.
 
@@ -413,7 +413,7 @@ Per-payer and per-IP rate limits; max request body size; upstream response size 
 - Runtime inside `apps/server`, calls LiteLLM with the creator's system prompt + user input.
 - Model allowlist with per-model cost table (USD per 1K in/out tokens).
 - `estCost = maxIn × inPrice + maxOut × outPrice`. Enforce `price ≥ 2 × estCost`.
-- Router `costBps = ceil(estCost / price × 10000)`, hard cap 3000; cost recipient = Revpad treasury.
+- Router `costBps = ceil(estCost / price × 10000)`, hard cap 3000; cost recipient = Astralaunch treasury.
 - Input schema fixed: `{ "input": string }`; output `{ "output": string }`.
 - Never return the system prompt; strip it from errors. Apply max token caps server-side.
 
@@ -444,7 +444,7 @@ Market data (price, mcap, volume, holders): use Doppler's public indexer API if 
 | POST | `/api/services` | Attach BYO service (creator auth) |
 | POST | `/api/services/prompt` | Create hosted prompt service (creator auth) |
 | PATCH | `/api/services/:id` | Update price/upstream (creator auth, logged) |
-| GET | `/api/explorer` | All Revpad x402 services on Monad + totals |
+| GET | `/api/explorer` | All Astralaunch x402 services on Monad + totals |
 | GET | `/api/services/:slug/manifest` | Machine-readable service description for agents |
 | GET | `/api/creator/me` | Creator dashboard data |
 
@@ -482,7 +482,7 @@ Verified badge: thresholds in O5, recomputed daily.
 | `/t/:asset` | Hero: UCR + clean revenue. Trade panel (fee 2% disclosed). Price chart. Sections: Service (URL, price, schema, try-it that pays via connected wallet), Health, Payments, Buyback (by source), Creator (escrow claimable/claimed/forfeit date, vesting schedule), Holders |
 | `/t/:asset/service` | Attach/edit service (creator only): BYO or Prompt template |
 | `/creator` | My tokens; claim liquid fees (Doppler), claim escrow, release vesting; service logs; provider address |
-| `/explorer` | All Revpad x402 services on Monad: calls, revenue, payers, recent payments |
+| `/explorer` | All Astralaunch x402 services on Monad: calls, revenue, payers, recent payments |
 | `/docs` | How fees, escrow, buyback, and the gateway work |
 
 Trading (user wallets): Uniswap v4 Universal Router `V4_SWAP` with Permit2 approval (encoding verified on the fork in test 03); quotes via the v4 Quoter. Always show fee and min-received.
@@ -532,7 +532,7 @@ All are keeper-side gas-saving thresholds, independent of on-chain contract mini
 
 `--dry-run` or `DRY_RUN=true`: estimates gas for every job, logs SEND/SKIP per job with pending amounts and reasons, sends zero transactions. Required before first mainnet run.
 
-After all per-asset jobs: monitor `PlatformFeeReceiver.pendingTreasury()` and `pendingAdmin()` on both RevpadRegistry and PlatformFeeReceiver; send Telegram alert if a treasury change proposal or admin transfer is detected or resolved (D22).
+After all per-asset jobs: monitor `PlatformFeeReceiver.pendingTreasury()` and `pendingAdmin()` on both AstralaunchRegistry and PlatformFeeReceiver; send Telegram alert if a treasury change proposal or admin transfer is detected or resolved (D22).
 
 Explicit gas limits on every tx (`estimate × 1.1`; Monad bills the gas limit). Keeper wallet funded with MON; Telegram alert when low. All functions are permissionless, so anyone can run a keeper.
 
@@ -564,9 +564,9 @@ Explicit gas limits on every tx (`estimate × 1.1`; Monad bills the gas limit). 
 | x402 on real Monad (official facilitator) | verify + settle OK, replay rejected |
 | Launch gas on real Monad | 4,589,375 (~0.52 MON); fork within 0.9% |
 
-| RevpadRegistry reads all §6.1 fields from chain | ✅ 17/17 fork tests pass. DOPPLER_HOOK constant confirmed. Integrator == treasury confirmed. totalAllocatedOf + vestedTotalAmount confirmed 150M each. balanceLimitEnd − vestingStart window 696 s on Anvil fork (within [600, 900]). |
-| Mainnet deploy (5 contracts) | ✅ 2026-09-24. FeeEscrow, BuybackVault, PlatformFeeReceiver, RevenueRouter impl, RevpadRegistry. Admin wiring verified. Addresses in §23. |
-| First token launch + register | ✅ 2026-09-24. `nullsight` (0x13DB78…171d), router 0x95D381…0f7f, registered in RevpadRegistry. |
+| AstralaunchRegistry reads all §6.1 fields from chain | ✅ 17/17 fork tests pass. DOPPLER_HOOK constant confirmed. Integrator == treasury confirmed. totalAllocatedOf + vestedTotalAmount confirmed 150M each. balanceLimitEnd − vestingStart window 696 s on Anvil fork (within [600, 900]). |
+| Mainnet deploy (5 contracts) | ✅ 2026-09-24. FeeEscrow, BuybackVault, PlatformFeeReceiver, RevenueRouter impl, AstralaunchRegistry. Admin wiring verified. Addresses in §23. |
+| First token launch + register | ✅ 2026-09-24. `nullsight` (0x13DB78…171d), router 0x95D381…0f7f, registered in AstralaunchRegistry. |
 | Mainnet paid call → distribute → PFR → treasury → buyback + burn | ✅ 2026-09-24. Full revenue loop verified end-to-end on mainnet. |
 | Keeper safety hardening (D23) | ✅ 2026-09-24. Pending fee pre-check with per-beneficiary shares, 6h cadence, spend guards, dry-run mode. |
 
@@ -596,7 +596,7 @@ Explicit gas limits on every tx (`estimate × 1.1`; Monad bills the gas limit). 
 3. Keeper distributes: provider receives 60%, escrow allowance increases, buyback executes and burns.
 4. Token page: clean revenue, UCR, health, buyback by source, creator escrow unlocking.
 5. Wash attempt: creator self-pays 100 USDC → dashboard shows net loss ≈ 20 USDC and buyback to holders.
-6. Explorer view: all x402 services on Monad through Revpad.
+6. Explorer view: all x402 services on Monad through Astralaunch.
 
 ---
 
@@ -620,7 +620,7 @@ Explicit gas limits on every tx (`estimate × 1.1`; Monad bills the gas limit). 
 - Launch from X via existing Chrome extension.
 - Custom v4 hook: route anti-snipe tax fully to buyback; exempt BuybackVault from pool fee.
 - Anchoring gateway log hashes on-chain.
-- **Multi-asset quote pairs** (O10): allow tokens to trade against forex stablecoins (EURC, then tokenised stocks) as the quote currency, with the same fee split. Prerequisites: (1) quote-token allowlist in RevpadRegistry (admin-curated, verified liquid USDC pool); (2) two-hop buyback USDC → quote → token via PoolManager; (3) escrow conversion: collect token-denominated fees in quote currency, convert to USDC for escrow accounting; (4) USD price source at launch time for displaying start-price in USD regardless of quote; (5) quote-pool oracle for UCR denominator. Estimated 7–12 working days once a liquid quote token exists on Monad. Not blocked on any contract change to the USDC path.
+- **Multi-asset quote pairs** (O10): allow tokens to trade against forex stablecoins (EURC, then tokenised stocks) as the quote currency, with the same fee split. Prerequisites: (1) quote-token allowlist in AstralaunchRegistry (admin-curated, verified liquid USDC pool); (2) two-hop buyback USDC → quote → token via PoolManager; (3) escrow conversion: collect token-denominated fees in quote currency, convert to USDC for escrow accounting; (4) USD price source at launch time for displaying start-price in USD regardless of quote; (5) quote-pool oracle for UCR denominator. Estimated 7–12 working days once a liquid quote token exists on Monad. Not blocked on any contract change to the USDC path.
 
 ---
 
@@ -668,7 +668,7 @@ Copy into `packages/shared/src/addresses.ts` with these sources.
 | x402 facilitator | `https://x402-facilitator.molandak.org` | Monad docs; verified on real Monad |
 | Facilitator submitter (observed) | `0x7f6a2850669202519f0FE8aa912451238820Db86` | settle tx `0x6e7e1dc75f884a4891a025837738f133bbb4bea01189c23e923c647f0b609a40` |
 
-### Revpad contracts (deployed 2026-09-24)
+### Astralaunch contracts (deployed 2026-09-24)
 
 | Contract | Address | Source |
 |---|---|---|
@@ -676,7 +676,7 @@ Copy into `packages/shared/src/addresses.ts` with these sources.
 | BuybackVault | `0xcBe741362a59943174f028a44A1b82722c24e7E7` | Deploy.s.sol broadcast |
 | PlatformFeeReceiver | `0x510cb102906a4bE9193B025620f6824ee8b4eC21` | Deploy.s.sol broadcast |
 | RevenueRouter (impl) | `0x2bcee60E8a8BD4b2c52aAfA8B57d47D427dACb09` | Deploy.s.sol broadcast |
-| RevpadRegistry | `0x25845Cee2b0E6dF0DA40bb9B60A84D162eabd00B` | Deploy.s.sol broadcast |
+| AstralaunchRegistry | `0x25845Cee2b0E6dF0DA40bb9B60A84D162eabd00B` | Deploy.s.sol broadcast |
 
 ### First token (nullsight, 2026-09-24)
 

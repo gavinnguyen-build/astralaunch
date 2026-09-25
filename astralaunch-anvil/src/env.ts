@@ -62,7 +62,7 @@ export function wallet(role: Role) {
   return createWalletClient({ account: account(role), chain: monadFork, transport: http(RPC_URL) }).extend(publicActions);
 }
 
-// ---- Revpad economics (must match SPEC §4) ----
+// ---- Astralaunch economics (must match SPEC §4) ----
 export const WAD = 10n ** 18n;
 export const POOL_FEE = Number(process.env.POOL_FEE ?? 20000); // 2% in Uniswap v4 fee units
 export const TICK_SPACING = Number(process.env.TICK_SPACING ?? 200); // custom fee => explicit tick spacing
@@ -126,7 +126,7 @@ export function loadContracts(): ContractsState {
     throw new Error(
       `Contracts file not found: ${CONTRACTS_FILE}\n` +
       `Set CONTRACTS_JSON_PATH env var or run Deploy.s.sol first.\n` +
-      `  Fork:    DEPLOY_OUTPUT=../../revpad-anvil/.anvil-state/contracts.json forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --private-key $PRIVATE_KEY\n` +
+      `  Fork:    DEPLOY_OUTPUT=../../astralaunch-anvil/.anvil-state/contracts.json forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --private-key $PRIVATE_KEY\n` +
       `  Mainnet: DEPLOY_OUTPUT=deployments/monad-mainnet.json forge script ...`
     );
   }

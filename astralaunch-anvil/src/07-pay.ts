@@ -33,7 +33,7 @@ async function main() {
   };
   const paymentRequired: PaymentRequired = {
     x402Version: 2,
-    resource: { url: 'http://127.0.0.1/s/demo/signals', description: 'Revpad demo service', mimeType: 'application/json' },
+    resource: { url: 'http://127.0.0.1/s/demo/signals', description: 'Astralaunch demo service', mimeType: 'application/json' },
     accepts: [requirements],
   };
 

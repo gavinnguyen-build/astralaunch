@@ -48,7 +48,7 @@ const START_MCAP_USD = 10_000;
 const GAS_BUFFER_BPS = 11_000n;
 const USDC: Address = '0x754704Bc059F8C67012fEd69BC8A327a5aafb603'; // Monad mainnet USDC
 
-// Balance cap window bounds (from RevpadConstants.sol)
+// Balance cap window bounds (from AstralaunchConstants.sol)
 const CAP_WINDOW_MIN = 600;  // 10 minutes
 const CAP_WINDOW_MAX = 900;  // 15 minutes
 
@@ -227,7 +227,7 @@ async function main() {
 
   // Verify all contract addresses have bytecode
   for (const [name, addr] of [
-    ['RevpadRegistry', registryAddr],
+    ['AstralaunchRegistry', registryAddr],
     ['FeeEscrow', escrowAddr],
     ['BuybackVault', buybackAddr],
     ['PlatformFeeReceiver', pfrAddr],

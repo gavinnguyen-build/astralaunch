@@ -18,7 +18,7 @@ export const DATABASE_URL       = need('DATABASE_URL');
 export const RPC_URL            = need('MONAD_RPC_URL');
 export const CHAIN_ID           = Number(process.env.MONAD_CHAIN_ID ?? 143);
 export const USDC_ADDR          = (process.env.USDC_ADDRESS ?? USDC) as `0x${string}`;
-export const REGISTRY_ADDR      = (process.env.ASTRALAUNCH_REGISTRY_ADDRESS ?? process.env.REVPAD_REGISTRY_ADDRESS ?? (() => { throw new Error('Missing env var ASTRALAUNCH_REGISTRY_ADDRESS'); })()) as `0x${string}`;
+export const REGISTRY_ADDR      = (process.env.ASTRALAUNCH_REGISTRY_ADDRESS ?? (() => { throw new Error('Missing env var ASTRALAUNCH_REGISTRY_ADDRESS'); })()) as `0x${string}`;
 export const GUARDIAN_ADDR      = process.env.GUARDIAN_ADDRESS as `0x${string}` | undefined;
 export const ESCROW_ADDR        = need('FEE_ESCROW_ADDRESS') as `0x${string}`;
 export const VAULT_ADDR         = need('BUYBACK_VAULT_ADDRESS') as `0x${string}`;

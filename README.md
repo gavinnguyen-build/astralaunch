@@ -1,6 +1,6 @@
-# Revpad — bộ test trên Anvil fork (Monad mainnet)
+# Astralaunch — bộ test trên Anvil fork (Monad mainnet)
 
-Bộ này kiểm tra các giả định của Revpad trên **Anvil fork từ Monad mainnet**, dùng contract Doppler, Uniswap v4 và USDC thật đang có trên Monad. Nó chưa chứa contract của Revpad (Router, FeeEscrow, BuybackVault). Vai trò của các contract đó được giả lập bằng ví test, gọi là "stub".
+Bộ này kiểm tra các giả định của Astralaunch trên **Anvil fork từ Monad mainnet**, dùng contract Doppler, Uniswap v4 và USDC thật đang có trên Monad. Nó chưa chứa contract của Astralaunch (Router, FeeEscrow, BuybackVault). Vai trò của các contract đó được giả lập bằng ví test, gọi là "stub".
 
 > Tình trạng: toàn bộ script đã typecheck với đúng phiên bản SDK và import chạy được. **Chưa chạy trên fork Monad thật.** Lần chạy đầu có thể phải chỉnh nhỏ.
 
@@ -28,12 +28,12 @@ Mở thư mục bằng VS Code, bấm `Cmd/Ctrl+Shift+P`, chọn **Tasks: Run Ta
 | 2 | Test 01: check environment | Chain id, các module Doppler có code không, Airlock owner, USDC 6 decimals, EIP-3009 |
 | 3 | Anvil: snapshot save | Lưu trạng thái sạch để quay lại |
 | 4 | **Test 07: x402 payment** | Agent ký EIP-3009 → facilitator local verify rồi settle → tiền về payTo. Chống replay, chống đổi số tiền |
-| 5 | Test 02: launch token | Launch đúng cấu hình Revpad: phí 2%, 5/35/20/10/30, 85/15, vesting (cliff 30 ngày, 1 năm), không migrate, giới hạn 1% mỗi ví trong 10 phút. In gas |
+| 5 | Test 02: launch token | Launch đúng cấu hình Astralaunch: phí 2%, 5/35/20/10/30, 85/15, vesting (cliff 30 ngày, 1 năm), không migrate, giới hạn 1% mỗi ví trong 10 phút. In gas |
 | 6 | Test 03: buy + sell | Mua bằng USDC, bán một nửa, qua Universal Router |
 | 7 | Test 04: fee split | Từng beneficiary tự gọi `collectFees`, kiểm tra tỷ lệ và tổng khoảng 2% |
 | 8 | Test 05: vesting | Tua thời gian trong snapshot: ngày 29 = 0, ngày 31 > 0, khoảng 50% ở 6 tháng, đủ 100% sau 1 năm; sau đó revert |
 
-Có thể chạy task **Revpad: full flow** để làm lần lượt bước 1, 2 và 5–8.
+Có thể chạy task **Astralaunch: full flow** để làm lần lượt bước 1, 2 và 5–8.
 
 **Chạy test 07 trước khi tua thời gian.** Chữ ký EIP-3009 dùng giờ thực. Nếu fork đã bị tua tới tương lai, chữ ký sẽ bị coi là hết hạn.
 

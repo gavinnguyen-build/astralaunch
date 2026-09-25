@@ -10,7 +10,7 @@
     ],
     "deny": [
       "Bash(cast send:*)", "Bash(cast wallet:*)", "Bash(git push:*)", "Bash(rm -rf:*)",
-      "Read(./apps/server/.env.mainnet)", "Read(./apps/keeper/.env.mainnet)", "Read(./revpad-anvil/.env.real)",
+      "Read(./apps/server/.env.mainnet)", "Read(./apps/keeper/.env.mainnet)", "Read(./astralaunch-anvil/.env.real)",
       "Bash(*--broadcast*rpc.monad.xyz*)", "Bash(*rpc.monad.xyz*--broadcast*)"
     ]
   }

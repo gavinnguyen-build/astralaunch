@@ -33,8 +33,8 @@ contract WmonForkTest is Test {
     address constant MON_USD_ORACLE  = 0xBcD78f76005B7515837af6b50c7C52BCf73822fb;
     address constant CREATOR         = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
 
-    string constant CONTRACTS_JSON_DEFAULT = "../../revpad-anvil/.anvil-state/contracts.json";
-    string constant STATE_JSON_DEFAULT     = "../../revpad-anvil/.anvil-state/state-wmon.json";
+    string constant CONTRACTS_JSON_DEFAULT = "../../astralaunch-anvil/.anvil-state/contracts.json";
+    string constant STATE_JSON_DEFAULT     = "../../astralaunch-anvil/.anvil-state/state-wmon.json";
 
     FeeEscrow           escrow;
     BuybackVault        vault;

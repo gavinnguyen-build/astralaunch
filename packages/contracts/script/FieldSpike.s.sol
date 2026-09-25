@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Script, console} from "forge-std/Script.sol";
 
-/// @notice Probes every on-chain field that RevpadRegistry must read.
+/// @notice Probes every on-chain field that AstralaunchRegistry must read.
 ///         Run against the Anvil fork AFTER launching a token with 02-launch:
 ///
 ///   ASSET=<addr> POOL_ID=<bytes32> \
@@ -11,7 +11,7 @@ import {Script, console} from "forge-std/Script.sol";
 ///   forge script src/spike/FieldSpike.s.sol --rpc-url http://127.0.0.1:8545 -vv
 ///
 ///         Results are recorded in docs/decisions.md.
-///         Any FAIL line means: stop and ask before implementing RevpadRegistry.
+///         Any FAIL line means: stop and ask before implementing AstralaunchRegistry.
 contract FieldSpike is Script {
     // ── Known addresses (SPEC §23) ────────────────────────────────────────────
     address constant AIRLOCK     = 0x660eAaEdEBc968f8f3694354FA8EC0b4c5Ba8D12;

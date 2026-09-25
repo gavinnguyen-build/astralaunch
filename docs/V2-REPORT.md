@@ -209,9 +209,9 @@ pnpm test:       4 tasks successful
 ### Task 1a-c: Launch Scripts
 
 **New scripts:**
-- `revpad-anvil/src/launch-wmon.ts`: Launches WMON-paired token with `excludedFromBalanceLimit`
-- `revpad-anvil/src/launch-devbuy.ts`: Launches two dev-buy tokens (with/without Bundler vesting)
-- `revpad-anvil/src/02-launch.ts`: Added `excludedFromBalanceLimit: [escrow, vault, pfr]` to tokenConfig()
+- `astralaunch-anvil/src/launch-wmon.ts`: Launches WMON-paired token with `excludedFromBalanceLimit`
+- `astralaunch-anvil/src/launch-devbuy.ts`: Launches two dev-buy tokens (with/without Bundler vesting)
+- `astralaunch-anvil/src/02-launch.ts`: Added `excludedFromBalanceLimit: [escrow, vault, pfr]` to tokenConfig()
 
 ### Tasks 1d-f, 2, 3: Fork Tests (Executed)
 

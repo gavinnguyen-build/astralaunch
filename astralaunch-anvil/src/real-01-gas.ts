@@ -36,7 +36,7 @@ const ANVIL_DEV = new Set([
   '0xa0ee7a142d267c1f36714e4a8f75612f20a79720',
 ]);
 
-// ---- Revpad SPEC §4 constants — must match env.ts ----
+// ---- Astralaunch SPEC §4 constants — must match env.ts ----
 const CHAIN_ID = 143;
 const MONAD_RPC = process.env.REAL_RPC_URL ?? 'https://rpc.monad.xyz';
 const USDC = '0x754704Bc059F8C67012fEd69BC8A327a5aafb603' as Address;
@@ -130,9 +130,9 @@ async function main() {
   const params = sdk
     .buildMulticurveAuction()
     .tokenConfig({
-      name: 'Revpad Test',
-      symbol: 'RVPT',
-      tokenURI: 'ipfs://revpad-test',
+      name: 'Astralaunch Test',
+      symbol: 'ASLT',
+      tokenURI: 'ipfs://astralaunch-test',
       maxBalanceLimit: SUPPLY / 100n,
       balanceLimitEnd: startTime + 600,
     })

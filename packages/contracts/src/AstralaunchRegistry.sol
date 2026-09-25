@@ -19,7 +19,7 @@ import {PlatformFeeReceiver} from "./PlatformFeeReceiver.sol";
 /// @notice Verifies a Doppler-launched asset matches the Astralaunch config, then deploys
 ///         a RevenueRouter clone and registers the asset in FeeEscrow and BuybackVault.
 ///
-///         v2 changes from RevpadRegistry:
+///         v2 (renamed from RevpadRegistry):
 ///         - Dual numeraire support: USDC or WMON pairs.
 ///         - Initializer allowlist with 48-hour timelock (Decision #5).
 ///         - Guardian role for cancel-only operations (Decision #4).

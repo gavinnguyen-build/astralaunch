@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start an Anvil fork of Monad mainnet for Revpad tests.
+# Start an Anvil fork of Monad mainnet for Astralaunch tests.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 set -a; source .env.anvil; set +a

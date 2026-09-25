@@ -3,13 +3,13 @@
  *
  * Prerequisites:
  *   1. Anvil fork running:     bash anvil/start-fork.sh
- *   2. Contracts deployed:     DEPLOY_OUTPUT=../../revpad-anvil/.anvil-state/contracts.json forge script script/Deploy.s.sol --rpc-url ... --broadcast ...
+ *   2. Contracts deployed:     DEPLOY_OUTPUT=../../astralaunch-anvil/.anvil-state/contracts.json forge script script/Deploy.s.sol --rpc-url ... --broadcast ...
  *   3. Token launched:         npm run launch        (launch + register)
  *   4. Local facilitator:      npm run facilitator   (in separate terminal)
  *   5. Server running:         pnpm -F server dev    (in separate terminal, needs Postgres)
  *
  * Checks (PASS/FAIL):
- *   A. Token is registered in RevpadRegistry
+ *   A. Token is registered in AstralaunchRegistry
  *   B. Register a BYO service via POST /api/services
  *   C. GET /s/:slug — agent without payment gets 402
  *   D. Agent pays (EIP-3009) — gets 200 + upstream body
@@ -90,7 +90,7 @@ async function main() {
   const escrow   = contracts.escrow   as Address;
   const vault    = contracts.vault    as Address;
 
-  console.log('\n=== Revpad E2E Test Suite ===');
+  console.log('\n=== Astralaunch E2E Test Suite ===');
   console.log(`  token    : ${asset}`);
   console.log(`  registry : ${registry}`);
   console.log(`  server   : ${SERVER_URL}`);
@@ -101,7 +101,7 @@ async function main() {
     { type: 'function', name: 'routers', stateMutability: 'view', inputs: [{ name: '', type: 'address' }], outputs: [{ type: 'address' }] },
   ] as const;
   const routerAddr: Address = await publicClient.readContract({ address: registry, abi: registryAbi, functionName: 'routers', args: [asset as Address] });
-  pass(routerAddr !== '0x0000000000000000000000000000000000000000', 'A. Token registered in RevpadRegistry', routerAddr);
+  pass(routerAddr !== '0x0000000000000000000000000000000000000000', 'A. Token registered in AstralaunchRegistry', routerAddr);
 
   // ── B. Register BYO service ─────────────────────────────────────────────────
   const slug = `e2e-test-${Date.now()}`;

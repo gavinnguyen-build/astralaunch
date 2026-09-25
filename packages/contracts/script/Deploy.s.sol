@@ -15,7 +15,7 @@ import {PoolKey} from "../src/interfaces/IInitializer.sol";
 /// @notice Deploy all Astralaunch v2 contracts.
 ///
 ///   # Fork:
-///   DEPLOY_OUTPUT=../../revpad-anvil/.anvil-state/contracts.json \
+///   DEPLOY_OUTPUT=../../astralaunch-anvil/.anvil-state/contracts.json \
 ///     forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --private-key $PRIVATE_KEY
 ///
 ///   # Mainnet (dry-run):
@@ -51,7 +51,7 @@ contract DeployAstralaunch is Script {
     // V4ScheduledMulticurveInitializer — the initial allowed initializer
     address constant INITIALIZER  = 0xCe3099B2F07029b086E5e92a1573C5f5A3071783;
 
-    string constant FORK_OUTPUT    = "../../revpad-anvil/.anvil-state/contracts.json";
+    string constant FORK_OUTPUT    = "../../astralaunch-anvil/.anvil-state/contracts.json";
     string constant MAINNET_OUTPUT = "deployments/monad-mainnet.json";
 
     function run() external {
@@ -64,7 +64,7 @@ contract DeployAstralaunch is Script {
         require(
             bytes(outputPath).length > 0,
             "DEPLOY_OUTPUT env var is required. Valid values:\n"
-            "  Fork:    DEPLOY_OUTPUT=../../revpad-anvil/.anvil-state/contracts.json\n"
+            "  Fork:    DEPLOY_OUTPUT=../../astralaunch-anvil/.anvil-state/contracts.json\n"
             "  Mainnet: DEPLOY_OUTPUT=deployments/monad-mainnet.json"
         );
 

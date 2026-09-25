@@ -175,8 +175,8 @@ async function main() {
   const paymentRequired: PaymentRequired = {
     x402Version: 2,
     resource: {
-      url: 'https://revpad.xyz/s/demo/real',
-      description: 'Revpad real payment test (VERIFICATION-real.md)',
+      url: 'https://astralaunch.xyz/s/demo/real',
+      description: 'Astralaunch real payment test (VERIFICATION-real.md)',
       mimeType: 'application/json',
     },
     accepts: [requirements],

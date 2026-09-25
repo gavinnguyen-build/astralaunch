@@ -8,7 +8,7 @@
 
 | Role | Address |
 |------|---------|
-| Deployer | `0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6` (keystore: `revpad-deployer`) |
+| Deployer | `0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6` (keystore: `astralaunch-deployer`) |
 | Admin | `0xe89f19D370F496520803e7ABb30c1A20B04B0f7f` |
 | Treasury | `0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C` |
 
@@ -20,7 +20,7 @@ Fork and mainnet both use chain id 143. `DEPLOY_OUTPUT` is **mandatory** (no def
 
 | Context | `DEPLOY_OUTPUT` | `FOUNDRY_BROADCAST` |
 |---------|-----------------|---------------------|
-| **Fork** | `../../revpad-anvil/.anvil-state/contracts.json` | *(unset, uses default `broadcast/`)* |
+| **Fork** | `../../astralaunch-anvil/.anvil-state/contracts.json` | *(unset, uses default `broadcast/`)* |
 | **Mainnet** | `deployments/monad-mainnet.json` | `broadcast-mainnet` |
 
 Safety guards in `Deploy.s.sol`:
@@ -56,12 +56,12 @@ Per-contract gas (simulated on Monad mainnet):
 | 2 | BuybackVault | 1,051,189 | 1,320,650 |
 | 3 | PlatformFeeReceiver | 532,846 | 699,311 |
 | 4 | RevenueRouter (impl) | 413,074 | 554,648 |
-| 5 | RevpadRegistry | 1,290,801 | 1,603,196 |
+| 5 | AstralaunchRegistry | 1,290,801 | 1,603,196 |
 
 ### Keystore setup
 
 ```bash
-cast wallet import revpad-deployer --interactive
+cast wallet import astralaunch-deployer --interactive
 ```
 
 ### Verify hardcoded addresses
@@ -109,7 +109,7 @@ forge script script/Deploy.s.sol \
   --rpc-url https://rpc.monad.xyz \
   --broadcast \
   --sender 0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6 \
-  --account revpad-deployer \
+  --account astralaunch-deployer \
   --gas-estimate-multiplier 110
 ```
 
@@ -137,7 +137,7 @@ Both files contain only public addresses and tx data, no secrets.
 | BuybackVault | `0xcBe741362a59943174f028a44A1b82722c24e7E7` |
 | PlatformFeeReceiver | `0x510cb102906a4bE9193B025620f6824ee8b4eC21` |
 | RevenueRouter (impl) | `0x2bcee60E8a8BD4b2c52aAfA8B57d47D427dACb09` |
-| RevpadRegistry | `0x25845Cee2b0E6dF0DA40bb9B60A84D162eabd00B` |
+| AstralaunchRegistry | `0x25845Cee2b0E6dF0DA40bb9B60A84D162eabd00B` |
 
 > Check nonce first: `cast nonce 0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6 --rpc-url https://rpc.monad.xyz`
 
@@ -188,11 +188,11 @@ read -s CREATOR_PRIVATE_KEY && export CREATOR_PRIVATE_KEY
 ### Launch + register
 
 ```bash
-cd revpad-anvil
+cd astralaunch-anvil
 
 CONTRACTS_JSON_PATH=../packages/contracts/deployments/monad-mainnet.json \
 MONAD_RPC_URL=https://rpc.monad.xyz \
-TOKEN_NAME="Revpad" \
+TOKEN_NAME="Astralaunch" \
 TOKEN_SYMBOL="RVPD" \
   npx tsx src/mainnet-launch.ts
 ```
@@ -245,7 +245,7 @@ cast call 0x660eAaEdEBc968f8f3694354FA8EC0b4c5Ba8D12 \
 
 ```bash
 # On the Postgres host (or via Coolify):
-createdb revpad
+createdb astralaunch
 ```
 
 ### Configure environment
@@ -255,7 +255,7 @@ Fill in secrets in `apps/server/.env.mainnet` (copy from `.env.mainnet.example`)
 ```bash
 cd apps/server
 cp .env.mainnet.example .env.mainnet
-# Edit: DATABASE_URL (e.g. postgres://user:pass@localhost:5432/revpad),
+# Edit: DATABASE_URL (e.g. postgres://user:pass@localhost:5432/astralaunch),
 #       GATEWAY_HMAC_MASTER_KEY (openssl rand -hex 32),
 #       PRIVY_APP_ID, PRIVY_APP_SECRET, LITELLM_BASE_URL, LITELLM_API_KEY
 ```
@@ -366,13 +366,13 @@ With the server running on mainnet:
 
 ### Sign the registration message
 
-The creator must sign the message: `Revpad: register service "nullsight" for token 0x13db78bd3f92382306a17d50dac93af1904e171d`
+The creator must sign the message: `Astralaunch: register service "nullsight" for token 0x13db78bd3f92382306a17d50dac93af1904e171d`
 
 ```bash
 # Using cast:
 SIG=$(cast wallet sign \
   --account <creator-keystore> \
-  "Revpad: register service \"nullsight\" for token 0x13db78bd3f92382306a17d50dac93af1904e171d")
+  "Astralaunch: register service \"nullsight\" for token 0x13db78bd3f92382306a17d50dac93af1904e171d")
 echo $SIG
 ```
 
@@ -409,7 +409,7 @@ curl http://localhost:3001/api/services/nullsight/manifest | jq .
 ```bash
 read -s AGENT_PRIVATE_KEY && export AGENT_PRIVATE_KEY
 
-cd revpad-anvil
+cd astralaunch-anvil
 
 SERVER_URL=http://localhost:3001 \
 SERVICE_SLUG=nullsight \
@@ -550,7 +550,7 @@ The custom indexer replaces Envio. It reads on-chain events and writes to the sa
 | `DATABASE_URL` | *(required)* | Same Postgres as server |
 | `MONAD_RPC_URL` | *(required)* | Monad mainnet RPC |
 | `MONAD_CHAIN_ID` | `143` | Chain ID |
-| `REVPAD_REGISTRY_ADDRESS` | *(required)* | RevpadRegistry contract |
+| `ASTRALAUNCH_REGISTRY_ADDRESS` | *(required)* | AstralaunchRegistry contract |
 | `FEE_ESCROW_ADDRESS` | *(required)* | FeeEscrow contract |
 | `BUYBACK_VAULT_ADDRESS` | *(required)* | BuybackVault contract |
 | `PLATFORM_FEE_RECEIVER_ADDRESS` | *(required)* | PlatformFeeReceiver contract |

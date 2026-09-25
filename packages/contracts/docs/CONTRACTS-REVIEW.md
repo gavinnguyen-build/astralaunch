@@ -1,7 +1,7 @@
-# Revpad Contracts — Review
+# Astralaunch Contracts — Review
 
 > Status: v0.7 (2026-09-23) — 102 tests pass (85 unit/invariant + 17 fork). D20 final: `startTime+720` (12 min target, [600,900] s accepted). Boundary tests at 599/600/900/901. `balanceLimitEnd` mock removed; tests read real chain value (696 s). Fork gas table included.
-> Covers: RevpadRegistry, RevenueRouter, FeeEscrow, BuybackVault.
+> Covers: AstralaunchRegistry, RevenueRouter, FeeEscrow, BuybackVault.
 
 ---
 
@@ -48,7 +48,7 @@
 - Anvil: `window ≈ 696 s` ✓
 Both within [600, 900]. Verified on fresh deploy: `vestingStart = 1790148291`, `balanceLimitEnd = 1790148987`, **window = 696 s** ✓.
 
-**Registry enforcement** (`RevpadRegistry.sol:184-196`):
+**Registry enforcement** (`AstralaunchRegistry.sol:184-196`):
 ```solidity
 if (capWindow < C.BALANCE_CAP_WINDOW)      // ≥ 600 s
     revert WrongBalanceCap(capWindow, C.BALANCE_CAP_WINDOW);
@@ -77,7 +77,7 @@ require(vault.registry()      == address(registry), "vault.registry != registry"
 require(address(vault.poolManager()) != address(0), "vault.poolManager is zero");
 ```
 
-**contracts.json**: Script writes `../../revpad-anvil/.anvil-state/contracts.json` with deployer address, deployer start nonce, and all four contract addresses. Fork tests read `deployerStartNonce` from JSON (no longer hardcoded 633). Launch script reads `escrow`/`vault` from JSON (no longer requires env vars).
+**contracts.json**: Script writes `../../astralaunch-anvil/.anvil-state/contracts.json` with deployer address, deployer start nonce, and all four contract addresses. Fork tests read `deployerStartNonce` from JSON (no longer hardcoded 633). Launch script reads `escrow`/`vault` from JSON (no longer requires env vars).
 
 **Fork test** `test_deploy_immutablesWiredCorrectly` verifies wiring on every setUp run.
 
@@ -87,7 +87,7 @@ require(address(vault.poolManager()) != address(0), "vault.poolManager is zero")
 
 ```
 forge test --no-match-path "test/fork/**"
-Ran 34 tests for test/unit/RevpadRegistry.t.sol:RevpadRegistryTest
+Ran 34 tests for test/unit/AstralaunchRegistry.t.sol:AstralaunchRegistryTest
 Suite result: ok. 34 passed; 0 failed; 0 skipped
 Ran 15 tests for test/unit/BuybackVault.t.sol:BuybackVaultTest
 Suite result: ok. 15 passed; 0 failed; 0 skipped
@@ -95,13 +95,13 @@ Ran 20 tests for test/unit/FeeEscrow.t.sol:FeeEscrowTest
 Suite result: ok. 20 passed; 0 failed; 0 skipped
 Ran 15 tests for test/unit/RevenueRouter.t.sol:RevenueRouterTest
 Suite result: ok. 15 passed; 0 failed; 0 skipped
-Ran 1 test for test/invariant/RevpadInvariants.t.sol:RevpadInvariantsTest
+Ran 1 test for test/invariant/AstralaunchInvariants.t.sol:AstralaunchInvariantsTest
 Suite result: ok. 1 passed; 0 failed; 0 skipped
 Ran 5 test suites in 6.53s (11.40s CPU time): 85 tests passed, 0 failed, 0 skipped (85 total tests)
 ```
 
 ```
-CONTRACTS_JSON_PATH=../../revpad-anvil/.anvil-state/contracts.json \
+CONTRACTS_JSON_PATH=../../astralaunch-anvil/.anvil-state/contracts.json \
 forge test --match-path "test/fork/**" --fork-url http://127.0.0.1:8545 --gas-report
 Ran 17 tests for test/fork/RegistryFork.t.sol:RegistryForkTest
 Suite result: ok. 17 passed; 0 failed; 0 skipped; finished in 41.66ms (122.92ms CPU time)
@@ -110,7 +110,7 @@ Ran 1 test suite in 47.29ms (41.66ms CPU time): 17 tests passed, 0 failed, 0 ski
 
 | Suite | Tests | Status |
 |-------|-------|--------|
-| Unit — RevpadRegistry | 34 | ✅ (includes 4 boundary tests at 599/600/900/901 s) |
+| Unit — AstralaunchRegistry | 34 | ✅ (includes 4 boundary tests at 599/600/900/901 s) |
 | Unit — FeeEscrow | 20 | ✅ |
 | Unit — BuybackVault | 15 | ✅ (includes CapWindowActive test) |
 | Unit — RevenueRouter | 15 | ✅ |
@@ -178,7 +178,7 @@ Tests using `vm.store` seeding (no real trades, noted explicitly):
 
 | Contract | Function | Avg gas | Max gas |
 |----------|----------|---------|---------|
-| RevpadRegistry | `register()` success | ~153 K | ~635 K |
+| AstralaunchRegistry | `register()` success | ~153 K | ~635 K |
 | RevenueRouter | `distribute()` | ~243 K | ~260 K |
 | FeeEscrow | `collect()` | ~180 K | ~181 K |
 | FeeEscrow | `claim()` | ~96 K | ~97 K |
@@ -196,16 +196,16 @@ All items confirmed present with source file:line references.
 
 | Item | File:line | Mechanism |
 |------|-----------|-----------|
-| Pool must contain asset + USDC | `RevpadRegistry.sol:156-158` | `WrongPoolCurrencies` if neither currency matches |
-| Pool must use DOPPLER_HOOK | `RevpadRegistry.sol:151` | `WrongPool` if `poolKey.hooks != DOPPLER_HOOK` |
-| Creator must have exactly 35% share | `RevpadRegistry.sol:165` | `WrongCreatorShare` via `_checkShare` |
-| Integrator must be treasury | `RevpadRegistry.sol:145` | `WrongIntegrator` |
+| Pool must contain asset + USDC | `AstralaunchRegistry.sol:156-158` | `WrongPoolCurrencies` if neither currency matches |
+| Pool must use DOPPLER_HOOK | `AstralaunchRegistry.sol:151` | `WrongPool` if `poolKey.hooks != DOPPLER_HOOK` |
+| Creator must have exactly 35% share | `AstralaunchRegistry.sol:165` | `WrongCreatorShare` via `_checkShare` |
+| Integrator must be treasury | `AstralaunchRegistry.sol:145` | `WrongIntegrator` |
 
 ### 6.2 Replay / Duplicate
 
 | Item | File:line | Mechanism |
 |------|-----------|-----------|
-| Duplicate registration prevented | `RevpadRegistry.sol:123` | `AlreadyRegistered` if `routers[asset] != address(0)` |
+| Duplicate registration prevented | `AstralaunchRegistry.sol:123` | `AlreadyRegistered` if `routers[asset] != address(0)` |
 | FeeEscrow double-register prevented | `FeeEscrow.sol:72` | `AlreadyRegistered` if `launchTime != 0` |
 | BuybackVault double-register prevented | `BuybackVault.sol:84` | `AlreadyRegistered` if `registered == true` |
 
@@ -213,10 +213,10 @@ All items confirmed present with source file:line references.
 
 | Item | File:line | Status |
 |------|-----------|--------|
-| Economics constants non-modifiable | `RevpadConstants.sol:13-59` | All declared `constant` |
-| Admin can only: set treasury, pause | `RevpadRegistry.sol:227-237` | `setTreasury`, `setPause` only |
+| Economics constants non-modifiable | `AstralaunchConstants.sol:13-59` | All declared `constant` |
+| Admin can only: set treasury, pause | `AstralaunchRegistry.sol:227-237` | `setTreasury`, `setPause` only |
 | No admin path to move funds | All contracts | No `withdraw`, `transfer`, or `rescue` functions |
-| Wash constraint (compile-time) | `RevpadConstants.sol:59` | `_WASH_ASSERT = (10000 - PROVIDER_BPS) - ESCROW_UNLOCK_BPS - 1` prevents underflow |
+| Wash constraint (compile-time) | `AstralaunchConstants.sol:59` | `_WASH_ASSERT = (10000 - PROVIDER_BPS) - ESCROW_UNLOCK_BPS - 1` prevents underflow |
 
 ### 6.4 Reentrancy Guards
 
@@ -233,7 +233,7 @@ Every function that transfers tokens has `nonReentrant`. Functions that only upd
 | BuybackVault | `burnTokens()` | solady `nonReentrant` | `BuybackVault.sol:222` |
 | FeeEscrow | `recordRevenue()` | none needed | `FeeEscrow.sol:126` — state-only, no transfers |
 | BuybackVault | `creditUSDC()` | none needed | `BuybackVault.sol:123` — accounting-only, no transfers |
-| RevpadRegistry | `register()` | none needed | `RevpadRegistry.sol:118` — checks-effects-interactions; no token transfers to untrusted callers |
+| AstralaunchRegistry | `register()` | none needed | `AstralaunchRegistry.sol:118` — checks-effects-interactions; no token transfers to untrusted callers |
 
 ### 6.5 BuybackVault: Swap Security
 
@@ -288,12 +288,12 @@ Fork tests read these from `contracts.json` at setUp — no hardcoded addresses.
 | FeeEscrow | `0x3C2BafebbB0c8c58f39A976e725cD20D611d01e9` | 630 |
 | BuybackVault | `0x5f246ADDCF057E0f778CD422e20e413be70f9a0c` | 631 |
 | RevenueRouter (impl) | `0xaD82Ecf79e232B0391C5479C7f632aA1EA701Ed1` | 632 |
-| RevpadRegistry | `0x4Dd5336F3C0D70893A7a86c6aEBe9B953E87c891` | 633 |
+| AstralaunchRegistry | `0x4Dd5336F3C0D70893A7a86c6aEBe9B953E87c891` | 633 |
 | Test token | `0x02C829Cf088B20FB501d1a9cef9c9D8C4491604C` | launched by 02-launch.ts (window 696 s) |
 
 ### contracts.json (written by Deploy.s.sol)
 
-`Deploy.s.sol` writes `../../revpad-anvil/.anvil-state/contracts.json` after every broadcast containing:
+`Deploy.s.sol` writes `../../astralaunch-anvil/.anvil-state/contracts.json` after every broadcast containing:
 `deployer`, `deployerStartNonce`, `escrow`, `vault`, `routerImpl`, `registry`, `treasury`, `admin`.
 
 Fork tests read `CONTRACTS_JSON_PATH` env var (default same file). Launch script reads `contracts.escrow`, `contracts.vault`, `contracts.treasury` — no manual env vars needed.
