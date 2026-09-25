@@ -14,8 +14,14 @@ export const AIRLOCK = '0x660eAaEdEBc968f8f3694354FA8EC0b4c5Ba8D12';
 export const INITIALIZER = '0xCe3099B2F07029b086E5e92a1573C5f5A3071783';
 /** Uniswap v4 PoolManager on Monad: SDK ADDRESSES[143].poolManager */
 export const POOL_MANAGER = '0x188d586Ddcf52439676Ca21A244753fA19F9Ea8e';
-/** Universal Router on Monad: SDK ADDRESSES[143].universalRouter */
-export const UNIVERSAL_ROUTER = '0xf70536B6BfFeF1f8a48A09AC86E92AEb15dBD6A7';
+/**
+ * Universal Router (Uniswap v4) on Monad: Doppler SDK 1.0.43 ADDRESSES[143].universalRouter.
+ * Verified on-chain 2026-09-26: 19,499 bytes of code, poolManager() == POOL_MANAGER.
+ * (The previous value 0xf70536B6BfFeF1f8a48A09AC86E92AEb15dBD6A7 has no code on Monad.)
+ */
+export const UNIVERSAL_ROUTER = '0x0D97Dc33264bfC1c226207428A79b26757fb9dc3';
+/** Uniswap v4 Quoter on Monad: Doppler SDK 1.0.43 ADDRESSES[143].uniswapV4Quoter; poolManager() verified 2026-09-26. */
+export const V4_QUOTER = '0xa222Dd357A9076d1091Ed6Aa2e16C9742dD26891';
 /** Permit2 on Monad: SDK ADDRESSES[143].permit2 */
 export const PERMIT2 = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
 /** DopplerHook (constant across V4ScheduledMulticurveInitializer launches): verified D16 */
