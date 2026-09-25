@@ -1,0 +1,4 @@
+{
+  "SIGHT": { "name": "nullsight", "pairing": "USDC", "asset": "0x30Ae380593A04C14aBFa994969B718a78A6105aD", "router": "0x10bC2220716738E8Aef57b9CC72101c190acf240", "poolId": "0xf5bfc441bd39a161b95c586e4d18f70be2d47d51b336a6cfce7856b69a6aafef", "launchTx": "0xff6dc3d0a93ae5672f9b7578ba412a5a89b93d850ce8196890d0eaf6026ae56b" },
+  "FEED":  { "name": "nullfeed",  "pairing": "MON",  "asset": "0x2686619d5569AEbcdfeC774e8a2167dE78376dDf", "router": "0xdBa0705cE9217B9E3dB296AF6a1810eB0467fd3a", "poolId": "0xd29e4604b4489a6be4d0b655089d4ca7c9852da4f11461ad3cbd73f4af34b816", "launchTx": "0x0728035c301e780c19421bfd1f76871c419eddad144d0cf05be7d2565777d7f2" }
+}
