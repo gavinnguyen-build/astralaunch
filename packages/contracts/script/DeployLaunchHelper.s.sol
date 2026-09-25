@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Script, console} from "forge-std/Script.sol";
+import {VmSafe} from "forge-std/Vm.sol";
 import {LaunchHelper} from "../src/LaunchHelper.sol";
 
 /// @notice Deploy LaunchHelper (periphery; the v2 core is unchanged). All parameters are fixed:
@@ -44,6 +45,8 @@ contract DeployLaunchHelper is Script {
         vm.serializeAddress(o, "registry", registry);
         vm.serializeAddress(o, "treasury", TREASURY);
         vm.serializeUint(o, "launchFee", FEE);
+        // Without --broadcast the address is only a simulation: flag it so nobody configures it.
+        vm.serializeBool(o, "dryRun", !vm.isContext(VmSafe.ForgeContext.ScriptBroadcast));
         vm.serializeUint(o, "chainId", block.chainid);
         string memory json = vm.serializeUint(o, "blockNumber", block.number);
         vm.writeJson(json, out);
