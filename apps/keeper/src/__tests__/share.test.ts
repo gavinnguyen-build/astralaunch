@@ -17,6 +17,9 @@ vi.mock('../chain.js', () => ({
   simulatePendingFees: vi.fn(),
   getBeneficiaryShare: vi.fn(),
   getAssetNumeraire: vi.fn().mockResolvedValue('0x754704Bc059F8C67012fEd69BC8A327a5aafb603'),
+  // Value gate (value.ts): 0.001 MON gas per collect, fresh MON/USD $0.50.
+  estimateTxCost: vi.fn().mockResolvedValue({ gas: 90_000n, gasBuffered: 99_000n, monCost: 10n ** 15n }),
+  readMonUsd: vi.fn(async () => ({ price: 50_000_000n, updatedAt: BigInt(Math.floor(Date.now() / 1000)) })),
 }));
 
 // Mock telegram

@@ -11,7 +11,7 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { withBuffer } from '@astralaunch/shared';
-import { INITIALIZER as INITIALIZER_ADDR, WMON as WMON_ADDR } from '@astralaunch/shared';
+import { INITIALIZER as INITIALIZER_ADDR, WMON as WMON_ADDR, MON_USD_ORACLE } from '@astralaunch/shared';
 import { assertCanSpend, recordSpend, alertIfExpensive } from './spend.js';
 
 config({ path: '../../.env' });
@@ -213,11 +213,30 @@ export interface TxResult {
 
 const DRY_RUN_HASH = '0x0000000000000000000000000000000000000000000000000000000000000001' as `0x${string}`;
 
-/** Send a tx with gas estimate x 1.1 (Monad bills gas limit, CLAUDE.md rule 6). */
-export async function sendTx(args: Parameters<typeof baseWallet.writeContract>[0]): Promise<TxResult> {
+/** Gas estimate × 1.1 and its MON cost at the tick's gas price (Monad bills the gas limit). No tx. */
+export async function estimateTxCost(args: Parameters<typeof baseWallet.writeContract>[0]): Promise<{ gas: bigint; gasBuffered: bigint; monCost: bigint }> {
   const gas = await publicClient.estimateContractGas({ account, ...args } as any);
   const gasBuffered = withBuffer(gas);
-  const monCost = gasBuffered * (cachedGasPrice || 1n);
+  if (!cachedGasPrice) await refreshGasPrice();
+  return { gas, gasBuffered, monCost: gasBuffered * (cachedGasPrice || 1n) };
+}
+
+const oracleAbi = [{ type: 'function', name: 'latestRoundData', stateMutability: 'view', inputs: [],
+  outputs: [{ type: 'uint80' }, { type: 'int256' }, { type: 'uint256' }, { type: 'uint256' }, { type: 'uint80' }] }] as const;
+
+/** Chainlink MON/USD (8 decimals). Null if the read fails; staleness is judged by the caller. */
+export async function readMonUsd(): Promise<{ price: bigint; updatedAt: bigint } | null> {
+  try {
+    const [, answer, , updatedAt] = await publicClient.readContract({ address: MON_USD_ORACLE as Address, abi: oracleAbi, functionName: 'latestRoundData' });
+    return { price: answer, updatedAt };
+  } catch {
+    return null;
+  }
+}
+
+/** Send a tx with gas estimate x 1.1 (Monad bills gas limit, CLAUDE.md rule 6). */
+export async function sendTx(args: Parameters<typeof baseWallet.writeContract>[0]): Promise<TxResult> {
+  const { gas, gasBuffered, monCost } = await estimateTxCost(args);
 
   const label = `${(args as any).functionName}@${(args as any).address}`;
 

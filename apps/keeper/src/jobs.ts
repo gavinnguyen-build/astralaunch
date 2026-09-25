@@ -12,6 +12,8 @@
  *   - Pending fee pre-check (simulateContract on initializer.collectFees)
  *   - Cadence limit: at most once per COLLECT_INTERVAL_S per beneficiary per asset
  *   - Threshold: pending numeraire must be >= MIN_COLLECT_USDC (in USDC terms)
+ *   - Value: pending value in MON (USDC via Chainlink MON/USD, WMON 1:1) must be >=
+ *     COLLECT_MIN_VALUE_MULTIPLE (default 5) × the collect's estimated gas cost (value.ts)
  *
  * Dual-numeraire (v2):
  *   - For USDC-paired tokens: collect returns USDC + asset tokens (unchanged behavior)
@@ -22,8 +24,9 @@ import { formatUnits, parseUnits, type Address } from 'viem';
 import {
   publicClient, ESCROW, VAULT, PLATFORM_FEE_RECEIVER, WMON,
   sendTx, DRY_RUN, simulatePendingFees, getBeneficiaryShare,
-  getAssetNumeraire,
+  getAssetNumeraire, estimateTxCost, readMonUsd,
 } from './chain.js';
+import { collectValueGate, parseValueMultipleBps } from './value.js';
 import {
   KEEPER_MIN_COLLECT_USDC,
   KEEPER_MIN_DISTRIBUTE_USDC,
@@ -33,6 +36,7 @@ import {
   COLLECT_INTERVAL_S as DEFAULT_COLLECT_INTERVAL_S,
   USDC as USDC_ADDR,
   WAD,
+  MAX_ORACLE_STALENESS_S,
 } from '@astralaunch/shared';
 import { SpendGuardError } from './spend.js';
 import type { KeeperTarget } from './targets.js';
@@ -50,6 +54,7 @@ const minDistributeUsdc = envUsdc('MIN_DISTRIBUTE_USDC', KEEPER_MIN_DISTRIBUTE_U
 const minBuybackUsdc    = envUsdc('MIN_BUYBACK_USDC',    KEEPER_MIN_BUYBACK_USDC);
 // `||`, not `??`: an empty COLLECT_INTERVAL_S (e.g. a blank compose var) must not become 0 = no cadence limit.
 const collectIntervalS  = Number(process.env.COLLECT_INTERVAL_S || DEFAULT_COLLECT_INTERVAL_S);
+const collectValueMultipleBps = parseValueMultipleBps(process.env.COLLECT_MIN_VALUE_MULTIPLE);
 
 // ── ABIs ────────────────────────────────────────────────────────────────────
 
@@ -346,7 +351,24 @@ async function collectBeneficiary(
     return;
   }
 
-  console.log(`[${tag}] SEND — ${decision.reason}${meta.isWmonPair ? ' (WMON pair)' : ''}`);
+  // Value gate: skip unless the fees are worth COLLECT_MIN_VALUE_MULTIPLE × this collect's gas.
+  let value: { send: boolean; reason: string };
+  try {
+    const { monCost } = await estimateTxCost({ address: beneficiary, abi: collectAbi, functionName: 'collect', args: [asset] } as never);
+    value = collectValueGate({
+      pending: pendingNumeraire, isWmonPair: meta.isWmonPair, monUsd: meta.isWmonPair ? null : await readMonUsd(),
+      nowS: BigInt(nowS), maxStalenessS: BigInt(MAX_ORACLE_STALENESS_S), gasCostWei: monCost, multipleBps: collectValueMultipleBps,
+    });
+  } catch (e) {
+    logError(tag, `${name} gas estimate`, e);
+    return;
+  }
+  if (!value.send) {
+    console.log(`[${tag}] SKIP — ${value.reason}`);
+    return;
+  }
+
+  console.log(`[${tag}] SEND — ${decision.reason}; ${value.reason}${meta.isWmonPair ? ' (WMON pair)' : ''}`);
   try {
     const { hash } = await sendTx({ address: beneficiary, abi: collectAbi, functionName: 'collect', args: [asset] });
     log(tag, `${formatUnits(pendingNumeraire, decimals)} ${symbol}`, hash);
@@ -524,7 +546,7 @@ export function _setCadenceForTest(beneficiary: string, asset: string, ts: numbe
 }
 
 export function _getConfig() {
-  return { minCollectUsdc, minDistributeUsdc, minBuybackUsdc, collectIntervalS };
+  return { minCollectUsdc, minDistributeUsdc, minBuybackUsdc, collectIntervalS, collectValueMultipleBps };
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

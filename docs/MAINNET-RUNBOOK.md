@@ -466,6 +466,7 @@ identical errors repeat at most hourly, and recovery sends one alert.
 | `MIN_COLLECT_USDC` | `1` | Skip collect if pending USDC < this. At ~0.1 MON/collect, 1 USDC ≈ 33× gas cost. |
 | `MIN_DISTRIBUTE_USDC` | `1` | Skip distribute if router USDC < this. On-chain `MIN_DISTRIBUTE = 0.5 USDC`. |
 | `MIN_BUYBACK_USDC` | `1` | Skip buyback if vault USDC < this. No on-chain minimum. |
+| `COLLECT_MIN_VALUE_MULTIPLE` | `5` | Skip a collect unless its pending value is ≥ this × the collect's estimated gas cost (gas limit × price). Value in MON: WMON 1:1, USDC via the Chainlink MON/USD feed (skipped if the price is stale > 1h or unreadable). Each skip logs the comparison, e.g. `SKIP — value: pending 0.106 WMON ≈ 0.106 MON (WMON 1:1) vs 5× gas 0.141 MON = 0.705 MON`. Added after a mainnet collect spent 0.141 MON gas to move 0.106 WMON. |
 
 **Spend guards:**
 
