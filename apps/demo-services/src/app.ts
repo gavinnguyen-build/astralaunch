@@ -20,7 +20,9 @@ const handleSchema = z.string().regex(/^@?[A-Za-z0-9_]{1,15}$/, 'X handle: 1-15 
 export function createApp(fetchImpl: typeof fetch = fetch) {
   const app = new Hono();
 
-  app.get('/health', (c) => c.json({ ok: true }));
+  // Each service is registered with its own path prefix (upstreamUrl …:4001/sight or …/feed); the
+  // gateway's health probe calls {upstreamUrl}/health, so every prefix has one.
+  for (const p of ['', '/sight', '/feed']) app.get(`${p}/health`, (c) => c.json({ ok: true }));
   app.get('/schemas/feed-digest.json', (c) => c.json(feedDigestSchema));
   app.get('/schemas/sight-signals.json', (c) => c.json(sightSignalsSchema));
 

@@ -108,4 +108,9 @@ describe('sight signals (sample data)', () => {
     const r = await createApp().request('/schemas/sight-signals.json');
     expect((await r.json()).properties.source.const).toBe('sample data');
   });
+
+  it('health is served at the root and under each service prefix (gateway probes {upstreamUrl}/health)', async () => {
+    const app = createApp(fakeFetch() as unknown as typeof fetch);
+    for (const p of ['/health', '/sight/health', '/feed/health']) expect((await app.request(p)).status).toBe(200);
+  });
 });
