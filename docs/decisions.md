@@ -101,3 +101,28 @@ Settle-after-success is unchanged. The SDK exports no header-name constants, so 
 `x402HTTPClient` and are covered by `gateway-headers.test.ts`, which uses that client.
 Known issue, not changed: the gateway logs `payer` as `unknown` for v2 payloads (it reads `payload.payer`),
 which undercounts distinct payers.
+
+## Demo loop fixes (2026-09-25)
+
+**D-GW2: Payer.** The gateway recorded `payer = 'unknown'` for v2 payloads (it read `payload.payer`). It now
+records the address the facilitator verified (`VerifyResponse.payer`), falling back to the verified EIP-3009
+`authorization.from`. On verify failure the claimed `from` is logged for information only.
+
+**D-TS1: Timestamps.** Every timestamp column is TIMESTAMPTZ in SQL and `withTimezone: true` in drizzle.
+`services`, `gateway_requests` and `service_probes` were already TIMESTAMPTZ in SQL but declared without a
+time zone in drizzle, so reads shifted by the host's UTC offset. `idx_checkpoints.updated_at` was the one
+TIMESTAMP column; migration 0008 converts it (`AT TIME ZONE 'UTC'`, idempotent). `timestamps.test.ts`
+runs under TZ=Asia/Ho_Chi_Minh and checks every column in both drizzle and SQL.
+
+**D-DS1: Demo services + upstream allowlist.** `apps/demo-services` (port 4001, no secrets):
+`/feed/digest` (real arXiv Atom API, cached 10 min per topic) and `/sight/signals` (bundled sample data,
+labeled "sample data", deterministic per handle), with JSON schemas in `apps/demo-services/schemas/`. It does
+not verify `X-Astralaunch-Signature`: nothing secret is served, and payment is enforced by the gateway.
+The SSRF guard blocks loopback upstreams, so `UPSTREAM_ALLOWLIST` (exact origins, empty by default) lets an
+operator allow `http://127.0.0.1:4001` only; every other private target stays blocked.
+`ALLOW_LOCAL_UPSTREAMS=true` (blanket bypass) stays fork-only.
+
+**D-KS1: Keystores in scripts.** `mainnet-register-service.ts` / `mainnet-pay.ts` accept `<ROLE>_KEYSTORE`
+(Foundry account name or path) with a hidden password prompt or `<ROLE>_KEYSTORE_PASSWORD_FILE`, so mainnet
+keys never pass through the shell. The V3 decryption (scrypt/pbkdf2, aes-128-ctr, keccak MAC) is checked
+against the official Web3 Secret Storage test vectors (`astralaunch-anvil/src/keystore.test.ts`).
