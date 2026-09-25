@@ -6,6 +6,8 @@ import { services } from '../db/schema.js';
 import { createServiceSchema, updateServiceSchema, serviceCreateMessage, serviceUpdateMessage } from '@astralaunch/shared';
 import { MONAD_NETWORK, USDC } from '@astralaunch/shared';
 import { assertSafeUpstream, SsrfError } from '../lib/ssrf.js';
+import { upstreamBaseError } from '../lib/upstream.js';
+import { compileResponseSchema } from '../lib/responseSchema.js';
 import { generateSecret } from '../lib/hmac.js';
 import { authorizeTokenCreator, consumeSignedMessage, ServiceAuthError } from '../services/serviceAuth.js';
 import { USDC_ADDR, PAYMENT_TIMEOUT_S } from '../env.js';
@@ -24,6 +26,11 @@ function authError(c: Context, e: unknown) {
 // POST /api/services — register a BYO service. Signed by the token's on-chain creator (D-SV1).
 app.post('/', zValidator('json', createServiceSchema), async (c) => {
   const body = c.req.valid('json');
+  const bad = upstreamBaseError(body.upstreamUrl);
+  if (bad) return c.json({ error: bad }, 400);
+  if (body.responseSchema) {
+    try { compileResponseSchema(body.responseSchema); } catch (e) { return c.json({ error: (e as Error).message }, 400); }
+  }
   const { signature, ...signed } = body;
   const message = serviceCreateMessage(signed);
 
@@ -68,6 +75,8 @@ app.patch('/:id', zValidator('json', updateServiceSchema), async (c) => {
 
   const svc = await db.query.services.findFirst({ where: eq(services.id, id) });
   if (!svc) return c.json({ error: 'Not found' }, 404);
+  const bad = body.upstreamUrl ? upstreamBaseError(body.upstreamUrl) : null;
+  if (bad) return c.json({ error: bad }, 400);
 
   const { signature, ...signed } = body;
   const message = serviceUpdateMessage(svc.id, svc.asset, signed);

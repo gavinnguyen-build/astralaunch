@@ -66,7 +66,7 @@ export const gatewayRequests = pgTable('gateway_requests', {
   verified:       boolean('verified').notNull().default(false),
   settled:        boolean('settled').notNull().default(false),
   settleTxHash:   text('settle_tx_hash'),
-  errorCode:      text('error_code'),             // 'upstream_error'|'settle_failed'|'verify_failed'
+  errorCode:      text('error_code'),             // 'upstream_error'|'settle_failed'|'verify_failed'|'schema_mismatch'|'response_not_json'|'schema_invalid'
   requestBytes:   integer('request_bytes'),
   responseBytes:  integer('response_bytes'),
   createdAt:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

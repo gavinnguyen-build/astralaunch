@@ -4,9 +4,12 @@
  * Flow (SPEC §9):
  *  1. No payment header (PAYMENT-SIGNATURE, or legacy X-PAYMENT) → 402 with PaymentRequired.
  *  2. X-PAYMENT present → verify via facilitator.
+ *  0. The request path is mapped inside the service's upstream path prefix (lib/upstream.ts);
+ *     a path that would leave it is refused with 400 before any payment.
  *  3. Verified → forward to upstream with HMAC signature + timeout.
- *  4. Upstream 2xx → settle → log settled=true → return upstream body + PAYMENT-RESPONSE.
- *  5. Upstream non-2xx → log error, do NOT settle → return 502 to agent.
+ *  4. Upstream 2xx and the body passes the service's responseSchema (lib/responseSchema.ts)
+ *     → settle → log settled=true → return upstream body + PAYMENT-RESPONSE.
+ *  5. Upstream non-2xx, unreadable body, non-JSON or schema mismatch → log error, do NOT settle → 502.
  *  6. Settle fails → log settle_failed → return 402 to agent with receipt context.
  *
  * CLAUDE.md rules obeyed:
@@ -32,8 +35,11 @@ import { signRequest } from '../lib/hmac.js';
 import { FACILITATOR_URL, USDC_ADDR, CHAIN_ID, PAYMENT_TIMEOUT_S } from '../env.js';
 import { MONAD_NETWORK } from '@astralaunch/shared';
 import { PAYMENT_HEADERS, PAYMENT_REQUIRED_HEADERS, PAYMENT_RESPONSE_HEADER } from '../lib/x402Headers.js';
+import { buildUpstreamUrl } from '../lib/upstream.js';
+import { checkResponse } from '../lib/responseSchema.js';
 
 const MAX_BODY_BYTES          = 10 * 1024 * 1024; // 10 MB
+const MAX_RESPONSE_BYTES      = 10 * 1024 * 1024; // 10 MB, read in full before settle (schema check)
 
 const facilitator = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
 
@@ -48,6 +54,11 @@ app.all('/:slug/*', async (c) => {
   // Load service
   const svc = await db.query.services.findFirst({ where: eq(services.slug, slug) });
   if (!svc || !svc.active) return c.json({ error: 'Service not found' }, 404);
+
+  // Target inside the service's upstream path prefix (lib/upstream.ts); refused before any payment.
+  const reqUrl = new URL(c.req.url);
+  const target = buildUpstreamUrl(svc.upstreamUrl, reqUrl.pathname.slice(`/s/${slug}`.length), reqUrl.search);
+  if (!target) return c.json({ error: 'Invalid request path' }, 400);
 
   // Build PaymentRequired (used for 402 response and verification)
   const requirements: PaymentRequirements = {
@@ -102,8 +113,7 @@ app.all('/:slug/*', async (c) => {
   const payer = verifyResult.payer ?? payerFromPayload(payload) ?? 'unknown';
 
   // ── 3. Forward to upstream ──────────────────────────────────────────────────
-  const upstreamPath = c.req.path.replace(`/s/${slug}`, '') || '/';
-  const upstreamUrl  = new URL(upstreamPath + (c.req.query() ? '?' + new URLSearchParams(c.req.query() as Record<string, string>) : ''), svc.upstreamUrl).toString();
+  const upstreamUrl = target.toString();
 
   let bodyBytes: Buffer | null = null;
   if (method !== 'GET' && method !== 'HEAD') {
@@ -141,7 +151,24 @@ app.all('/:slug/*', async (c) => {
     return c.json({ error: 'Upstream returned non-2xx', upstreamStatus }, 502);
   }
 
-  // ── 5. Settle (only on upstream success) ───────────────────────────────────
+  // ── 5. Read the body and check the service's responseSchema → on failure do NOT settle ──
+  let responseBodyBuf: Buffer;
+  try {
+    const len = Number(upstreamRes.headers.get('Content-Length') ?? 0);
+    if (len > MAX_RESPONSE_BYTES) throw new Error('too large');
+    responseBodyBuf = Buffer.from(await upstreamRes.arrayBuffer());
+    if (responseBodyBuf.byteLength > MAX_RESPONSE_BYTES) throw new Error('too large');
+  } catch {
+    await logRequest(svc, payer, true, false, upstreamStatus, 'upstream_error', startMs, c);
+    return c.json({ error: 'Upstream response unreadable or too large' }, 502);
+  }
+  const check = checkResponse(svc.responseSchema, responseBodyBuf);
+  if (!check.ok) {
+    await logRequest(svc, payer, true, false, upstreamStatus, check.code, startMs, c);
+    return c.json({ error: 'Upstream response failed the service response schema; you were not charged', reason: check.code, detail: check.detail }, 502);
+  }
+
+  // ── 6. Settle (only on upstream success + schema pass) ─────────────────────
   const settleResult = await facilitator.settle(payload, requirements);
   const settleTxHash: string | null = settleResult.success ? (settleResult.transaction ?? null) : null;
 
@@ -152,11 +179,10 @@ app.all('/:slug/*', async (c) => {
     return c.json({ error: 'Payment settlement failed', reason: settleResult.errorReason }, 402);
   }
 
-  // ── 6. Return upstream response ────────────────────────────────────────────
-  const responseBodyBuf = Buffer.from(await upstreamRes.arrayBuffer());
+  // ── 7. Return upstream response ────────────────────────────────────────────
   await logRequest(svc, payer, true, true, upstreamStatus, null, startMs, c, settleTxHash, bodyBytes, responseBodyBuf);
 
-  return new Response(responseBodyBuf, {
+  return new Response(new Uint8Array(responseBodyBuf), {
     status:  upstreamStatus,
     headers: {
       'Content-Type': upstreamRes.headers.get('Content-Type') ?? 'application/json',
