@@ -1,0 +1,29 @@
+# Build context is the repo root (pnpm workspace). Keep it small and secret-free.
+**/node_modules
+**/dist
+**/.turbo
+.git
+.claude
+
+# Secrets: never bake env files into an image. Config comes from Coolify env vars.
+**/.env
+**/.env.*
+!**/.env*.example
+
+# Foundry artifacts and local chain state (only deployments/*.json is needed at runtime)
+packages/contracts/lib
+packages/contracts/out
+packages/contracts/cache
+packages/contracts/broadcast
+packages/contracts/broadcast-mainnet
+packages/contracts/test
+packages/contracts/script
+astralaunch-anvil
+astralaunch-anvil.zip
+.anvil-state
+
+# Local-only material
+docs
+tasks.json
+**/__tests__
+**/*.test.ts

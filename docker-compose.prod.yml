@@ -1,0 +1,148 @@
+# Astralaunch production stack for Coolify on one VPS. See docs/DEPLOY-COOLIFY.md.
+#
+# Only `web` (:80) and `server` (:3001) get public domains, assigned in Coolify's UI:
+#   web    → https://astralaunch.xyz, https://www.astralaunch.xyz
+#   server → https://api.astralaunch.xyz
+# No service publishes a host port; Coolify's proxy (behind the Cloudflare Tunnel)
+# routes to the containers. Postgres and demo-services are reachable only on the
+# `internal` network, which has no route to the internet.
+#
+# `${VAR:?}` = required (Coolify shows it in the env editor; compose refuses to start without it).
+# `${VAR:-x}` = optional with a default.
+# The root docker-compose.yml is the local-dev Postgres and is unrelated to this file.
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: '20m', max-file: '5' }
+
+x-chain-env: &chain-env
+  MONAD_RPC_URL: ${MONAD_RPC_URL:-https://rpc.monad.xyz}
+  MONAD_CHAIN_ID: ${MONAD_CHAIN_ID:-143}
+  USDC_ADDRESS: ${USDC_ADDRESS:-0x754704Bc059F8C67012fEd69BC8A327a5aafb603}
+  # v2 mainnet deployment: packages/contracts/deployments/monad-mainnet.json (c89dde3)
+  ASTRALAUNCH_REGISTRY_ADDRESS: ${ASTRALAUNCH_REGISTRY_ADDRESS:-0x6B3A79C723AB69f8938C87209E1D9730c739e00c}
+  FEE_ESCROW_ADDRESS: ${FEE_ESCROW_ADDRESS:-0xA070ad1387d525E4A180Bdb09B65FD4086858F15}
+  BUYBACK_VAULT_ADDRESS: ${BUYBACK_VAULT_ADDRESS:-0x394F1dcA6011C16BC6e70CA13F6F29767D92171E}
+  PLATFORM_FEE_RECEIVER_ADDRESS: ${PLATFORM_FEE_RECEIVER_ADDRESS:-0x2eFE45394d7578dC39c75d06Fe88722118F5Ec76}
+  ADMIN_ADDRESS: ${ADMIN_ADDRESS:-0xe89f19D370F496520803e7ABb30c1A20B04B0f7f}
+  FACILITATOR_SUBMITTER_ADDRESSES: ${FACILITATOR_SUBMITTER_ADDRESSES:-0x7f6a2850669202519f0FE8aa912451238820Db86}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: astralaunch
+      POSTGRES_DB: astralaunch
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD (hex, URL-safe)}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U astralaunch -d astralaunch']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+
+  server:
+    build: { context: ., dockerfile: apps/server/Dockerfile }
+    restart: unless-stopped
+    environment:
+      <<: *chain-env
+      PORT: 3001
+      DATABASE_URL: postgresql://astralaunch:${POSTGRES_PASSWORD:?}@postgres:5432/astralaunch
+      GUARDIAN_ADDRESS: ${GUARDIAN_ADDRESS:-0x62c1a140eB643BF43659E7e5134CAfDFeDe17e8b}
+      TREASURY_ADDRESS: ${TREASURY_ADDRESS:-0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C}
+      X402_FACILITATOR_URL: ${X402_FACILITATOR_URL:-https://x402-facilitator.molandak.org}
+      PAYMENT_TIMEOUT_SECONDS: ${PAYMENT_TIMEOUT_SECONDS:-60}
+      GATEWAY_HMAC_MASTER_KEY: ${GATEWAY_HMAC_MASTER_KEY:?set GATEWAY_HMAC_MASTER_KEY (openssl rand -hex 32)}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      # demo-services is on the private compose network; allow exactly its origin past the SSRF block.
+      UPSTREAM_ALLOWLIST: ${UPSTREAM_ALLOWLIST:-http://demo-services:4001}
+      # Not read by the server yet (see docs/DEPLOY-COOLIFY.md, "Code changes needed").
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://astralaunch.xyz,https://www.astralaunch.xyz}
+    expose: ['3001']
+    networks: [internal, egress]
+    depends_on:
+      postgres: { condition: service_healthy }
+      demo-services: { condition: service_healthy }
+    logging: *logging
+
+  indexer:
+    build: { context: ., dockerfile: apps/indexer/Dockerfile }
+    restart: unless-stopped
+    environment:
+      MONAD_RPC_URL: ${MONAD_RPC_URL:-https://rpc.monad.xyz}
+      DATABASE_URL: postgresql://astralaunch:${POSTGRES_PASSWORD:?}@postgres:5432/astralaunch
+      FACILITATOR_SUBMITTER_ADDRESSES: ${FACILITATOR_SUBMITTER_ADDRESSES:-0x7f6a2850669202519f0FE8aa912451238820Db86}
+      INDEXER_POLL_INTERVAL_S: ${INDEXER_POLL_INTERVAL_S:-10}
+      INDEXER_MAX_RPS: ${INDEXER_MAX_RPS:-25}
+      INDEXER_CHUNK_SIZE: ${INDEXER_CHUNK_SIZE:-100}   # public RPC caps eth_getLogs ranges; the fetcher adapts either way
+      INDEXER_FINALITY_LAG: ${INDEXER_FINALITY_LAG:-0}
+      INDEXER_HEALTH_MAX_AGE_S: ${INDEXER_HEALTH_MAX_AGE_S:-600}
+    networks: [internal, egress]
+    depends_on:
+      # The server applies migrations on start; the indexer writes to those tables.
+      server: { condition: service_healthy }
+    logging: *logging
+
+  keeper:
+    build: { context: ., dockerfile: apps/keeper/Dockerfile }
+    restart: unless-stopped
+    environment:
+      <<: *chain-env
+      # Must derive to the keeper wallet 0x9e641007829DA8eB199b2Bec64B1E6dcbfdaB854.
+      KEEPER_PRIVATE_KEY: ${KEEPER_PRIVATE_KEY:?set KEEPER_PRIVATE_KEY (keeper wallet only)}
+      ASSETS: ${ASSETS:-}
+      ROUTERS: ${ROUTERS:-}
+      POLL_INTERVAL_S: ${POLL_INTERVAL_S:-600}   # shared KEEPER_DEFAULT_INTERVAL_S; < 300 is clamped on a non-local RPC
+      COLLECT_INTERVAL_S: ${COLLECT_INTERVAL_S:-}
+      MIN_MON_BALANCE: ${MIN_MON_BALANCE:-}
+      MAX_MON_PER_DAY: ${MAX_MON_PER_DAY:-}
+      SINGLE_TX_ALERT: ${SINGLE_TX_ALERT:-}
+      MIN_COLLECT_USDC: ${MIN_COLLECT_USDC:-}
+      MIN_DISTRIBUTE_USDC: ${MIN_DISTRIBUTE_USDC:-}
+      MIN_BUYBACK_USDC: ${MIN_BUYBACK_USDC:-}
+      DRY_RUN: ${DRY_RUN:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+    # Talks to the RPC and Telegram only; no database, no inbound traffic.
+    networks: [egress]
+    logging: *logging
+
+  demo-services:
+    build: { context: ., dockerfile: apps/demo-services/Dockerfile }
+    restart: unless-stopped
+    environment:
+      DEMO_SERVICES_HOST: 0.0.0.0
+      DEMO_SERVICES_PORT: 4001
+    expose: ['4001']
+    # internal: reachable by the server as http://demo-services:4001; egress: /feed/digest calls arXiv.
+    networks: [internal, egress]
+    logging: *logging
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-https://api.astralaunch.xyz}
+        VITE_PRIVY_APP_ID: ${VITE_PRIVY_APP_ID:-cmuh6urs5000y0bkzkff6fn3c}
+        VITE_CHAIN_ID: ${VITE_CHAIN_ID:-143}
+        VITE_RPC_URL: ${VITE_RPC_URL:-https://rpc.monad.xyz}
+        VITE_REGISTRY_ADDR: ${VITE_REGISTRY_ADDR:-0x6B3A79C723AB69f8938C87209E1D9730c739e00c}
+        VITE_ESCROW_ADDR: ${VITE_ESCROW_ADDR:-0xA070ad1387d525E4A180Bdb09B65FD4086858F15}
+        VITE_VAULT_ADDR: ${VITE_VAULT_ADDR:-0x394F1dcA6011C16BC6e70CA13F6F29767D92171E}
+    restart: unless-stopped
+    expose: ['80']
+    networks: [egress]
+    logging: *logging
+
+networks:
+  internal:
+    internal: true
+  egress: {}
+
+volumes:
+  postgres_data:
