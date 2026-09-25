@@ -22,6 +22,13 @@
       "when": 1727222400000,
       "tag": "0003_indexer_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1727308800000,
+      "tag": "0004_indexer_v2",
+      "breakpoints": true
     }
   ]
 }

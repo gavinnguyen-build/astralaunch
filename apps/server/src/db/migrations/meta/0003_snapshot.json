@@ -1,0 +1,15 @@
+{
+  "id": "0003_indexer_tables",
+  "prevId": "0002_tokens_probes",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {},
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
