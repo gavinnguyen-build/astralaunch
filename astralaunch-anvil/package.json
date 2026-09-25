@@ -21,6 +21,7 @@
     "mainnet-launch": "tsx src/mainnet-launch.ts",
     "mainnet-register": "tsx src/mainnet-register.ts",
     "mainnet-pay": "tsx src/mainnet-pay.ts",
+    "mainnet-register-service": "tsx src/mainnet-register-service.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -84,3 +84,20 @@ schema, which shifted reads by the host's UTC offset.
 - The PATCH response no longer returns `upstreamSecret`.
 - Existing services created by the old, unsigned flow keep working (gateway unchanged). Their
   `creator` column may hold a client-supplied value, but it is no longer used for authorization.
+
+**D-SV1 addendum (token metadata).** `POST /api/tokens` uses the same scheme: a fixed header plus canonical
+JSON (`tokenMetadataMessage`), signed by the on-chain creator, with a 10 min `issuedAt` window, replay
+protection through `signed_requests` (purpose `token_metadata`), and monotonic `metadata_signed_at`. A wrong
+signer now gets 403 (was 401). Unlike services, metadata may be set while the token is still unlisted.
+
+## Gateway speaks standard x402 v2 headers (2026-09-25)
+
+**D-GW1.** The gateway sent `X-PAYMENT-REQUIRED` and read only `X-PAYMENT`, while the SDK's v2 HTTP client
+(`x402HTTPClient`, @x402/core 2.26) reads `PAYMENT-REQUIRED`, sends `PAYMENT-SIGNATURE` and reads
+`PAYMENT-RESPONSE`. So a standard SDK agent could not pay. The fix is additive: the 402 carries both
+`PAYMENT-REQUIRED` and `X-PAYMENT-REQUIRED`; the payment is read from `PAYMENT-SIGNATURE` or `X-PAYMENT`; and
+a successful paid response adds `PAYMENT-RESPONSE` (SDK `encodePaymentResponseHeader`) with the settle tx.
+Settle-after-success is unchanged. The SDK exports no header-name constants, so the names mirror
+`x402HTTPClient` and are covered by `gateway-headers.test.ts`, which uses that client.
+Known issue, not changed: the gateway logs `payer` as `unknown` for v2 payloads (it reads `payload.payer`),
+which undercounts distinct payers.

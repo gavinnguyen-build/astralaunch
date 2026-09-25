@@ -300,6 +300,27 @@ The script aborts if `DATABASE_URL`'s database is not `astralaunch_mainnet`, if 
 in `AstralaunchRegistry`, or if `fee_receipts` does not exist. Re-running it is safe.
 Set `ADMIN_API_KEY` in `.env.mainnet` to enable `GET /api/admin/tokens/unlisted`.
 
+### Register a service / make a paid call (astralaunch-anvil/src)
+
+Both scripts print everything they will send and ask for "yes" (or pass `--yes`). Keys are read from
+env and never printed. Anvil dev keys are refused unless `ALLOW_ANVIL_KEYS=1` (local fork only).
+
+```bash
+cd astralaunch-anvil
+read -s CREATOR_PRIVATE_KEY && export CREATOR_PRIVATE_KEY     # token's on-chain creator
+ASSET=0x… SLUG=my-svc UPSTREAM_URL=https://api.example.com PRICE_USDC=0.01 \
+  SERVER_URL=http://localhost:3001 npx tsx src/mainnet-register-service.ts
+# optional: SCHEMA='{"type":"object"}' (or a .json path), NAME, DESCRIPTION, TIMEOUT_SECONDS
+# an existing SLUG for the same ASSET is updated (price/upstream/description/timeout) with a signed PATCH
+
+read -s AGENT_PRIVATE_KEY && export AGENT_PRIVATE_KEY         # payer wallet, needs USDC
+SLUG=my-svc SERVICE_PATH=/json SERVER_URL=http://localhost:3001 \
+  MONAD_RPC_URL=https://rpc.monad.xyz npx tsx src/mainnet-pay.ts
+```
+
+`PRICE_USDC` is human USDC (0.01), not raw units; above 100 USDC it needs `ALLOW_HIGH_PRICE=1`.
+The pay script refuses when `payTo` is not `registry.routers(asset)` on chain, or the wallet lacks USDC.
+
 ### Start (port 3001)
 
 ```bash
