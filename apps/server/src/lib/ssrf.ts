@@ -51,6 +51,16 @@ function blockIpLiteral(hostname: string): void {
  */
 const ALLOW_LOCAL = process.env.ALLOW_LOCAL_UPSTREAMS === 'true';
 
+/**
+ * UPSTREAM_ALLOWLIST: comma-separated exact origins (scheme://host:port) that skip the private-IP
+ * check, e.g. "http://127.0.0.1:4001" for demo-services on the same host (D-DS1). Only these exact
+ * origins; every other private/loopback target stays blocked. Empty by default.
+ */
+export function upstreamAllowlist(raw = process.env.UPSTREAM_ALLOWLIST ?? ''): Set<string> {
+  return new Set(raw.split(',').map(s => s.trim()).filter(Boolean).map(s => new URL(s).origin));
+}
+const ALLOWLIST = upstreamAllowlist();
+
 export async function assertSafeUpstream(rawUrl: string): Promise<void> {
   if (ALLOW_LOCAL) return; // bypass for local testing
 
@@ -64,6 +74,8 @@ export async function assertSafeUpstream(rawUrl: string): Promise<void> {
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
     throw new SsrfError(`Disallowed scheme: ${parsed.protocol}`);
   }
+
+  if (ALLOWLIST.has(parsed.origin)) return; // operator-allowlisted exact origin
 
   const hostname = parsed.hostname;
 

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astralaunch.dev/schemas/feed-digest.json",
+  "title": "Feed digest (GET /feed/digest?topic=…)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["topic", "source", "fetchedAt", "cached", "papers"],
+  "properties": {
+    "topic":     { "type": "string", "minLength": 1, "maxLength": 64 },
+    "source":    { "const": "arXiv API (export.arxiv.org)" },
+    "fetchedAt": { "type": "string", "format": "date-time" },
+    "cached":    { "type": "boolean" },
+    "papers": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "authors", "link", "summary", "published"],
+        "properties": {
+          "title":     { "type": "string", "minLength": 1 },
+          "authors":   { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "link":      { "type": "string", "pattern": "^https?://arxiv\\.org/" },
+          "summary":   { "type": "string", "maxLength": 240 },
+          "published": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}
