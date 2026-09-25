@@ -8,7 +8,7 @@ local-dev Postgres and is not used in production.
 | `web` | `apps/web/Dockerfile` (Vite build → nginx) | yes: `astralaunch.xyz`, `www.astralaunch.xyz` | 80 | `GET /healthz` |
 | `server` | `apps/server/Dockerfile` (API + x402 gateway) | yes: `api.astralaunch.xyz` | 3001 | `GET /health` (includes DB) |
 | `indexer` | `apps/indexer/Dockerfile` (follow mode) | no | – | `idx_checkpoints.updated_at` newer than 10 min |
-| `keeper` | `apps/keeper/Dockerfile` | no | – | none (no HTTP surface); restart policy + Telegram alerts |
+| `keeper` | `apps/keeper/Dockerfile` | no | 8080 (internal) | `GET /health`: 503 when no tick succeeded within 3 × `POLL_INTERVAL_S` |
 | `demo-services` | `apps/demo-services/Dockerfile` | no | 4001 (internal) | `GET /health` |
 | `postgres` | `postgres:16-alpine` | no | 5432 (internal) | `pg_isready` |
 
@@ -16,11 +16,11 @@ All services use `restart: unless-stopped` and capped json-file logs (5 × 20 MB
 
 ## Networks
 
-- `internal` (`internal: true`, no internet route): `postgres`, `server`, `indexer`, `demo-services`.
+- `internal` (`internal: true`, no internet route): `postgres`, `server`, `indexer`, `keeper`, `demo-services`.
   Postgres has no host port. demo-services is reachable only by the server as `http://demo-services:4001`.
 - `egress`: `server`, `indexer`, `keeper` (Monad RPC, facilitator, Telegram), `demo-services` (arXiv), `web`.
-- No service publishes a host port. Coolify's proxy reaches `web` and `server` through the
-  domains assigned in the UI, and the Cloudflare Tunnel sits in front of the proxy.
+- No service publishes a host port. Coolify's proxy (Traefik) reaches `web` and `server`
+  through the domains assigned in the UI and terminates HTTPS for them.
 
 ## Coolify setup
 
@@ -30,12 +30,15 @@ All services use `restart: unless-stopped` and capped json-file logs (5 × 20 MB
    - `web` → `https://astralaunch.xyz,https://www.astralaunch.xyz`, container port 80
    - `server` → `https://api.astralaunch.xyz`, container port 3001
    - leave every other service without a domain.
-3. **Cloudflare Tunnel**: public hostnames `astralaunch.xyz`, `www.astralaunch.xyz` and
-   `api.astralaunch.xyz` all point to the Coolify proxy (`http://localhost:80` on the VPS).
-   Optionally redirect `www` → apex with a Cloudflare redirect rule.
+3. **DNS (Hostinger)**: in the Hostinger DNS zone for `astralaunch.xyz`, create `A` records
+   for `@`, `www` and `api` pointing at the VPS public IP (plus `AAAA` records if the VPS has
+   IPv6). Remove any parking or default records for those names. Ports 80 and 443 must be open
+   on the VPS firewall. Coolify issues and renews the Let's Encrypt certificates itself once
+   the records resolve, because the domains in step 2 use `https://`. Let DNS propagate
+   before the first deploy, or the certificate challenge fails and has to be retried.
 4. **Environment variables**: fill in the variables below in the Coolify env editor. Tick
    *Is Build Variable?* for every `VITE_*` (web). Mark the secrets as locked.
-5. **Deploy.** The expected order is postgres → demo-services → server (runs migrations) → indexer. keeper and web start independently.
+5. **Deploy.** The expected order is postgres → demo-services → server (runs migrations) → indexer and keeper. web starts independently.
 6. **Verify** (see "Post-deploy checks").
 
 ## Environment variables
@@ -45,15 +48,15 @@ the browser bundle. "default" = value baked into `docker-compose.prod.yml`, so i
 setting to override.
 
 Contract addresses are the **v2 mainnet deployment**,
-`packages/contracts/deployments/monad-mainnet.json` (commit `c89dde3`, 2026-09-25). The
-addresses in `docs/MAINNET-RUNBOOK.md` and `apps/*/.env.mainnet.example`
-(`0x25845Cee…` registry) are v1. Do not use them.
+`packages/contracts/deployments/monad-mainnet.json` (commit `c89dde3`, 2026-09-25). v1
+(registry `0x25845Cee…`) is retired. `docs/MAINNET-RUNBOOK.md` and `apps/*/.env.mainnet.example`
+now carry v2.
 
 ### Shared by several services
 
 | Var | Used by | Kind | Value |
 |---|---|---|---|
-| `POSTGRES_PASSWORD` | postgres, server, indexer | **secret**, required | `openssl rand -hex 24` (hex, so it is URL-safe inside `DATABASE_URL`) |
+| `POSTGRES_PASSWORD` | postgres, server, indexer, keeper | **secret**, required | `openssl rand -hex 24` (hex, so it is URL-safe inside `DATABASE_URL`) |
 | `MONAD_RPC_URL` | server, indexer, keeper | public | default `https://rpc.monad.xyz` |
 | `MONAD_CHAIN_ID` | server, keeper | public | default `143` |
 | `FACILITATOR_SUBMITTER_ADDRESSES` | server, indexer, keeper | public | default `0x7f6a2850669202519f0FE8aa912451238820Db86` |
@@ -106,14 +109,16 @@ backfills from block `107840649`, and the healthcheck allows a 10-minute start p
 | Var | Kind | Value / notes |
 |---|---|---|
 | `KEEPER_PRIVATE_KEY` | **secret**, required | Key for the keeper wallet **`0x9e641007829DA8eB199b2Bec64B1E6dcbfdaB854`**. Used only by the keeper, never by any other service, and never an Anvil or test key (CLAUDE.md rule 15). Keep the wallet funded with MON. |
-| `ASSETS` | public | comma-separated token addresses, same order as `ROUTERS`. **Currently the only source of work**, see code changes. |
-| `ROUTERS` | public | comma-separated RevenueRouter addresses matching `ASSETS` |
+| `DATABASE_URL` | (assembled in compose) | Token discovery. Each tick the keeper reads the listed tokens (launch fee consumed, not hidden) with router, numeraire and pool id. A new listing is picked up on the next tick without a restart. It only runs `SELECT`s, so a read-only Postgres role is enough if you want to tighten it. |
+| `ASSETS` | public, optional | **Debug override only; leave empty.** Alone, it services those tokens from the DB, listed or not. With `ROUTERS`, it uses explicit pairs without the DB. |
+| `ROUTERS` | public, optional | Comma-separated RevenueRouter addresses matching `ASSETS` |
+| `KEEPER_HEALTH_PORT` | public | fixed `8080`, internal only. `GET /health` returns the last successful tick, target count and wallet MON balance. |
 | `POLL_INTERVAL_S` | public | default `600` (shared `KEEPER_DEFAULT_INTERVAL_S`). Values below 300 (`KEEPER_MIN_INTERVAL_S`) are clamped to 300 on a non-local RPC. The `30` in `.env.mainnet.example` has no effect. |
-| `COLLECT_INTERVAL_S` | public, optional | code default in `@astralaunch/shared` |
+| `COLLECT_INTERVAL_S` | public | default `21600` (6 h, shared `COLLECT_INTERVAL_S`) |
 | `MIN_MON_BALANCE`, `MAX_MON_PER_DAY`, `SINGLE_TX_ALERT` | public, optional | in MON (e.g. `0.5`); code defaults in shared |
 | `MIN_COLLECT_USDC`, `MIN_DISTRIBUTE_USDC`, `MIN_BUYBACK_USDC` | public, optional | in USDC (e.g. `1.5`); code defaults in shared |
 | `DRY_RUN` | public | default `false`. `true` estimates gas without sending. Use it for the first deploy. |
-| `TELEGRAM_BOT_TOKEN` | **secret**, optional | treasury proposal, admin transfer and low-balance alerts |
+| `TELEGRAM_BOT_TOKEN` | **secret**, optional | Treasury proposal, admin transfer, low-balance and **tick-failure** alerts. Identical failures repeat at most hourly, and a recovery sends one alert. |
 | `TELEGRAM_CHAT_ID` | public, optional | |
 
 ### demo-services (internal only)
@@ -136,7 +141,7 @@ blocks them as private IPs, because only the allowlisted origin passes.
 
 | Var | Value |
 |---|---|
-| `VITE_API_BASE` | `https://api.astralaunch.xyz` (the code reads `VITE_API_BASE`, not `VITE_API_URL`) |
+| `VITE_API_BASE` | `https://api.astralaunch.xyz` (the web's API base URL) |
 | `VITE_PRIVY_APP_ID` | `cmuh6urs5000y0bkzkff6fn3c` |
 | `VITE_CHAIN_ID` | `143` |
 | `VITE_RPC_URL` | `https://rpc.monad.xyz` |
@@ -163,7 +168,7 @@ curl -si -X OPTIONS https://api.astralaunch.xyz/api/stats \
 In Coolify logs, look for:
 - server: `Contract addresses verified on chain 143`, `Admin wiring verified: 0xe89f…`, `Migrations complete.`
 - indexer: `[indexer] mode=follow chain=143 …`, then advancing blocks
-- keeper: `[keeper] tick — N asset(s) balance=… MON`. With `DRY_RUN=true` first, confirm the wallet address and balance, then flip to `false`.
+- keeper: `[keeper] starting — … targets from database (listed tokens)`, then `[keeper] tick — N asset(s) balance=… MON`, where N is the number of listed tokens. With `DRY_RUN=true` first, confirm the wallet balance and target count (also shown in the container's `/health`), then flip to `false`.
 
 Postgres backups: enable Coolify's scheduled backup on the `postgres` service (volume `postgres_data`).
 
@@ -198,16 +203,18 @@ back to JS and never reach the browser bundle, so the build still succeeds.
 | server CORS preflight `OPTIONS /api/stats` with `Origin: https://astralaunch.xyz` | **404, no `Access-Control-*` headers.** Code change 1 is needed. |
 | indexer image (follow mode) | Starts at block 107840649 and writes `idx_checkpoints`. `docker-healthcheck.mjs` exits 0 and the container is healthy. The first build failed because the indexer imports `apps/server/src/services/*`, so the image now copies the whole server `src`. |
 | keeper image, `--once --dry-run` with a throwaway random key | Verifies contracts and admin wiring, runs one tick with 0 assets, and exits cleanly. |
+| keeper DB discovery, e2e (2026-09-26): keeper image + Postgres migrated by the server image, dry run, throwaway key | Tick 1: SIGHT registered but unlisted, FEED listed but hidden → `0 asset(s)`. Then, without a restart, SIGHT was listed and a spoofed listed row (fake asset, SIGHT's router) was inserted. Tick 2 → `2 asset(s)`: SIGHT passed the on-chain cross-check and its dry-run jobs ran; the spoof was skipped (`router … reports asset 0x30Ae…`) with no transaction. `/health` returned `ok:true` with target count and balance, went `ok:false` while no tick succeeded for more than 3 × interval (host asleep), and recovered on the next tick. |
 | demo-services image | `/health` and `/sight/signals` return 200. It binds `0.0.0.0` via env. |
 | web image | `tsc` + `vite build` pass. `/`, `/token/…` (SPA fallback) and `/healthz` return 200. `index.html` is `no-cache`, and hashed assets are `immutable`. The bundle contains `api.astralaunch.xyz` and the Privy app id. |
 | Secrets in images | No `.env*` files except the committed `*.example`. All Node images run as `node`. |
 
-Not verified: a deploy on the VPS itself, Coolify domain routing, the Cloudflare Tunnel, and
-the keeper running with the real key.
+Not verified: a deploy on the VPS itself, Coolify domain routing and certificates, Hostinger
+DNS, and the keeper running with the real key.
 
 ## Code changes needed (for the Phase D session)
 
-These are required or recommended for Docker/production. None were made here.
+These are required or recommended for Docker/production. Keeper discovery, keeper health and
+the v1 → v2 address cleanup of the runbook and env examples are done (keeper commit).
 
 1. **CORS (blocking).** `apps/server/src/index.ts` has no CORS middleware. The browser on
    `https://astralaunch.xyz` calling `https://api.astralaunch.xyz` fails every request.
@@ -216,24 +223,17 @@ These are required or recommended for Docker/production. None were made here.
    the methods `GET, POST, PATCH, OPTIONS`, and allow and expose the x402 payment headers
    using the SDK's header constants (CLAUDE.md rule 7), so browser x402 calls to `/s/*` can
    read the settlement response.
-2. **Env name.** The request specified `VITE_API_URL`, but `apps/web/src/env.ts` reads
-   `VITE_API_BASE`. The deployment uses `VITE_API_BASE`. Rename it in the code, or keep the
-   current name, but make one choice so the deploy config doesn't drift.
-3. **Keeper asset discovery.** `apps/keeper/src/index.ts` only reads `ASSETS`/`ROUTERS` from
-   env (its header comment claims a `DATABASE_URL` fallback that does not exist, and the
-   package has no postgres dependency). Every new launch would need a Coolify env edit and a
-   restart. Suggest loading asset and router pairs from the indexer tables or from registry
-   events.
-4. **Keeper liveness.** There is no health signal beyond "process running". Suggest a heartbeat
-   file (e.g. touch `/tmp/keeper-heartbeat` each tick) so the compose healthcheck can check
-   its age, or a tiny `/health` port.
-5. **Stale v1 addresses.** `apps/server/.env.mainnet.example`, `apps/keeper/.env.mainnet.example`
-   and `docs/MAINNET-RUNBOOK.md` still list v1 addresses. Server and keeper read addresses
-   from env, while the indexer reads `monad-mainnet.json`. Consider having server and keeper
-   read `CONTRACTS_JSON_PATH` too, so there is a single source.
-6. **`apps/server` `start` script** uses `node --experimental-transform-types src/index.ts`.
+2. **SPEC.md still lists v1 addresses** (the §23 address table: FeeEscrow `0x22523FeE…`,
+   BuybackVault `0xcBe74136…`, PlatformFeeReceiver `0x510cb102…`, RevenueRouter impl
+   `0x2bcee60E…`, AstralaunchRegistry `0x25845Cee…`). SPEC is the source of truth, so this
+   needs Tun's go-ahead. Test fixtures in `apps/indexer` and `apps/server` also use v1
+   addresses as plain constants, which is harmless.
+3. **Single address source.** Server and keeper read contract addresses from env, while the
+   indexer reads `monad-mainnet.json`. Consider having server and keeper read
+   `CONTRACTS_JSON_PATH` too.
+4. **`apps/server` `start` script** uses `node --experimental-transform-types src/index.ts`.
    The image runs `tsx` instead, matching `start:mainnet`. Align the script if it is meant
    to be the production entrypoint.
-7. **pnpm 12 warning.** Root `package.json` `"pnpm.onlyBuiltDependencies"` is ignored by
+5. **pnpm 12 warning.** Root `package.json` `"pnpm.onlyBuiltDependencies"` is ignored by
    pnpm 12 (build approvals live in `pnpm-workspace.yaml` `allowBuilds`). It is harmless,
    but the dead key can be removed.

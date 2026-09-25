@@ -129,15 +129,15 @@ git commit -m "deploy: mainnet contract addresses and broadcast log"
 
 Both files contain only public addresses and tx data, no secrets.
 
-### Expected output (deployer nonce = 0)
+### Expected output (v2 deploy, deployer nonce = 35)
 
 | Contract | Predicted Address |
 |----------|-------------------|
-| FeeEscrow | `0x22523FeEA974939Fd6c94dAF7F9d112D667DeC3B` |
-| BuybackVault | `0xcBe741362a59943174f028a44A1b82722c24e7E7` |
-| PlatformFeeReceiver | `0x510cb102906a4bE9193B025620f6824ee8b4eC21` |
-| RevenueRouter (impl) | `0x2bcee60E8a8BD4b2c52aAfA8B57d47D427dACb09` |
-| AstralaunchRegistry | `0x25845Cee2b0E6dF0DA40bb9B60A84D162eabd00B` |
+| FeeEscrow | `0xA070ad1387d525E4A180Bdb09B65FD4086858F15` |
+| BuybackVault | `0x394F1dcA6011C16BC6e70CA13F6F29767D92171E` |
+| PlatformFeeReceiver | `0x2eFE45394d7578dC39c75d06Fe88722118F5Ec76` |
+| RevenueRouter (impl) | `0x8530406130Bc3AF2C63Ee6616966913a4B92108F` |
+| AstralaunchRegistry | `0x6B3A79C723AB69f8938C87209E1D9730c739e00c` |
 
 > Check nonce first: `cast nonce 0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6 --rpc-url https://rpc.monad.xyz`
 
@@ -222,7 +222,7 @@ MONAD_RPC_URL=https://rpc.monad.xyz \
 ```bash
 RPC=https://rpc.monad.xyz
 ASSET=<asset address from output>
-REGISTRY=0x25845Cee2b0E6dF0DA40bb9B60A84D162eabd00B
+REGISTRY=0x6B3A79C723AB69f8938C87209E1D9730c739e00c
 
 # Token exists
 cast call $ASSET "name()(string)" --rpc-url $RPC
@@ -357,6 +357,7 @@ unset AGENT_PRIVATE_KEY
 
 # 5. keeper: dry run, then one live tick (KEEPER_PRIVATE_KEY etc. in apps/keeper/.env.mainnet)
 cd ../apps/keeper
+# Explicit ASSETS/ROUTERS pairs = debug override; normally the keeper discovers listed tokens from the DB.
 export ASSETS=0x30Ae380593A04C14aBFa994969B718a78A6105aD,0x2686619d5569AEbcdfeC774e8a2167dE78376dDf
 export ROUTERS=0x10bC2220716738E8Aef57b9CC72101c190acf240,0xdBa0705cE9217B9E3dB296AF6a1810eB0467fd3a
 export MIN_BUYBACK_USDC=0.1     # one 0.5 USDC payment leaves 0.15 USDC in the vault; default min is 0.5
@@ -383,8 +384,21 @@ Fill in `apps/keeper/.env.mainnet`:
 cd apps/keeper
 cp .env.mainnet.example .env.mainnet
 # Edit: KEEPER_PRIVATE_KEY (set via read -s at runtime if preferred),
-#       ASSETS, ROUTERS, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+#       DATABASE_URL, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 ```
+
+**Token discovery.** Each tick the keeper reads the tokens to service from the server
+database: listed tokens only (launch fee consumed and not admin-hidden, the server's
+`isListedSql`), with router, numeraire and pool id. A newly listed token is picked up on
+the next tick without a restart, and unlisted spam registrations never cost keeper gas.
+Before its first job, each target is cross-checked on-chain (`router.asset()`, registry
+numeraire, vault pool id); mismatches are logged and skipped. `ASSETS` (optionally with
+`ROUTERS`) overrides discovery for debugging only.
+
+**Health.** `GET /health` on `KEEPER_HEALTH_PORT` (default 8080) returns the last
+successful tick, target count and wallet MON balance, and is 503 when no tick succeeded
+within 3 × `POLL_INTERVAL_S`. A tick that throws (DB or RPC down) sends a Telegram alert;
+identical errors repeat at most hourly, and recovery sends one alert.
 
 ### Keeper env vars (optional, defaults are safe)
 
@@ -451,7 +465,7 @@ Job order: distribute, buyback (high value, use existing USDC) BEFORE collect (e
 pnpm -F keeper start:mainnet
 ```
 
-The keeper runs immediately on start, then every `POLL_INTERVAL_S` seconds (default 600s).
+The keeper runs immediately on start, then `POLL_INTERVAL_S` seconds (default 600s) after each tick ends; ticks never overlap.
 Each tick logs wallet balance and SEND/SKIP per job with amounts and reasons.
 Collects are gated: pending fee pre-check via `eth_call` + 6h cadence per beneficiary.
 If spend guards trigger (24h budget exceeded or balance too low), remaining jobs are skipped and a Telegram alert is sent.
@@ -464,13 +478,13 @@ With the server running on mainnet:
 
 ### Sign the registration message
 
-The creator must sign the message: `Astralaunch: register service "nullsight" for token 0x13db78bd3f92382306a17d50dac93af1904e171d`
+The creator must sign the message: `Astralaunch: register service "nullsight" for token 0x30ae380593a04c14abfa994969b718a78a6105ad`
 
 ```bash
 # Using cast:
 SIG=$(cast wallet sign \
   --account <creator-keystore> \
-  "Astralaunch: register service \"nullsight\" for token 0x13db78bd3f92382306a17d50dac93af1904e171d")
+  "Astralaunch: register service \"nullsight\" for token 0x30ae380593a04c14abfa994969b718a78a6105ad")
 echo $SIG
 ```
 
@@ -480,7 +494,7 @@ echo $SIG
 curl -X POST http://localhost:3001/api/services \
   -H 'Content-Type: application/json' \
   -d '{
-    "asset": "0x13DB78bd3F92382306a17d50dAC93Af1904e171d",
+    "asset": "0x30Ae380593A04C14aBFa994969B718a78A6105aD",
     "creator": "0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6",
     "slug": "nullsight",
     "name": "nullsight",
@@ -556,12 +570,12 @@ pnpm -F keeper start:mainnet
 ```bash
 RPC=https://rpc.monad.xyz
 USDC=0x754704Bc059F8C67012fEd69BC8A327a5aafb603
-ASSET=0x13DB78bd3F92382306a17d50dAC93Af1904e171d
-ROUTER=0x95D381aa54A2DA62C835Dd081D1D5a0f8700C722
-REGISTRY=0x25845Cee2b0E6dF0DA40bb9B60A84D162eabd00B
-ESCROW=0x22523FeEA974939Fd6c94dAF7F9d112D667DeC3B
-VAULT=0xcBe741362a59943174f028a44A1b82722c24e7E7
-PFR=0x510cb102906a4bE9193B025620f6824ee8b4eC21
+ASSET=0x30Ae380593A04C14aBFa994969B718a78A6105aD
+ROUTER=0x10bC2220716738E8Aef57b9CC72101c190acf240
+REGISTRY=0x6B3A79C723AB69f8938C87209E1D9730c739e00c
+ESCROW=0xA070ad1387d525E4A180Bdb09B65FD4086858F15
+VAULT=0x394F1dcA6011C16BC6e70CA13F6F29767D92171E
+PFR=0x2eFE45394d7578dC39c75d06Fe88722118F5Ec76
 TREASURY=0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C
 CREATOR=0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6
 
@@ -652,7 +666,7 @@ The custom indexer replaces Envio. It reads on-chain events and writes to the sa
 | `FEE_ESCROW_ADDRESS` | *(required)* | FeeEscrow contract |
 | `BUYBACK_VAULT_ADDRESS` | *(required)* | BuybackVault contract |
 | `PLATFORM_FEE_RECEIVER_ADDRESS` | *(required)* | PlatformFeeReceiver contract |
-| `INDEXER_START_BLOCK` | `107534868` | Deployment block |
+| `INDEXER_START_BLOCK` | `107840649` | Deployment block |
 | `INDEXER_CHUNK_SIZE` | `10000` | Blocks per getLogs call |
 | `INDEXER_POLL_INTERVAL_S` | `10` | Follow mode poll interval |
 | `INDEXER_FINALITY_BLOCKS` | `0` | Monad has instant finality |
@@ -666,7 +680,7 @@ MONAD_RPC_URL=https://rpc.monad.xyz \
   pnpm start --backfill
 ```
 
-Expected: processes all blocks from 107534868 to head, writes events to `idx_*` tables, exits.
+Expected: processes all blocks from 107840649 to head, writes events to `idx_*` tables, exits.
 
 ### Follow mode (long-running service)
 
