@@ -565,14 +565,15 @@ Explicit gas limits on every tx (`estimate × 1.1`; Monad bills the gas limit). 
 | Launch gas on real Monad | 4,589,375 (~0.52 MON); fork within 0.9% |
 
 | AstralaunchRegistry reads all §6.1 fields from chain | ✅ 17/17 fork tests pass. DOPPLER_HOOK constant confirmed. Integrator == treasury confirmed. totalAllocatedOf + vestedTotalAmount confirmed 150M each. balanceLimitEnd − vestingStart window 696 s on Anvil fork (within [600, 900]). |
-| Mainnet deploy (5 contracts) | ✅ 2026-09-24. FeeEscrow, BuybackVault, PlatformFeeReceiver, RevenueRouter impl, AstralaunchRegistry. Admin wiring verified. Addresses in §23. |
-| First token launch + register | ✅ 2026-09-24. `nullsight` (0x13DB78…171d), router 0x95D381…0f7f, registered in AstralaunchRegistry. |
-| Mainnet paid call → distribute → PFR → treasury → buyback + burn | ✅ 2026-09-24. Full revenue loop verified end-to-end on mainnet. |
-| Keeper safety hardening (D23) | ✅ 2026-09-24. Pending fee pre-check with per-beneficiary shares, 6h cadence, spend guards, dry-run mode. |
+| Mainnet deploy (v2) | ✅ 2026-09-25 (commit `c89dde3`). AstralaunchRegistry, FeeEscrow, BuybackVault, PlatformFeeReceiver, RevenueRouter impl, InitializerV1Adapter. Bytecode + admin wiring re-verified 2026-09-26 (server and keeper startup checks). Addresses in §23. v1 was deployed 2026-09-24 and is retired (§23 legacy note). |
+| First token launch + register (v2) | ✅ 2026-09-25 (commit `0707a43`). `nullsight` SIGHT (USDC pair, `0x30Ae38…05aD`) and `nullfeed` FEED (MON pair, `0x268661…6dDf`) registered in the v2 AstralaunchRegistry; router/numeraire/pool re-checked on-chain 2026-09-26. |
+| Mainnet paid call → distribute → PFR → treasury → buyback + burn | ✅ 2026-09-24 **on v1**. Full revenue loop verified end-to-end on mainnet. Not yet recorded on v2 (see below). |
+| Keeper safety hardening (D23) | ✅ 2026-09-24. Pending fee pre-check with per-beneficiary shares, 6h cadence, spend guards, dry-run mode. 2026-09-26: tokens discovered from the DB (listed only) and cross-checked on-chain, `/health`, tick-failure alerts, interval-guard hostname check; dry-run ticks against v2 SIGHT and FEED. |
 
 ### Still to verify
 - [x] DopplerERC20V1 `burn` semantics (caller's own balance). Verified via mainnet buyback (2026-09-24).
 - [x] Contract-driven collect + buyback via `PoolManager.unlock` + burn on the fork. Verified on mainnet (2026-09-24).
+- [ ] Mainnet paid call → distribute → buyback + burn on **v2** (USDC pair SIGHT and two-hop MON pair FEED). Recorded on v1 only.
 - [ ] EIP-7702-delegated payer through the official facilitator (O9).
 - [x] Full facilitator submitter address(es) recorded (O8). Locked 2026-09-24.
 - [ ] Rehype hook (O2) — deferred.
@@ -583,8 +584,8 @@ Explicit gas limits on every tx (`estimate × 1.1`; Monad bills the gas limit). 
 |---|---|
 | 22–23 Sep | ✅ Anvil-fork + real-Monad verification; SPEC v0.2; all contracts done with 93 tests (78 unit + 15 fork); Fix 1-3 + integrator check; SPEC v0.3 |
 | 23 Sep (cont.) | ✅ Backend running end-to-end on Anvil fork: server (Hono + Postgres + x402 gateway) + keeper all functional. E2E test suite 17/17 PASS (A–J: registry, service register, 402, paid call + settlement, replay reject, upstream-fail → 502 + no charge, distribute, escrow claimable, buyback execute, burn). Keeper ran collect/distribute/buyback with real tx hashes. Two fork environment fixes documented: (1) ERC-7702 delegation on Anvil mnemonic accounts requires `anvil_setCode` clearance; (2) USDC EIP-712 domain name is `"USDC"` not `"USD Coin"` (CLAUDE.md rule 14). |
-| 24 Sep | ✅ Mainnet deploy (5 contracts), first token (nullsight), full paid-call loop verified (distribute → PFR → treasury → buyback + burn). Keeper incident D23 fixed: per-beneficiary pending fee pre-check, 6h cadence, spend guards, dry-run mode. Creator signature auth on service registration. DB migrations fixed. |
-| 25–30 Sep | Envio indexer; web app scaffolding |
+| 24 Sep | ✅ Mainnet deploy **v1** (5 contracts, now retired, §23 legacy note), first token (nullsight), full paid-call loop verified (distribute → PFR → treasury → buyback + burn). Keeper incident D23 fixed: per-beneficiary pending fee pre-check, 6h cadence, spend guards, dry-run mode. Creator signature auth on service registration. DB migrations fixed. |
+| 25–30 Sep | ✅ 25 Sep: mainnet deploy **v2** (dual numeraire; addresses in §23), SIGHT (USDC) and FEED (MON) launched and registered. Envio indexer; web app scaffolding |
 | 1–5 Oct | One full real flow with official facilitator; hosted Prompt template |
 | 6–12 Oct | Web app (new UI), hosted Prompt template, wash scoring + UCR, 2–3 demo services, demo agent, video |
 | 13 Oct | Submission |
@@ -668,20 +669,32 @@ Copy into `packages/shared/src/addresses.ts` with these sources.
 | x402 facilitator | `https://x402-facilitator.molandak.org` | Monad docs; verified on real Monad |
 | Facilitator submitter (observed) | `0x7f6a2850669202519f0FE8aa912451238820Db86` | settle tx `0x6e7e1dc75f884a4891a025837738f133bbb4bea01189c23e923c647f0b609a40` |
 
-### Astralaunch contracts (deployed 2026-09-24)
+### Astralaunch contracts (v2, deployed 2026-09-25)
 
-| Contract | Address | Source |
-|---|---|---|
-| FeeEscrow | `0x22523FeEA974939Fd6c94dAF7F9d112D667DeC3B` | Deploy.s.sol broadcast |
-| BuybackVault | `0xcBe741362a59943174f028a44A1b82722c24e7E7` | Deploy.s.sol broadcast |
-| PlatformFeeReceiver | `0x510cb102906a4bE9193B025620f6824ee8b4eC21` | Deploy.s.sol broadcast |
-| RevenueRouter (impl) | `0x2bcee60E8a8BD4b2c52aAfA8B57d47D427dACb09` | Deploy.s.sol broadcast |
-| AstralaunchRegistry | `0x25845Cee2b0E6dF0DA40bb9B60A84D162eabd00B` | Deploy.s.sol broadcast |
+Source for every row: `packages/contracts/deployments/monad-mainnet.json` (Deploy.s.sol broadcast, commit `c89dde3`, deploy block `107840649`). Bytecode and `admin()` wiring re-verified 2026-09-26 by the server and keeper startup checks.
 
-### First token (nullsight, 2026-09-24)
-
-| Item | Value |
+| Contract / role | Address |
 |---|---|
-| Token (DopplerERC20V1) | `0x13DB78bd3F92382306a17d50dAC93Af1904e171d` |
-| RevenueRouter (clone) | `0x95D381aa54A2DA62C835Dd081D1D5a0f8700C722` |
-| Creator | `0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6` |
+| AstralaunchRegistry | `0x6B3A79C723AB69f8938C87209E1D9730c739e00c` |
+| FeeEscrow | `0xA070ad1387d525E4A180Bdb09B65FD4086858F15` |
+| BuybackVault | `0x394F1dcA6011C16BC6e70CA13F6F29767D92171E` |
+| PlatformFeeReceiver | `0x2eFE45394d7578dC39c75d06Fe88722118F5Ec76` |
+| RevenueRouter (impl) | `0x8530406130Bc3AF2C63Ee6616966913a4B92108F` |
+| InitializerV1Adapter | `0xe3C62514d9AE240A000e031FA67E64fCcd6Ac582` |
+| Admin | `0xe89f19D370F496520803e7ABb30c1A20B04B0f7f` |
+| Guardian (cancel-only) | `0x62c1a140eB643BF43659E7e5134CAfDFeDe17e8b` |
+| Treasury (PlatformFeeReceiver destination) | `0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C` |
+| Deployer | `0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6` |
+
+### First v2 tokens (2026-09-25)
+
+Source: `packages/contracts/deployments/monad-mainnet-tokens.json` (commit `0707a43`). Router ↔ asset, registry numeraire and vault pool id cross-checked on-chain by the keeper 2026-09-26.
+
+| Token | Pair | Asset | RevenueRouter (clone) |
+|---|---|---|---|
+| nullsight (SIGHT) | USDC | `0x30Ae380593A04C14aBFa994969B718a78A6105aD` | `0x10bC2220716738E8Aef57b9CC72101c190acf240` |
+| nullfeed (FEED) | MON (WMON) | `0x2686619d5569AEbcdfeC774e8a2167dE78376dDf` | `0xdBa0705cE9217B9E3dB296AF6a1810eB0467fd3a` |
+
+### Legacy (Revpad v1, retired, do not use)
+
+v1 deploy 2026-09-24, block `107534868`: AstralaunchRegistry `0x25845Cee2b0E6dF0DA40bb9B60A84D162eabd00B`, FeeEscrow `0x22523FeEA974939Fd6c94dAF7F9d112D667DeC3B`, BuybackVault `0xcBe741362a59943174f028a44A1b82722c24e7E7`, PlatformFeeReceiver `0x510cb102906a4bE9193B025620f6824ee8b4eC21`, RevenueRouter impl `0x2bcee60E8a8BD4b2c52aAfA8B57d47D427dACb09`. First v1 token nullsight `0x13DB78bd3F92382306a17d50dAC93Af1904e171d` (router `0x95D381aa54A2DA62C835Dd081D1D5a0f8700C722`). The v1 rows in §17 were verified against these.

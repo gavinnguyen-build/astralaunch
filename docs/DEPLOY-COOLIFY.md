@@ -223,11 +223,9 @@ the v1 → v2 address cleanup of the runbook and env examples are done (keeper c
    the methods `GET, POST, PATCH, OPTIONS`, and allow and expose the x402 payment headers
    using the SDK's header constants (CLAUDE.md rule 7), so browser x402 calls to `/s/*` can
    read the settlement response.
-2. **SPEC.md still lists v1 addresses** (the §23 address table: FeeEscrow `0x22523FeE…`,
-   BuybackVault `0xcBe74136…`, PlatformFeeReceiver `0x510cb102…`, RevenueRouter impl
-   `0x2bcee60E…`, AstralaunchRegistry `0x25845Cee…`). SPEC is the source of truth, so this
-   needs Tun's go-ahead. Test fixtures in `apps/indexer` and `apps/server` also use v1
-   addresses as plain constants, which is harmless.
+2. **Test fixtures** in `apps/indexer` and `apps/server` still use v1 addresses as plain
+   constants. This is harmless, but they can move to v2 whenever those tests are touched.
+   (SPEC §23 was updated to v2 with Tun's approval, 2026-09-26.)
 3. **Single address source.** Server and keeper read contract addresses from env, while the
    indexer reads `monad-mainnet.json`. Consider having server and keeper read
    `CONTRACTS_JSON_PATH` too.
