@@ -1,0 +1,32 @@
+body{margin:0;background:#0B0A12;font-family:Inter,system-ui,sans-serif;color:#ECEAF4}
+a{color:#C4B5FD}a:hover{color:#DDD6FE}
+@keyframes pxBreathe{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+@keyframes pxBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes pxSway{0%,100%{transform:rotate(-1.2deg)}50%{transform:rotate(1.2deg)}}
+@keyframes pxHop{0%,60%,100%{transform:translateY(0) rotate(0)}20%{transform:translateY(-8px) rotate(-3deg)}40%{transform:translateY(0) rotate(2deg)}}
+@keyframes pxFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+@keyframes pxGlow{0%,100%{opacity:0.35}50%{opacity:1}}
+@keyframes pxLed{0%,49%{opacity:1}50%,100%{opacity:0.15}}
+@keyframes pxRise{0%{opacity:0;transform:translateY(0)}20%{opacity:1}100%{opacity:0;transform:translateY(-36px)}}
+.px-breathe{animation:pxBreathe 4s ease-in-out infinite}.px-bob{animation:pxBob 2.6s ease-in-out infinite}
+.px-sway{animation:pxSway 3.4s ease-in-out infinite;transform-origin:50% 90%}.px-hop{animation:pxHop 1.8s ease-in-out infinite;transform-origin:50% 100%}
+.px-float{animation:pxFloat 4.5s ease-in-out infinite}.px-glow{animation:pxGlow 3s ease-in-out infinite}
+.px-led{animation:pxLed 1.2s steps(1) infinite}.px-l1{animation-duration:0.9s}.px-l2{animation-duration:1.6s}
+.px-spark{animation:pxRise 3s ease-out infinite;opacity:0}
+.px-d1{animation-delay:-1s}.px-d2{animation-delay:-2s}.px-d3{animation-delay:-0.9s}
+@keyframes twCursor{0%,49%{opacity:1}50%,100%{opacity:0}}
+.tw-cursor{animation:twCursor .8s steps(1) infinite}
+@keyframes pxHover{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-12px) rotate(2deg)}}
+@keyframes pxSteam{0%{opacity:0;transform:translateY(4px)}30%{opacity:1}100%{opacity:0;transform:translateY(-14px)}}
+.px-hover{animation:pxHover 3s ease-in-out infinite}.px-steam{animation:pxSteam 2.2s ease-out infinite}
+.px-f1{animation-duration:3.6s}.px-f2{animation-duration:5.4s}.px-fast{animation-duration:2.4s}
+@keyframes tw0{0%,1%{opacity:0;clip-path:inset(0 100% 0 0)}2%{opacity:.35}9%{opacity:1;clip-path:inset(0 0 0 0)}88%{opacity:1;clip-path:inset(0 0 0 0)}96%,100%{opacity:0;clip-path:inset(0 0 0 0)}}
+@keyframes tw1{0%,10%{opacity:0;clip-path:inset(0 100% 0 0)}11%{opacity:.35}18%{opacity:1;clip-path:inset(0 0 0 0)}88%{opacity:1;clip-path:inset(0 0 0 0)}96%,100%{opacity:0;clip-path:inset(0 0 0 0)}}
+@keyframes tw2{0%,20%{opacity:0;clip-path:inset(0 100% 0 0)}21%{opacity:.35}28%{opacity:1;clip-path:inset(0 0 0 0)}88%{opacity:1;clip-path:inset(0 0 0 0)}96%,100%{opacity:0;clip-path:inset(0 0 0 0)}}
+@keyframes tw3{0%,30%{opacity:0;clip-path:inset(0 100% 0 0)}31%{opacity:.35}38%{opacity:1;clip-path:inset(0 0 0 0)}88%{opacity:1;clip-path:inset(0 0 0 0)}96%,100%{opacity:0;clip-path:inset(0 0 0 0)}}
+@keyframes tw4{0%,40%{opacity:0;clip-path:inset(0 100% 0 0)}41%{opacity:.35}48%{opacity:1;clip-path:inset(0 0 0 0)}88%{opacity:1;clip-path:inset(0 0 0 0)}96%,100%{opacity:0;clip-path:inset(0 0 0 0)}}
+@keyframes tw5{0%,50%{opacity:0;clip-path:inset(0 100% 0 0)}51%{opacity:.35}58%{opacity:1;clip-path:inset(0 0 0 0)}88%{opacity:1;clip-path:inset(0 0 0 0)}96%,100%{opacity:0;clip-path:inset(0 0 0 0)}}
+.tw{opacity:0}.tw0{animation:tw0 11s steps(20,end) infinite}.tw1{animation:tw1 11s steps(20,end) infinite}.tw2{animation:tw2 11s steps(20,end) infinite}.tw3{animation:tw3 11s steps(20,end) infinite}.tw4{animation:tw4 11s steps(20,end) infinite}.tw5{animation:tw5 11s steps(20,end) infinite}
+@keyframes pxWire{to{stroke-dashoffset:-120}}
+.px-wire{stroke-dasharray:18 42;animation:pxWire 1.1s linear infinite;opacity:.95}.px-w2{animation-duration:.9s}.px-w3{animation-duration:.7s}.px-w4{animation-duration:.8s;animation-delay:-.3s}
+@media (prefers-reduced-motion: reduce){.px-stage *{animation:none!important}.px-stage .tw{opacity:1}}

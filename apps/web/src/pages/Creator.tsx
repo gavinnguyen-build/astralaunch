@@ -1,118 +1,79 @@
-import { usePrivy, useWallets } from '@privy-io/react-auth';
+/**
+ * /creator — docs/design/Creator.dc.html when the wallet has listed tokens, else CreatorEmpty.dc.html.
+ * Wallet = connected wallet, or ?wallet=0x… for a read-only view. Claims and signed settings are Phase D.
+ */
+import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
-import { api } from '../lib/api.js';
-import { fmtUsdc, fmtToken, fmtRelative, fmtAddr } from '../lib/format.js';
+import { CreatorView } from '../design/CreatorView.js';
+import { CreatorEmptyView } from '../design/CreatorEmptyView.js';
+import { api, type CreatorDash } from '../lib/api.js';
+import { avatarFor, compact, fmtDate, fmtTime, fmtUsdc, shortAddr } from '../lib/format.js';
+import { ErrorBox, Loading } from '../components/State.js';
+import { useWalletAddress } from '../components/Site.js';
+import { PageShell } from './Token.js';
+
+const OK = '#34D399', BAD = '#F87171';
+const NOTES: Record<string, string> = {
+  upstream_error: 'Upstream error, not charged', verify_failed: 'Payment verification failed, not charged',
+  settle_failed: 'Settlement failed, not charged',
+};
 
 export default function Creator() {
-  const { authenticated, login } = usePrivy();
-  const { wallets } = useWallets();
-  const address = wallets[0]?.address?.toLowerCase() ?? '';
+  const [params] = useSearchParams();
+  const connected = useWalletAddress();
+  const wallet = (params.get('wallet') ?? connected ?? '').toLowerCase();
+  const valid = /^0x[0-9a-f]{40}$/.test(wallet);
+  const [sel, setSel] = useState(0);
+  const dash = useQuery({ queryKey: ['creator', wallet], queryFn: () => api.creator(wallet), enabled: valid });
+  const list = useQuery({ queryKey: ['tokens', 30], queryFn: () => api.tokens(30), enabled: valid });
+  const tok = dash.data?.tokens[Math.min(sel, (dash.data?.tokens.length ?? 1) - 1)];
+  const detail = useQuery({ queryKey: ['token', tok?.asset], queryFn: () => api.token(tok!.asset), enabled: !!tok });
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['creator', address],
-    queryFn:  () => api.creatorData(address),
-    enabled:  !!address && authenticated,
-  });
+  if (!valid) return <CreatorEmptyView v={{}} />;
+  if (dash.isLoading) return <PageShell><Loading rows={5} height={70} /></PageShell>;
+  if (dash.error) return <PageShell><ErrorBox error={dash.error} retry={() => dash.refetch()} /></PageShell>;
+  const d = dash.data as CreatorDash;
+  if (d.tokens.length === 0 || !tok) return <CreatorEmptyView v={{}} />;
 
-  if (!authenticated) {
-    return (
-      <div className="card" style={{ maxWidth: 400, margin: '2rem auto', textAlign: 'center' }}>
-        <h2 style={{ margin: '0 0 1rem' }}>Creator dashboard</h2>
-        <p style={{ color: 'var(--color-muted)', marginBottom: '1.5rem' }}>Connect to see your tokens.</p>
-        <button className="btn btn-primary" onClick={login}>Connect</button>
-      </div>
-    );
-  }
+  const rev30 = (asset: string) => list.data?.tokens.find((x) => x.asset === asset)?.usage30d?.cleanRevenueUsdc ?? '0';
+  const svc = d.services.find((s) => s.asset === tok.asset) ?? null;
+  const health = detail.data?.serviceHealth;
+  const esc = tok.escrow;
+  const unlocked = esc ? Math.min(Number(esc.usdcAccrued), Number(esc.recordedRevenue) * 0.2) : 0;
+  const vest = tok.vesting;
+  const logs = d.recentRequests.filter((r) => !svc || r.service === svc.slug);
 
-  if (isLoading) return <div style={{ color: 'var(--color-muted)', padding: '2rem' }}>Loading…</div>;
-  if (!data || data.tokens.length === 0) {
-    return (
-      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-muted)' }}>
-        No tokens yet. <Link to="/launch">Launch one.</Link>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <div>
-        <h1 style={{ margin: '0 0 4px', fontSize: '20px', fontWeight: 700 }}>Creator dashboard</h1>
-        <div style={{ color: 'var(--color-muted)', fontSize: '12px', fontFamily: 'monospace' }}>{fmtAddr(address)}</div>
-      </div>
-
-      {data.tokens.map(t => (
-        <div key={t.asset} className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-              {t.imageUrl && <img src={t.imageUrl} alt="" style={{ width: 40, height: 40, borderRadius: '50%' }} />}
-              <div>
-                <Link to={`/t/${t.asset}`} style={{ fontWeight: 700, fontSize: '16px', color: 'var(--color-text)' }}>{t.name}</Link>
-                <div style={{ fontSize: '11px', color: 'var(--color-muted)' }}>{t.symbol} · launched {fmtRelative(Math.floor(new Date(t.launchedAt).getTime() / 1000))}</div>
-              </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div className="usage" style={{ fontWeight: 700 }}>{fmtUsdc(t.metrics30d.revenue)}</div>
-              <div style={{ fontSize: '11px', color: 'var(--color-muted)' }}>revenue 30d</div>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            {/* Escrow */}
-            {t.escrow && (
-              <div style={{ padding: '12px', borderRadius: '8px', background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}>
-                <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '8px' }}>Trading fee escrow</div>
-                <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span className="usage" style={{ fontWeight: 700, fontSize: '16px' }}>{fmtUsdc(t.escrow.claimableUsdc)} claimable</span>
-                  <span style={{ color: 'var(--color-muted)', fontSize: '11px' }}>Accrued: {fmtUsdc(t.escrow.usdcAccrued)} · Claimed: {fmtUsdc(t.escrow.usdcClaimed)}</span>
-                  <span style={{ color: 'var(--color-muted)', fontSize: '11px' }}>Revenue unlocks: {fmtUsdc(t.escrow.recordedRevenue)} recorded</span>
-                  {!t.escrow.forfeited && (
-                    <span style={{ color: 'var(--color-muted)', fontSize: '11px' }}>Forfeit date: {fmtRelative(t.escrow.forfeitAt)}</span>
-                  )}
-                  {t.escrow.forfeited && (
-                    <span style={{ color: 'var(--color-danger)', fontSize: '11px' }}>Forfeited to buyback</span>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Vesting */}
-            {t.vesting && (
-              <div style={{ padding: '12px', borderRadius: '8px', background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}>
-                <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '8px' }}>Token vesting (15% supply)</div>
-                <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontWeight: 700, fontSize: '16px' }}>{fmtToken(t.vesting.vestedNow)} vested</span>
-                  <span style={{ color: 'var(--color-muted)', fontSize: '11px' }}>Total: {fmtToken(t.vesting.totalAllocated)}</span>
-                  <span style={{ color: 'var(--color-muted)', fontSize: '11px' }}>
-                    Cliff: {fmtRelative(t.vesting.cliffEnd)} · End: {fmtRelative(t.vesting.vestingEnd)}
-                  </span>
-                  {Date.now() / 1000 < t.vesting.cliffEnd && (
-                    <span style={{ color: 'var(--color-trade)', fontSize: '11px' }}>Cliff not yet reached — vesting accrues but cannot be claimed yet</span>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Service */}
-          {t.service && (
-            <div style={{ marginTop: '1rem', padding: '10px 14px', borderRadius: '8px', background: 'var(--color-bg)',
-              border: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <span style={{ fontWeight: 600, fontSize: '13px' }}>{t.service.name}</span>
-                <span style={{ color: 'var(--color-muted)', fontSize: '12px', marginLeft: '8px' }}>/s/{t.service.slug}</span>
-              </div>
-              <span style={{ fontSize: '12px' }}>{fmtUsdc(t.service.priceUsdc)} / call</span>
-            </div>
-          )}
-
-          {!t.service && (
-            <div style={{ marginTop: '1rem' }}>
-              <Link to={`/t/${t.asset}`} className="btn btn-outline btn-sm">Attach service</Link>
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
+  const v = {
+    wallet: `${wallet.slice(0, 10)}…${wallet.slice(-6)}`,
+    tokens: d.tokens.map((t, i) => ({
+      on: t.asset === tok.asset, pick: (e: React.MouseEvent) => { e.preventDefault(); setSel(i); }, href: `/token/${t.asset}`,
+      initial: t.symbol.charAt(0), avatar: avatarFor(t.asset), sym: `$${t.symbol}`, sub: `${t.name} · ${fmtUsdc(rev30(t.asset))} USDC 30d`,
+    })),
+    claims: [
+      { title: 'Trading fees', sub: '', big: tok.tradingFees ? `${compact(tok.tradingFees.numeraire)} ${tok.numeraireSymbol === 'MON' ? 'WMON' : 'USDC'}` : '—', color: '#ECEAF4',
+        lines: [{ k: 'Also in tokens', v: tok.tradingFees ? `${compact(tok.tradingFees.asset)} ${tok.symbol}` : '—' }, { k: 'Basis', v: 'estimate' }],
+        cta: 'Claim trading fees', border: '1px solid #25213A', bg: '#13111C', btnBg: '#8B5CF6', btnBorder: '0' },
+      { title: 'Escrow', sub: '', big: esc?.claimable != null ? `${compact(esc.claimable)} ${esc.claimableSymbol}` : '—', color: '#34D399',
+        lines: esc ? [
+          { k: 'Collected from trading', v: `${fmtUsdc(esc.usdcAccrued)} USDC` }, { k: 'Unlocked by usage', v: `${fmtUsdc(unlocked)} USDC` },
+          { k: 'Already claimed', v: `${fmtUsdc(esc.usdcClaimed)} USDC` }, { k: 'Unclaimed goes to buyback', v: esc.forfeited ? 'Forfeited' : fmtDate(esc.forfeitAt) },
+        ] : [{ k: 'Escrow', v: 'unavailable' }],
+        cta: esc?.claimable != null ? `Claim ${compact(esc.claimable)} ${esc.claimableSymbol}` : 'Claim', border: '1px solid #1F6B52', bg: '#0F221D', btnBg: '#10825F', btnBorder: '0' },
+      { title: 'Allocation', sub: '15% of supply. 30-day cliff, linear to one year.', big: vest ? `${compact(vest.releasable)} ${tok.symbol}` : '—', color: '#C4B5FD',
+        lines: vest ? [{ k: 'Total', v: compact(vest.total) }, { k: 'Claimed', v: compact(vest.released) }, { k: 'Locked', v: compact(vest.locked) }] : [{ k: 'Vesting', v: 'unavailable' }],
+        cta: vest ? `Release ${compact(vest.releasable)} ${tok.symbol}` : 'Release', border: '1px solid #25213A', bg: '#13111C', btnBg: 'transparent', btnBorder: '1px solid #8B5CF6' },
+    ],
+    svcStatus: !svc ? 'No service registered' : !svc.active ? 'Paused'
+      : health?.uptime7d != null ? `Live · ${(health.uptime7d * 100).toFixed(1)}% uptime, 7d` : 'Live',
+    formKey: tok.asset, upstream: svc?.upstreamUrl ?? '', price: svc ? String(Number(svc.priceUsdc) / 1e6) : '', payout: shortAddr(wallet),
+    logs: logs.map((r) => ({
+      t: fmtTime(r.createdAt), s: String(r.statusCode ?? '—'), color: r.charged ? OK : BAD,
+      lat: r.latencyMs == null ? '—' : `${r.latencyMs.toLocaleString('en-US')} ms`,
+      ch: r.charged ? `${fmtUsdc(r.amountUsdc)} USDC` : 'No',
+      note: r.charged ? 'Settled by facilitator' : NOTES[r.errorCode ?? ''] ?? 'Not charged',
+    })),
+    logsState: logs.length === 0 ? <div style={{ padding: '14px 0', fontSize: '13px', color: '#8C87A3' }}>No calls yet.</div> : null,
+  };
+  return <CreatorView v={v} />;
 }

@@ -1,188 +1,109 @@
+/** /token/:asset — docs/design/Token.dc.html (Info) with real data. */
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../lib/api.js';
-import { fmtUsdc, fmtRelative, fmtAddr } from '../lib/format.js';
+import { TokenView } from '../design/TokenView.js';
+import { api, type TokenDetail } from '../lib/api.js';
+import { ago, avatarFor, compact, daysUntil, fmtDate, fmtTime, fmtUsd, fmtUsdc, schemaShape, shortAddr } from '../lib/format.js';
+import { Empty, ErrorBox, Loading, UsdOr } from '../components/State.js';
+import { SiteFooter, SiteHeader } from '../components/Site.js';
+
+const GREEN = '#34D399', RED = '#F87171', MUTED = '#8C87A3';
+const TAGS = {
+  clean: ['Clean revenue', GREEN], creator: ['Excluded · creator', RED],
+  contract: ['Excluded · platform contract', RED], not_facilitator: ['Excluded · not settled by facilitator', MUTED],
+} as const;
+
+export function PageShell({ children, active = '' }: { children: React.ReactNode; active?: string }) {
+  return (
+    <div style={{ width: '1440px', minHeight: '900px', background: '#0B0A12', color: '#ECEAF4', display: 'flex', flexDirection: 'column' }}>
+      <SiteHeader active={active} />
+      <main style={{ padding: '40px 124px' }}>{children}</main>
+      <SiteFooter />
+    </div>
+  );
+}
+
+function pct(a: number, b: number) { return `${b > 0 ? Math.max(0, Math.min(100, (a / b) * 100)).toFixed(1) : 0}%`; }
 
 export default function Token() {
-  const { asset } = useParams<{ asset: string }>();
+  const { asset = '' } = useParams();
+  const token = useQuery({ queryKey: ['token', asset], queryFn: () => api.token(asset) });
+  const payments = useQuery({ queryKey: ['payments', asset], queryFn: () => api.payments(asset), enabled: !!token.data });
 
-  const { data: token, isLoading, error } = useQuery({
-    queryKey: ['token', asset],
-    queryFn:  () => api.tokens.get(asset!),
-    enabled:  !!asset,
-  });
+  if (token.isLoading) return <PageShell><Loading rows={6} height={60} /></PageShell>;
+  if (token.error) {
+    return <PageShell>{/Token not found/.test(String(token.error)) ? <Empty>This token is not listed on Astralaunch.</Empty>
+      : <ErrorBox error={token.error} retry={() => token.refetch()} />}</PageShell>;
+  }
+  const t = token.data as TokenDetail;
+  const m = t.market;
+  const sym = m?.numeraireSymbol ?? 'USDC';
+  const u = t.usage30d;
+  const svc = t.service;
+  const priceUsdc = svc ? fmtUsdc(Number(svc.priceUsdc) / 1e6) : null;
+  const ucr = u?.ucr == null ? null : Number(u.ucr);
+  const bbRev = Number(t.onChain.buyback?.buybackFromRevenue ?? 0) / 1e6;
+  const bbTrd = Number(t.onChain.buyback?.buybackFromTrading ?? 0) / 1e6;
+  const bbMax = Math.max(bbRev, bbTrd);
+  const esc = t.creatorSummary.escrow;
+  const vest = t.creatorSummary.vesting;
+  const unlocked = esc ? Math.min(Number(esc.usdcAccrued), (Number(esc.recordedRevenue) * 0.2)) : 0;
+  const health = t.serviceHealth;
+  const origin = window.location.origin;
 
-  const { data: paymentsData } = useQuery({
-    queryKey: ['payments', asset],
-    queryFn:  () => api.tokens.payments(asset!),
-    enabled:  !!asset,
-  });
-
-  const { data: health } = useQuery({
-    queryKey: ['health', asset],
-    queryFn:  () => api.tokens.health(asset!),
-    enabled:  !!asset,
-  });
-
-  if (isLoading) return <div style={{ color: 'var(--color-muted)', padding: '2rem' }}>Loading…</div>;
-  if (error || !token) return <div style={{ color: 'var(--color-danger)', padding: '2rem' }}>Token not found</div>;
-
-  const now = Math.floor(Date.now() / 1000);
-  const balanceLimitEnd = token.onChain.balanceLimitEnd;
-  const capActive = balanceLimitEnd != null && now < balanceLimitEnd;
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      {/* Hero */}
-      <div className="card" style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flex: 1 }}>
-          {token.imageUrl && (
-            <img src={token.imageUrl} alt="" style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover' }} />
-          )}
-          <div>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 700 }}>{token.name}</h1>
-            <div style={{ color: 'var(--color-muted)', fontSize: '13px' }}>
-              {token.symbol} · <span style={{ fontFamily: 'monospace' }}>{fmtAddr(token.asset)}</span>
-            </div>
-          </div>
-        </div>
-
-        {capActive && (
-          <div style={{ padding: '8px 14px', borderRadius: '8px', background: '#2D1B4E', border: '1px solid var(--color-trade)',
-            fontSize: '12px', color: 'var(--color-trade)' }}>
-            Balance cap active (1% / wallet) until {fmtRelative(balanceLimitEnd)}
-          </div>
-        )}
-      </div>
-
-      {/* Revenue + UCR hero */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
-        <MetricCard label="Clean revenue 30d" value={fmtUsdc(token.metrics.cleanRevenue30d)} type="usage" />
-        <MetricCard label="Clean revenue 7d"  value={fmtUsdc(token.metrics.cleanRevenue7d)}  type="usage" />
-        <MetricCard label="Clean revenue 24h" value={fmtUsdc(token.metrics.cleanRevenue24h)} type="usage" />
-        <MetricCard label="Clean payers 30d"  value={String(token.metrics.cleanPayers30d)}   type="usage" />
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-        {/* Service */}
-        {token.service && (
-          <div className="card">
-            <h2 style={{ margin: '0 0 1rem', fontSize: '15px', fontWeight: 600 }}>Service</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <Row label="Name"  value={token.service.name} />
-              <Row label="Price" value={`${fmtUsdc(token.service.priceUsdc)} / call`} />
-              <Row label="Endpoint" value={
-                <code style={{ fontSize: '12px', background: 'var(--color-bg)', padding: '2px 6px', borderRadius: '4px' }}>
-                  /s/{token.service.slug}
-                </code>
-              } />
-              {token.service.description && (
-                <p style={{ margin: 0, color: 'var(--color-muted)', fontSize: '13px' }}>{token.service.description}</p>
-              )}
-              {health && health.uptime != null && (
-                <div style={{ marginTop: '8px' }}>
-                  <span style={{ fontSize: '12px', color: health.uptime >= 0.95 ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                    Uptime {(health.uptime * 100).toFixed(1)}% ({health.windowHours}h)
-                  </span>
-                  {health.uptime < 0.95 && (
-                    <span style={{ fontSize: '11px', color: 'var(--color-danger)', marginLeft: '8px' }}>Uptime alert</span>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Escrow */}
-        {token.onChain.escrow && (
-          <div className="card">
-            <h2 style={{ margin: '0 0 1rem', fontSize: '15px', fontWeight: 600 }}>Creator escrow</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <Row label="Accrued"        value={fmtUsdc(token.onChain.escrow.usdcAccrued)}     type="usage" />
-              <Row label="Claimed"        value={fmtUsdc(token.onChain.escrow.usdcClaimed)}     />
-              <Row label="Recorded rev"   value={fmtUsdc(token.onChain.escrow.recordedRevenue)} type="usage" />
-              <Row label="Forfeited"      value={token.onChain.escrow.forfeited ? 'Yes' : 'No'} />
-              <Row label="Forfeit date"   value={fmtRelative(token.onChain.escrow.forfeitAt)}   />
-            </div>
-          </div>
-        )}
-
-        {/* Buyback */}
-        {token.onChain.buyback && (
-          <div className="card">
-            <h2 style={{ margin: '0 0 1rem', fontSize: '15px', fontWeight: 600 }}>Buyback vault</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <Row label="USDC balance"     value={fmtUsdc(token.onChain.buyback.balanceUsdc)}          />
-              <Row label="From revenue"     value={fmtUsdc(token.onChain.buyback.buybackFromRevenue)}    type="usage" />
-              <Row label="From trading"     value={fmtUsdc(token.onChain.buyback.buybackFromTrading)}    type="trade" />
-              <Row label="Last execute"     value={fmtRelative(token.onChain.buyback.lastExecuteTime)}   />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Payments feed */}
-      {paymentsData && paymentsData.payments.length > 0 && (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--color-border)' }}>
-            <h2 style={{ margin: 0, fontSize: '15px', fontWeight: 600 }}>Recent payments</h2>
-          </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
-                {['Payer', 'Amount', 'Latency', 'When'].map(h => (
-                  <th key={h} style={{ padding: '8px 16px', textAlign: 'left', fontSize: '11px',
-                    fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {paymentsData.payments.map(p => (
-                <tr key={p.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                  <td style={{ padding: '10px 16px', fontFamily: 'monospace', fontSize: '12px' }}>{fmtAddr(p.payer)}</td>
-                  <td style={{ padding: '10px 16px' }} className="usage">{fmtUsdc(p.amountUsdc)}</td>
-                  <td style={{ padding: '10px 16px', color: 'var(--color-muted)', fontSize: '12px' }}>
-                    {p.latencyMs != null ? `${p.latencyMs}ms` : '—'}
-                  </td>
-                  <td style={{ padding: '10px 16px', color: 'var(--color-muted)', fontSize: '12px' }}>
-                    {fmtRelative(Math.floor(new Date(p.createdAt).getTime() / 1000))}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Economics disclosure */}
-      <div style={{ fontSize: '12px', color: 'var(--color-muted)', padding: '1rem', borderRadius: '8px',
-        border: '1px solid var(--color-border)', background: 'var(--color-surface)' }}>
-        Trading fee: 2% of volume. Split: Doppler 5% / creator liquid 35% / creator escrow 20% / buyback 10% / platform 30%.
-        Escrow unlocks 0.2 USDC per 1 USDC of service revenue. Unclaimed escrow forfeits to buyback after 365 days.
-        Creator vesting: 15% supply, 30-day cliff, 365 days total.
-      </div>
-    </div>
-  );
-}
-
-function MetricCard({ label, value, type }: { label: string; value: string; type?: 'usage' | 'trade' }) {
-  return (
-    <div className="card" style={{ padding: '1rem' }}>
-      <div style={{ fontSize: '11px', color: 'var(--color-muted)', textTransform: 'uppercase',
-        letterSpacing: '.05em', marginBottom: '4px' }}>{label}</div>
-      <div style={{ fontSize: '20px', fontWeight: 700 }}
-        className={type ?? ''}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function Row({ label, value, type }: { label: string; value: React.ReactNode; type?: 'usage' | 'trade' }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
-      <span style={{ color: 'var(--color-muted)', fontSize: '12px' }}>{label}</span>
-      <span style={{ fontWeight: 500, fontSize: '13px' }} className={type ?? ''}>{value}</span>
-    </div>
-  );
+  const v = {
+    initial: t.symbol.charAt(0), avatar: avatarFor(t.asset), sym: `$${t.symbol}`, name: t.name,
+    infoHref: `/token/${t.asset}`, chartHref: `/token/${t.asset}/chart`,
+    title: svc?.name ?? t.name, verified: t.verified,
+    desc: svc?.description ?? t.description ?? 'This token has no service description yet.',
+    creatorLabel: shortAddr(t.creator), xHandle: t.xHandle ? `@${t.xHandle}` : null, xHref: t.xHandle ? `https://x.com/${t.xHandle}` : '#',
+    website: t.website, websiteLabel: t.website?.replace(/^https?:\/\//, '').replace(/\/$/, ''),
+    launched: `${fmtDate(t.launchedAt)} · ${ago(t.launchedAt)} ago`,
+    tokenShort: shortAddr(t.asset), tokenFull: t.asset, routerShort: shortAddr(t.router), routerFull: t.router,
+    poolLabel: `${t.symbol} / ${sym} · 2%`, feeRecipient: shortAddr(t.creator),
+    price: <UsdOr usd={m?.priceUsd} alt={m?.price ? compact(m.price) : null} symbol={sym} />,
+    mcap: <UsdOr usd={m?.mcapUsd} alt={m?.price ? compact(Number(m.price) * Number(m.supply)) : null} symbol={sym} />,
+    vol24: <UsdOr usd={m?.volume24hUsd} alt={m ? compact(m.volume24h) : null} symbol={sym} />,
+    holders: t.holders.toLocaleString('en-US'),
+    ucrBig: ucr == null ? 'n/a' : `${ucr.toFixed(2)}×`,
+    ucrText: ucr == null
+      ? 'No trading volume in the last 30 days yet, so there is nothing to compare usage against. Above 1.0, the token is backed by usage more than by volume.'
+      : `Paying agents funded ${ucr.toFixed(2)} times ${ucr >= 1 ? 'more' : 'as much'} buyback than trading did. Above 1.0, the token is backed by usage more than by volume.`,
+    bbUsage: fmtUsd(bbRev), bbTrading: fmtUsd(bbTrd), bbUsageW: pct(bbRev, bbMax), bbTradingW: pct(bbTrd, bbMax),
+    stats: [
+      { label: 'CLEAN REVENUE', value: `${fmtUsdc(t.usageAll?.cleanRevenueUsdc ?? '0')} USDC`, note: `raw ${fmtUsdc(t.usageAll?.rawRevenueUsdc ?? '0')} USDC` },
+      { label: 'PAID CALLS', value: compact(t.usageAll?.paidCalls ?? 0), note: 'charged on success only' },
+      { label: 'BURNED', value: `${compact(1e9 - Number(m?.supply ?? 1e9))} ${t.symbol}`, note: 'by buyback' },
+      { label: 'CLEAN PAYERS', value: String(t.usageAll?.cleanPayers ?? 0), note: 'distinct wallets, all time' },
+    ],
+    svcStatus: !svc ? 'No service' : health?.uptime7d == null ? 'Live' : health.uptime7d >= 0.95 ? 'Live' : 'Degraded',
+    endpoint: svc ? `${origin}${svc.endpoint}` : 'No service registered yet',
+    copyEndpoint: () => svc && navigator.clipboard?.writeText(`${origin}${svc.endpoint}`),
+    svc: [
+      { label: 'Price per call', value: priceUsdc ? `${priceUsdc} USDC` : '—' },
+      { label: 'Success rate', value: health?.successRate == null ? '—' : `${(health.successRate * 100).toFixed(1)}%` },
+      { label: 'Latency p50', value: health?.latencyP50Ms == null ? '—' : `${health.latencyP50Ms} ms` },
+      { label: 'Latency p95', value: health?.latencyP95Ms == null ? '—' : health.latencyP95Ms >= 1000 ? `${(health.latencyP95Ms / 1000).toFixed(1)} s` : `${health.latencyP95Ms} ms` },
+      { label: 'Uptime 7d', value: health?.uptime7d == null ? '—' : `${(health.uptime7d * 100).toFixed(1)}%` },
+    ],
+    schema: schemaShape(svc?.responseSchema ?? svc?.requestSchema ?? null),
+    payNote: priceUsdc ? `Agents pay ${priceUsdc} USDC per call over x402. Calls that fail or return an invalid response are never charged.` : 'This token has no paid service yet.',
+    tryLabel: priceUsdc ? `Try API · ${priceUsdc} USDC` : 'Try API',
+    payments: (payments.data?.payments ?? []).map((p) => {
+      const [tag, color] = TAGS[p.class];
+      const who = p.class === 'creator' ? 'creator' : p.payerServices > 0 ? `pays ${p.payerServices} service${p.payerServices === 1 ? '' : 's'}` : 'direct transfer';
+      return { t: fmtTime(p.timestamp), who: `${shortAddr(p.payer)} · ${who}`, amt: `${fmtUsdc(p.amountUsdc)} USDC`, tag, color };
+    }),
+    paymentsState: payments.isLoading ? <Loading rows={2} height={32} />
+      : payments.error ? <ErrorBox error={payments.error} retry={() => payments.refetch()} />
+      : (payments.data?.payments.length ?? 0) === 0 ? <div style={{ padding: '14px 0', fontSize: '13px', color: MUTED }}>No payments yet.</div> : null,
+    escrowLine: esc ? `${fmtUsdc(unlocked)} / ${fmtUsdc(esc.usdcAccrued)} ${esc.symbol}` : '—',
+    escrowW: esc ? pct(unlocked, Number(esc.usdcAccrued)) : '0%',
+    vestLine: vest ? `${((Number(vest.vested) / Number(vest.total || 1)) * 100).toFixed(1)}% of ${compact(vest.total, 0)}` : '—',
+    vestW: vest ? pct(Number(vest.vested), Number(vest.total)) : '0%',
+    escrowClaimed: esc ? `${fmtUsdc(esc.usdcClaimed)} ${esc.symbol}` : '—',
+    escrowExpires: esc ? (esc.forfeited ? 'forfeited' : `in ${daysUntil(esc.forfeitAt)} days`) : '—',
+    lastChange: t.serviceUpdatedAt ? `Updated · ${ago(t.serviceUpdatedAt)} ago` : '—',
+  };
+  return <TokenView v={v} />;
 }

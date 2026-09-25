@@ -1,84 +1,127 @@
-/** Formatting helpers for USDC amounts (6 dec), MON/WMON (18 dec), and token amounts (18 dec). */
+/**
+ * Display formatting only. Amounts arrive from the API as exact decimal strings (computed with
+ * bigint on the server); converting to Number here is for rendering, never for money math.
+ */
+export const shortAddr = (a?: string | null) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—');
 
-// ── Known tokens ─────────────────────────────────────────────────────────────
-const USDC_ADDR = '0x754704Bc059F8C67012fEd69BC8A327a5aafb603'.toLowerCase();
-const WMON_ADDR = '0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A'.toLowerCase();
-
-/** Map of known token addresses to display metadata. */
-export const KNOWN_TOKENS: Record<string, { symbol: string; name: string; decimals: number }> = {
-  [USDC_ADDR]: { symbol: 'USDC',  name: 'USD Coin',    decimals: 6  },
-  [WMON_ADDR]: { symbol: 'WMON',  name: 'Wrapped MON', decimals: 18 },
-};
-
-/** Look up a known token by address (case-insensitive). Returns undefined if not known. */
-export function knownToken(addr: string | null | undefined) {
-  if (!addr) return undefined;
-  return KNOWN_TOKENS[addr.toLowerCase()];
+/** 1234 → "1.2K", 150600 → "150.6K", 2_500_000 → "2.5M". */
+export function compact(v: number | string | null | undefined, dp = 1): string {
+  if (v == null || v === '') return '—';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  const a = Math.abs(n);
+  if (a >= 1e9) return `${(n / 1e9).toFixed(dp)}B`;
+  if (a >= 1e6) return `${(n / 1e6).toFixed(dp)}M`;
+  if (a >= 1e3) return `${(n / 1e3).toFixed(dp)}K`;
+  return a >= 100 ? n.toFixed(0) : a >= 1 ? trim(n.toFixed(2)) : sig(n, 3);
 }
 
-/** Format a raw amount for a known numeraire token (auto-detects decimals). */
-export function fmtNumeraire(raw: bigint | string | null | undefined, tokenAddr: string): string {
-  const info = knownToken(tokenAddr);
-  if (!info) return fmtUsdc(raw, ''); // fallback to 6-dec without prefix
-  if (info.decimals === 6) return fmtUsdc(raw, '$');
-  // 18 decimals (WMON / MON)
-  return fmtMon(raw);
+/** Small prices keep 3 significant digits: 0.0000025376 → "0.00000254". */
+export function sig(n: number, digits = 3): string {
+  if (n === 0) return '0';
+  const s = n.toPrecision(digits);
+  return s.includes('e') ? trim(n.toFixed(Math.min(20, digits - Math.floor(Math.log10(Math.abs(n))) - 1))) : trim(s);
 }
 
-/** Format raw 18-dec bigint as "X.XXXX MON" */
-export function fmtMon(raw: bigint | string | null | undefined): string {
-  if (raw == null) return '--';
-  const n = typeof raw === 'string' ? BigInt(raw) : raw;
-  const int  = n / 10n ** 18n;
-  const frac = (n % 10n ** 18n).toString().padStart(18, '0').slice(0, 4);
-  return `${int.toLocaleString()}.${frac} MON`;
+const trim = (s: string) => (s.includes('.') ? s.replace(/\.?0+$/, '') : s);
+
+/** "$0.00000254", "$2.5K", "$0.15". */
+export function fmtUsd(v: string | number | null | undefined, compactLarge = true): string {
+  if (v == null || v === '') return '—';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  if (Math.abs(n) >= 1000 && compactLarge) return `$${compact(n)}`;
+  if (Math.abs(n) >= 1) return `$${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+  return `$${sig(n, 3)}`;
 }
 
-/** Format raw 6-dec bigint or string as "$X.XX" */
-export function fmtUsdc(raw: bigint | string | null | undefined, prefix = '$'): string {
-  if (raw == null) return '—';
-  const n = typeof raw === 'string' ? BigInt(raw) : raw;
-  const int  = n / 1_000_000n;
-  const frac = n % 1_000_000n;
-  const fracStr = frac.toString().padStart(6, '0').slice(0, 2);
-  return `${prefix}${int.toLocaleString()}.${fracStr}`;
+/** Token / numeraire amounts: 58006.13 → "58.0K", 0.15 → "0.15". */
+export const fmtAmount = (v: string | number | null | undefined) => compact(v);
+
+/** Grouped integer or 2-dp USDC: 3012.5 → "3,012.5". */
+export function fmtUsdc(v: string | number | null | undefined): string {
+  if (v == null || v === '') return '—';
+  const n = Number(v);
+  return n.toLocaleString('en-US', { maximumFractionDigits: n >= 100 ? 0 : 2 });
 }
 
-/** Format raw 18-dec bigint as human-readable with K/M/B suffix */
-export function fmtToken(raw: bigint | string | null | undefined): string {
-  if (raw == null) return '—';
-  const n = typeof raw === 'string' ? BigInt(raw) : raw;
-  const whole = Number(n / 10n ** 15n) / 1000; // 3 dec places in token units
-  if (whole >= 1e9)  return `${(whole / 1e9).toFixed(2)}B`;
-  if (whole >= 1e6)  return `${(whole / 1e6).toFixed(2)}M`;
-  if (whole >= 1e3)  return `${(whole / 1e3).toFixed(2)}K`;
-  return whole.toFixed(2);
+/** Basis points → "+0.26%" / "-9.6%". */
+export function fmtBps(bps: number | null | undefined): string {
+  if (bps == null) return '—';
+  const p = bps / 100;
+  return `${p >= 0 ? '+' : ''}${Math.abs(p) >= 100 ? p.toFixed(0) : p.toFixed(Math.abs(p) >= 10 ? 1 : 2)}%`;
 }
 
-/** Format a unix timestamp (seconds) as relative time */
-export function fmtRelative(ts: number | null | undefined): string {
-  if (ts == null) return '—';
-  const now = Math.floor(Date.now() / 1000);
-  const diff = now - ts;
-  if (diff < 60)   return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+export const isDown = (bps: number | null | undefined) => bps != null && bps < 0;
+
+/** Age from a unix-seconds or Date: "38d", "5h", "12m". */
+export function ago(t: number | string | Date | null | undefined, nowMs = Date.now()): string {
+  if (t == null) return '—';
+  const ms = t instanceof Date ? t.getTime() : typeof t === 'string' ? Date.parse(t) : t * 1000;
+  const s = Math.max(0, Math.floor((nowMs - ms) / 1000));
+  if (s >= 86_400) return `${Math.floor(s / 86_400)}d`;
+  if (s >= 3_600) return `${Math.floor(s / 3_600)}h`;
+  if (s >= 60) return `${Math.floor(s / 60)}m`;
+  return `${s}s`;
 }
 
-/** Format a Date as relative */
-export function fmtDate(d: Date | string | null | undefined): string {
-  if (d == null) return '—';
-  return fmtRelative(Math.floor(new Date(d).getTime() / 1000));
+export function fmtDate(t: number | string | Date | null | undefined): string {
+  if (t == null) return '—';
+  const d = t instanceof Date ? t : typeof t === 'string' ? new Date(t) : new Date(t * 1000);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-/** Truncate an address 0x1234...abcd */
-export function fmtAddr(addr: string | null | undefined): string {
-  if (!addr) return '—';
-  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+/** "14:02:11" (local time). */
+export function fmtTime(t: number | string | Date): string {
+  const d = t instanceof Date ? t : typeof t === 'string' ? new Date(t) : new Date(t * 1000);
+  return d.toLocaleTimeString('en-GB', { hour12: false });
 }
 
-/** Format bps as percentage "X.XX%" */
-export function fmtBps(bps: number): string {
-  return `${(bps / 100).toFixed(2)}%`;
+export function daysUntil(unixS: number, nowMs = Date.now()): number {
+  return Math.max(0, Math.ceil((unixS * 1000 - nowMs) / 86_400_000));
+}
+
+/** Deterministic avatar gradient per token (palette from the designs). */
+const GRADIENTS = [
+  'linear-gradient(135deg,#8B5CF6,#C084FC)', 'linear-gradient(135deg,#6366F1,#A78BFA)', 'linear-gradient(135deg,#DB2777,#F472B6)',
+  'linear-gradient(135deg,#0891B2,#67E8F9)', 'linear-gradient(135deg,#0EA5E9,#818CF8)', 'linear-gradient(135deg,#65A30D,#BEF264)',
+  'linear-gradient(135deg,#8B5CF6,#EC4899)', 'linear-gradient(135deg,#A855F7,#F0ABFC)', 'linear-gradient(135deg,#F59E0B,#FDE68A)',
+  'linear-gradient(135deg,#14B8A6,#5EEAD4)',
+];
+export function avatarFor(key: string): string {
+  let h = 0;
+  for (const c of key.toLowerCase()) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return GRADIENTS[h % GRADIENTS.length]!;
+}
+
+/** Sparkline polyline points (viewBox 0 0 100 30) from a price series. */
+export function sparkPoints(series: number[]): string {
+  if (series.length < 2) return '0,15 100,15';
+  const lo = Math.min(...series), hi = Math.max(...series);
+  const span = hi - lo || 1;
+  return series.map((y, i) => `${((i / (series.length - 1)) * 100).toFixed(1)},${(27 - ((y - lo) / span) * 24).toFixed(1)}`).join(' ');
+}
+
+/** "nullsight · Ranked X-style signals…": service name if it differs from the token, else its description. */
+export function serviceLabel(tokenName: string, svc: { name: string; description: string | null } | null | undefined): string {
+  if (!svc) return tokenName;
+  const extra = svc.name && svc.name.toLowerCase() !== tokenName.toLowerCase() ? svc.name : svc.description;
+  return extra ? `${tokenName} · ${extra}` : tokenName;
+}
+
+/** Compact shape of a JSON Schema ({ field: type }), as shown on the token page. */
+export function schemaShape(schemaJson: string | null): string {
+  if (!schemaJson) return 'No response schema published.';
+  let s: unknown;
+  try { s = JSON.parse(schemaJson); } catch { return schemaJson; }
+  const shape = (n: any): unknown => {
+    if (!n || typeof n !== 'object') return 'any';
+    if (n.const !== undefined) return String(n.const);
+    if (n.enum) return n.enum.map((e: unknown) => String(e)).join(' | ');
+    if (n.type === 'object' || n.properties) return Object.fromEntries(Object.entries(n.properties ?? {}).map(([k, v]) => [k, shape(v)]));
+    if (n.type === 'array') return [shape(n.items)];
+    if (n.format === 'date-time') return 'ISO-8601';
+    return Array.isArray(n.type) ? n.type.join(' | ') : n.type ?? 'any';
+  };
+  return JSON.stringify(shape(s), null, 2);
 }

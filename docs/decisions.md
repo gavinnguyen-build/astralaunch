@@ -149,3 +149,38 @@ against the official Web3 Secret Storage test vectors (`astralaunch-anvil/src/ke
   the keeper uses.
 - **Endpoints.** `/api/creator/:wallet` and `/api/leaderboard` only include listed tokens (D-LF4). Leaderboard
   ranking uses the shared clean-revenue rules (`services/cleanRevenue.ts`). Traders: coming soon.
+
+## Web Phase B: read-only pages (2026-09-25)
+
+**D-WB1. Markup.** `apps/web/scripts/dc2tsx.py` converts `docs/design/*.dc.html` into `apps/web/src/design/*View.tsx`.
+It keeps every inline style and element, and maps `sc-for`/`sc-if` and `{{…}}` bindings to a `v` props object.
+Pages (`src/pages/*`) build `v` from the real API. Sample literals in the markup were replaced by bindings
+by hand. The pages keep the designs' fixed 1440px layout, centered.
+
+**D-WB2. Real-data mappings.**
+- **UCR** (SPEC §13) is `150 × clean revenue / volume` over 30 days. Buyback swaps are excluded from volume.
+  With no volume the UCR is n/a, never infinite.
+- **Verified** = SPEC O5 mainnet thresholds (≥100 USDC clean revenue, ≥10 clean payers), from
+  `VERIFIED_MIN_*` in shared constants.
+- **Buyback from usage / trading** reads the BuybackVault v2 `assetData`. The old detail route decoded the
+  v1 layout, so that block was always null.
+- **"Trading fees claimed"** on the token page became **"Escrow claimed"**: creator fee claims from Doppler
+  are not indexed.
+- **USD values can be null** (stale Chainlink). The UI then shows the MON/USDC value with "USD price
+  unavailable".
+- **Traders:** the leaderboard tab and the chart page's Top Traders tab show "coming soon".
+
+**D-WB3. Chart.** lightweight-charts 5.2 draws the chart; the TradingView attribution logo is kept.
+- Timeframes: 5m / 15m / 1h / 4h / D come from the API. 1s / 1m / W are shown disabled (not indexed).
+- Drawing tools, undo and settings are disabled. The design's range row is empty in the design itself.
+- `%` / `log` / `auto` switch the price-scale mode.
+
+**D-WB4. Read-only until later phases.** Try API, Trade, Claim, Release, Sign and save, and Launch are shown
+disabled with a note. Actions arrive in Phases C and D. Privy is mounted only when `VITE_PRIVY_APP_ID` is
+set, so read-only pages work without it; `/creator?wallet=0x…` shows any creator.
+
+**D-WB5. Dev fixes.**
+- The Vite proxy key `'/s'` also matched `/src/*`, so every module request went to the API server.
+  It is now anchored as `'^/s/'`.
+- `API_PROXY_TARGET` overrides the proxy target (default `http://localhost:3001`).
+- `PROBES_DISABLED=true` stops a read-only preview server from writing service probes.

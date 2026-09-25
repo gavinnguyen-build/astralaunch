@@ -1,88 +1,13 @@
-/* Astralaunch — base styles */
+/* Astralaunch web — base from docs/design/*.dc.html (Inter + JetBrains Mono, #0B0A12 ground). */
 *, *::before, *::after { box-sizing: border-box; }
-
-:root {
-  /* Usage-backed color (revenue, UCR, clean payers) — blue */
-  --color-usage:   #3B82F6;
-  --color-usage-bg:#1E3A5F;
-  /* Trading-backed color (volume, market cap, fees) — purple */
-  --color-trade:   #A855F7;
-  --color-trade-bg:#2D1B4E;
-
-  --color-bg:      #0A0A0F;
-  --color-surface: #14141F;
-  --color-border:  #1E1E2E;
-  --color-text:    #E2E8F0;
-  --color-muted:   #64748B;
-  --color-accent:  #6EE7B7;
-  --color-danger:  #F87171;
-  --color-success: #34D399;
-
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 14px;
-  color: var(--color-text);
-  background: var(--color-bg);
-  line-height: 1.5;
-}
-
-body { margin: 0; min-height: 100vh; }
-a { color: var(--color-accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
-button { cursor: pointer; }
-
-/* Utility */
-.usage  { color: var(--color-usage); }
-.trade  { color: var(--color-trade); }
-.muted  { color: var(--color-muted); }
-.danger { color: var(--color-danger); }
-
-.card {
-  background:    var(--color-surface);
-  border:        1px solid var(--color-border);
-  border-radius: 12px;
-  padding:       1.5rem;
-}
-
-.badge {
-  display:       inline-flex;
-  align-items:   center;
-  padding:       2px 8px;
-  border-radius: 4px;
-  font-size:     11px;
-  font-weight:   600;
-  letter-spacing:.03em;
-  text-transform: uppercase;
-}
-.badge-usage { background: var(--color-usage-bg); color: var(--color-usage); }
-.badge-trade { background: var(--color-trade-bg); color: var(--color-trade); }
-
-input, textarea, select {
-  background:    var(--color-surface);
-  border:        1px solid var(--color-border);
-  border-radius: 8px;
-  color:         var(--color-text);
-  padding:       8px 12px;
-  outline:       none;
-  width:         100%;
-  font-size:     14px;
-}
-input:focus, textarea:focus, select:focus {
-  border-color: var(--color-accent);
-}
-
-.btn {
-  display:       inline-flex;
-  align-items:   center;
-  gap:           6px;
-  padding:       9px 18px;
-  border:        none;
-  border-radius: 8px;
-  font-size:     14px;
-  font-weight:   600;
-  transition:    opacity .15s;
-}
-.btn:hover   { opacity: .85; }
-.btn:disabled{ opacity: .4; cursor: not-allowed; }
-.btn-primary { background: var(--color-accent); color: #0A0A0F; }
-.btn-outline { background: transparent; border: 1px solid var(--color-border); color: var(--color-text); }
-.btn-sm      { padding: 5px 12px; font-size: 12px; }
+body { margin: 0; background: #0B0A12; font-family: Inter, system-ui, sans-serif; color: #ECEAF4; }
+a { color: #C4B5FD; }
+a:hover { color: #DDD6FE; }
+button:disabled { cursor: not-allowed !important; opacity: 0.55; }
+/* Pages are designed at 1440px; center them on wider screens. */
+#root > div { margin: 0 auto; }
+.al-skeleton { background: linear-gradient(90deg, #1C1A29 0%, #25213A 50%, #1C1A29 100%); background-size: 200% 100%; animation: alShimmer 1.4s linear infinite; border-radius: 8px; }
+@keyframes alShimmer { to { background-position: -200% 0; } }
+/* Tokens used by the Docs page. */
+:root { --color-muted: #8C87A3; --color-border: #25213A; --color-surface: #13111C; --color-text: #ECEAF4; }
+.usage { color: #34D399; } .trade { color: #A78BFA; }

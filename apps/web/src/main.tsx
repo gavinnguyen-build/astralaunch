@@ -10,8 +10,16 @@ const qc = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
 });
 
+const app = (
+  <QueryClientProvider client={qc}>
+    <App />
+  </QueryClientProvider>
+);
+
+// Read-only pages work without a Privy app id (wallet features show as unavailable).
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
+    {!PRIVY_APP_ID ? app : (
     <PrivyProvider
       appId={PRIVY_APP_ID}
       config={{
@@ -34,9 +42,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         ],
       }}
     >
-      <QueryClientProvider client={qc}>
-        <App />
-      </QueryClientProvider>
+      {app}
     </PrivyProvider>
+    )}
   </React.StrictMode>,
 );

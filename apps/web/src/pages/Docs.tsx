@@ -1,5 +1,8 @@
+import { PageShell } from './Token.js';
+
 export default function Docs() {
   return (
+    <PageShell active="docs">
     <div style={{ maxWidth: '700px', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       <div>
         <h1 style={{ margin: '0 0 8px', fontSize: '22px', fontWeight: 700 }}>How Astralaunch works</h1>
@@ -90,6 +93,7 @@ export default function Docs() {
         Tokens are not investment products. Buyback and revenue share to the pool are not dividends or investment returns. This product is for informational purposes.
       </p>
     </div>
+    </PageShell>
   );
 }
 
