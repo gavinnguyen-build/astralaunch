@@ -59,7 +59,7 @@ export interface LeaderCreator {
 export interface CreatorDash {
   wallet: string;
   tokens: {
-    asset: string; name: string; symbol: string; imageUrl: string | null; numeraireSymbol: string; launchedAt: string;
+    asset: string; name: string; symbol: string; imageUrl: string | null; numeraireSymbol: string; launchedAt: string; poolId: string;
     tradingFees: { estimated: boolean; numeraire: string; asset: string } | null;
     escrow: { claimable: string | null; claimableSymbol: string; usdcAccrued: string; usdcClaimed: string; recordedRevenue: string; forfeitAt: number; forfeited: boolean } | null;
     vesting: { total: string; released: string; releasable: string; locked: string; start: number; cliffEnd: number; end: number } | null;

@@ -7,6 +7,11 @@ import { ago, avatarFor, compact, daysUntil, fmtDate, fmtTime, fmtUsd, fmtUsdc, 
 import { Empty, ErrorBox, Loading, UsdOr } from '../components/State.js';
 import { SiteFooter, SiteHeader } from '../components/Site.js';
 import { AddrLink, TokenLink, TxLink } from '../components/Explorer.js';
+import { TryApiModal } from '../components/TryApiModal.js';
+import { PRIVY_ENABLED, useConnectedWallet } from '../components/Site.js';
+import { get } from '../lib/api.js';
+import type { ChainConfig } from '../lib/launch.js';
+import { useState } from 'react';
 
 const GREEN = '#34D399', RED = '#F87171', MUTED = '#8C87A3';
 const TAGS = {
@@ -30,6 +35,9 @@ export default function Token() {
   const { asset = '' } = useParams();
   const token = useQuery({ queryKey: ['token', asset], queryFn: () => api.token(asset) });
   const payments = useQuery({ queryKey: ['payments', asset], queryFn: () => api.payments(asset), enabled: !!token.data });
+  const wallet = useConnectedWallet();
+  const cfg = useQuery({ queryKey: ['config'], queryFn: () => get<ChainConfig>('/api/config') });
+  const [trying, setTrying] = useState(false);
 
   if (token.isLoading) return <PageShell><Loading rows={6} height={60} /></PageShell>;
   if (token.error) {
@@ -105,6 +113,12 @@ export default function Token() {
     escrowClaimed: esc ? `${fmtUsdc(esc.usdcClaimed)} ${esc.symbol}` : '—',
     escrowExpires: esc ? (esc.forfeited ? 'forfeited' : `in ${daysUntil(esc.forfeitAt)} days`) : '—',
     lastChange: t.serviceUpdatedAt ? `Updated · ${ago(t.serviceUpdatedAt)} ago` : '—',
+    onTry: () => setTrying(true),
+    tryDisabled: !svc || !wallet || !cfg.data,
+    tryTitle: !svc ? 'This token has no service yet' : !PRIVY_ENABLED ? 'Set VITE_PRIVY_APP_ID to connect a wallet' : !wallet ? 'Connect a wallet to pay for a call' : 'Pay one call from your wallet',
+    modal: trying && svc && wallet && cfg.data ? (
+      <TryApiModal asset={t.asset as `0x${string}`} slug={svc.slug} wallet={wallet} config={cfg.data} onClose={() => { setTrying(false); payments.refetch(); }} />
+    ) : null,
   };
   return <TokenView v={v} />;
 }

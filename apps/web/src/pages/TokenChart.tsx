@@ -15,6 +15,10 @@ import { ago, compact, fmtUsd, serviceLabel, sig } from '../lib/format.js';
 import { Empty, ErrorBox, Loading } from '../components/State.js';
 import { PageShell } from './Token.js';
 import { AddrLink, TxLink } from '../components/Explorer.js';
+import { TradeModal } from '../components/TradeModal.js';
+import { PRIVY_ENABLED, useConnectedWallet } from '../components/Site.js';
+import { get } from '../lib/api.js';
+import type { ChainConfig } from '../lib/launch.js';
 
 const UP = '#22C55E', DOWN = '#F04438';
 const TF = [['1s', null], ['1m', null], ['5m', '5m'], ['15m', '15m'], ['1h', '1h'], ['4h', '4h'], ['D', '1d'], ['W', null]] as const;
@@ -47,6 +51,9 @@ export default function TokenChart() {
   const [scale, setScale] = useState<'pct' | 'log' | 'auto'>('auto');
   const [hover, setHover] = useState<Candle | null>(null);
   const [clock, setClock] = useState(() => new Date());
+  const [trading, setTrading] = useState(false);
+  const wallet = useConnectedWallet();
+  const cfg = useQuery({ queryKey: ['config'], queryFn: () => get<ChainConfig>('/api/config') });
   const apiTf = TF.find((x) => x[0] === tf)![1]!;
 
   const token = useQuery({ queryKey: ['token', asset], queryFn: () => api.token(asset) });
@@ -228,6 +235,13 @@ export default function TokenChart() {
       { label: 'Holders', value: holderCount.toLocaleString('en-US') },
     ],
     windows, flows,
+    onTrade: () => setTrading(true),
+    tradeDisabled: !wallet || !cfg.data,
+    tradeTitle: !PRIVY_ENABLED ? 'Set VITE_PRIVY_APP_ID to connect a wallet' : !wallet ? 'Connect a wallet to trade' : `Buy or sell ${t.symbol}`,
+    modal: trading && wallet && cfg.data ? (
+      <TradeModal asset={t.asset as `0x${string}`} symbol={t.symbol} numSym={numSym === 'MON' ? 'MON' : 'USDC'} wallet={wallet} config={cfg.data}
+        initialSide="buy" onClose={() => { setTrading(false); trades.refetch(); candles.refetch(); }} />
+    ) : null,
   };
   return <TokenChartView v={v} />;
 }

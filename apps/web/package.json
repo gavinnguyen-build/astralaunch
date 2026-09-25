@@ -16,6 +16,8 @@
     "@tanstack/react-query": "^5.62.0",
     "@uniswap/v4-sdk": "^1.0.0",
     "@whetstone-research/doppler-sdk": "1.0.43",
+    "@x402/core": "2.26.0",
+    "@x402/evm": "2.26.0",
     "lightweight-charts": "^5.2.1",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",

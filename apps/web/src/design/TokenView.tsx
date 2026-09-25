@@ -73,7 +73,7 @@ export function TokenView({ v }: { v: any }) {
 </div>
 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 300px', gap: '16px', alignItems: 'start' }}>
 <pre style={{ margin: '0', padding: '14px', borderRadius: '10px', background: '#0E0D16', border: '1px solid #25213A', fontFamily: "'JetBrains Mono', monospace", fontSize: '12px', lineHeight: '1.6', color: '#C9C5DA', overflowX: 'auto' }}>{v.schema}</pre>
-<div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}><p style={{ margin: '0', fontSize: '13px', lineHeight: '1.55', color: '#A7A2BD' }}>{v.payNote}</p><button type="button" disabled title="Paying from the browser wallet arrives in the next release" style={{ height: '44px', borderRadius: '999px', border: '0', background: '#8B5CF6', color: '#FFFFFF', fontFamily: 'inherit', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>{v.tryLabel}</button></div>
+<div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}><p style={{ margin: '0', fontSize: '13px', lineHeight: '1.55', color: '#A7A2BD' }}>{v.payNote}</p><button type="button" onClick={v.onTry} disabled={v.tryDisabled} title={v.tryTitle} style={{ height: '44px', borderRadius: '999px', border: '0', background: '#8B5CF6', color: '#FFFFFF', fontFamily: 'inherit', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>{v.tryLabel}</button></div>
 </div>
 </section>
 <section aria-labelledby="pay" style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -100,6 +100,7 @@ export function TokenView({ v }: { v: any }) {
 </div>
 </div>
 </main>
+{v.modal}
 <SiteFooter />
 </div>
   );
