@@ -71,3 +71,7 @@ export const FACILITATOR_SUBMITTERS: ReadonlyArray<string> = [
  * 2026-09-25 (docs/decisions.md D-LF1). Receives plain MON transfers only.
  */
 export const LAUNCH_FEE_TREASURY = '0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C';
+
+// ── Block explorer ─────────────────────────────────────────────────────────────
+/** Monad mainnet explorer (paths: /address/<addr>, /tx/<hash>, /token/<asset>). Source: Tun, 2026-09-26. */
+export const MONAD_EXPLORER_URL = 'https://monadscan.com';

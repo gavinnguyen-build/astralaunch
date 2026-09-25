@@ -65,7 +65,7 @@ export interface CreatorDash {
     vesting: { total: string; released: string; releasable: string; locked: string; start: number; cliffEnd: number; end: number } | null;
   }[];
   services: { id: string; asset: string; slug: string; name: string; priceUsdc: string; upstreamUrl: string; active: boolean; updatedAt: string }[];
-  recentRequests: { service: string | null; statusCode: number | null; upstreamStatus: number | null; latencyMs: number | null; charged: boolean; amountUsdc: string; errorCode: string | null; createdAt: string }[];
+  recentRequests: { service: string | null; statusCode: number | null; upstreamStatus: number | null; latencyMs: number | null; charged: boolean; amountUsdc: string; errorCode: string | null; settleTxHash: string | null; createdAt: string }[];
 }
 
 export const api = {

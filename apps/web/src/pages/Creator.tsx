@@ -12,6 +12,7 @@ import { avatarFor, compact, fmtDate, fmtTime, fmtUsdc, shortAddr } from '../lib
 import { ErrorBox, Loading } from '../components/State.js';
 import { useWalletAddress } from '../components/Site.js';
 import { PageShell } from './Token.js';
+import { AddrLink, TxLink } from '../components/Explorer.js';
 
 const OK = '#34D399', BAD = '#F87171';
 const NOTES: Record<string, string> = {
@@ -45,7 +46,7 @@ export default function Creator() {
   const logs = d.recentRequests.filter((r) => !svc || r.service === svc.slug);
 
   const v = {
-    wallet: `${wallet.slice(0, 10)}…${wallet.slice(-6)}`,
+    wallet: <AddrLink a={wallet} label={`${wallet.slice(0, 10)}…${wallet.slice(-6)}`} />,
     tokens: d.tokens.map((t, i) => ({
       on: t.asset === tok.asset, pick: (e: React.MouseEvent) => { e.preventDefault(); setSel(i); }, href: `/token/${t.asset}`,
       initial: t.symbol.charAt(0), avatar: avatarFor(t.asset), sym: `$${t.symbol}`, sub: `${t.name} · ${fmtUsdc(rev30(t.asset))} USDC 30d`,
@@ -68,7 +69,7 @@ export default function Creator() {
       : health?.uptime7d != null ? `Live · ${(health.uptime7d * 100).toFixed(1)}% uptime, 7d` : 'Live',
     formKey: tok.asset, upstream: svc?.upstreamUrl ?? '', price: svc ? String(Number(svc.priceUsdc) / 1e6) : '', payout: shortAddr(wallet),
     logs: logs.map((r) => ({
-      t: fmtTime(r.createdAt), s: String(r.statusCode ?? '—'), color: r.charged ? OK : BAD,
+      t: r.settleTxHash ? <TxLink h={r.settleTxHash} label={fmtTime(r.createdAt)} /> : fmtTime(r.createdAt), s: String(r.statusCode ?? '—'), color: r.charged ? OK : BAD,
       lat: r.latencyMs == null ? '—' : `${r.latencyMs.toLocaleString('en-US')} ms`,
       ch: r.charged ? `${fmtUsdc(r.amountUsdc)} USDC` : 'No',
       note: r.charged ? 'Settled by facilitator' : NOTES[r.errorCode ?? ''] ?? 'Not charged',

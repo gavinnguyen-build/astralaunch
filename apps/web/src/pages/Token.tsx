@@ -3,9 +3,10 @@ import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { TokenView } from '../design/TokenView.js';
 import { api, type TokenDetail } from '../lib/api.js';
-import { ago, avatarFor, compact, daysUntil, fmtDate, fmtTime, fmtUsd, fmtUsdc, schemaShape, shortAddr } from '../lib/format.js';
+import { ago, avatarFor, compact, daysUntil, fmtDate, fmtTime, fmtUsd, fmtUsdc, schemaShape } from '../lib/format.js';
 import { Empty, ErrorBox, Loading, UsdOr } from '../components/State.js';
 import { SiteFooter, SiteHeader } from '../components/Site.js';
+import { AddrLink, TokenLink, TxLink } from '../components/Explorer.js';
 
 const GREEN = '#34D399', RED = '#F87171', MUTED = '#8C87A3';
 const TAGS = {
@@ -56,11 +57,11 @@ export default function Token() {
     infoHref: `/token/${t.asset}`, chartHref: `/token/${t.asset}/chart`,
     title: svc?.name ?? t.name, verified: t.verified,
     desc: svc?.description ?? t.description ?? 'This token has no service description yet.',
-    creatorLabel: shortAddr(t.creator), xHandle: t.xHandle ? `@${t.xHandle}` : null, xHref: t.xHandle ? `https://x.com/${t.xHandle}` : '#',
+    creatorLabel: <AddrLink a={t.creator} />, xHandle: t.xHandle ? `@${t.xHandle}` : null, xHref: t.xHandle ? `https://x.com/${t.xHandle}` : '#',
     website: t.website, websiteLabel: t.website?.replace(/^https?:\/\//, '').replace(/\/$/, ''),
     launched: `${fmtDate(t.launchedAt)} · ${ago(t.launchedAt)} ago`,
-    tokenShort: shortAddr(t.asset), tokenFull: t.asset, routerShort: shortAddr(t.router), routerFull: t.router,
-    poolLabel: `${t.symbol} / ${sym} · 2%`, feeRecipient: shortAddr(t.creator),
+    tokenShort: <TokenLink a={t.asset} />, tokenFull: t.asset, routerShort: <AddrLink a={t.router} />, routerFull: t.router,
+    poolLabel: `${t.symbol} / ${sym} · 2%`, feeRecipient: <AddrLink a={t.creator} />,
     price: <UsdOr usd={m?.priceUsd} alt={m?.price ? compact(m.price) : null} symbol={sym} />,
     mcap: <UsdOr usd={m?.mcapUsd} alt={m?.price ? compact(Number(m.price) * Number(m.supply)) : null} symbol={sym} />,
     vol24: <UsdOr usd={m?.volume24hUsd} alt={m ? compact(m.volume24h) : null} symbol={sym} />,
@@ -92,7 +93,7 @@ export default function Token() {
     payments: (payments.data?.payments ?? []).map((p) => {
       const [tag, color] = TAGS[p.class];
       const who = p.class === 'creator' ? 'creator' : p.payerServices > 0 ? `pays ${p.payerServices} service${p.payerServices === 1 ? '' : 's'}` : 'direct transfer';
-      return { t: fmtTime(p.timestamp), who: `${shortAddr(p.payer)} · ${who}`, amt: `${fmtUsdc(p.amountUsdc)} USDC`, tag, color };
+      return { t: <TxLink h={p.txHash} label={fmtTime(p.timestamp)} />, who: <><AddrLink a={p.payer} /> · {who}</>, amt: `${fmtUsdc(p.amountUsdc)} USDC`, tag, color };
     }),
     paymentsState: payments.isLoading ? <Loading rows={2} height={32} />
       : payments.error ? <ErrorBox error={payments.error} retry={() => payments.refetch()} />

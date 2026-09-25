@@ -5,6 +5,7 @@ import { HomeView } from '../design/HomeView.js';
 import { api, type TokenListItem } from '../lib/api.js';
 import { ago, avatarFor, compact, fmtBps, fmtUsdc, isDown } from '../lib/format.js';
 import { ErrorBox, Loading, Empty } from '../components/State.js';
+import { AddrLink } from '../components/Explorer.js';
 
 const GREEN = '#34D399', RED = '#F87171', MUTED = '#8C87A3';
 export const FILTERS = ['With revenue', 'Verified', 'New', 'High UCR', 'No service yet'] as const;
@@ -50,7 +51,7 @@ export default function Home() {
       desc: t.service?.description ?? t.description ?? 'No service yet.',
       symbol: `$${t.symbol}`, price: t.service ? `${fmtUsdc(Number(t.service.priceUsdc) / 1e6)} USDC` : '—',
       rev: fmtUsdc(t.usage30d?.cleanRevenueUsdc ?? '0'), chg: `${fmtBps(chg)} 7d`, chgColor: isDown(chg) ? RED : GREEN,
-      calls: compact(t.usage30d?.paidCalls ?? 0), by: handle, age: ago(t.launchedAt),
+      calls: compact(t.usage30d?.paidCalls ?? 0), by: <AddrLink a={t.creator} label={handle} />, age: ago(t.launchedAt),
       href: `/token/${t.asset}`, chartHref: `/token/${t.asset}/chart`, tryHref: `/token/${t.asset}#service`, hasService: !!t.service,
       ...ucrBits(t.usage30d?.ucr),
     };

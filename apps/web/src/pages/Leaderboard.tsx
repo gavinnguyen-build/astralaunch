@@ -6,6 +6,7 @@ import { api, type LeaderCreator } from '../lib/api.js';
 import { avatarFor, compact, fmtUsdc, shortAddr } from '../lib/format.js';
 import { Empty, ErrorBox, Loading } from '../components/State.js';
 import { useWalletAddress } from '../components/Site.js';
+import { AddrLink } from '../components/Explorer.js';
 
 const GREEN = '#34D399', INK = '#ECEAF4', MUTED = '#8C87A3';
 const PERIODS = [['7D', '7d'], ['30D', '30d'], ['All', 'all']] as const;
@@ -60,7 +61,7 @@ export default function Leaderboard() {
     ).map(([label, align]) => ({ label, align })),
     rows: list.slice(3).map((c, i) => ({ rank: String(i + 4), name: name(c), sub: sub(c), initial: c.tokens[0]?.symbol.charAt(0) ?? '?', avatar: avatarFor(c.creator), href: href(c), bg: 'transparent', cells: cells(c) })),
     me: isC && wallet ? {
-      rank: meIdx >= 0 ? `#${meIdx + 1}` : '—', addr: shortAddr(wallet),
+      rank: meIdx >= 0 ? `#${meIdx + 1}` : '—', addr: <AddrLink a={wallet} />,
       sub: meIdx >= 0 ? sub(list[meIdx]!) : 'No listed tokens yet',
       cells: meIdx >= 0 ? cells(list[meIdx]!) : [{ v: '0', color: INK }, { v: '0 USDC', color: INK }, { v: '0', color: INK }, { v: '—', color: MUTED }, { v: '0', color: INK }],
     } : null,

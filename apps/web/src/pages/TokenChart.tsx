@@ -11,9 +11,10 @@ import {
 } from 'lightweight-charts';
 import { TokenChartView } from '../design/TokenChartView.js';
 import { api, type Candle, type Trade } from '../lib/api.js';
-import { ago, compact, fmtUsd, serviceLabel, shortAddr, sig } from '../lib/format.js';
+import { ago, compact, fmtUsd, serviceLabel, sig } from '../lib/format.js';
 import { Empty, ErrorBox, Loading } from '../components/State.js';
 import { PageShell } from './Token.js';
+import { AddrLink, TxLink } from '../components/Explorer.js';
 
 const UP = '#22C55E', DOWN = '#F04438';
 const TF = [['1s', null], ['1m', null], ['5m', '5m'], ['15m', '15m'], ['1h', '1h'], ['4h', '4h'], ['D', '1d'], ['W', null]] as const;
@@ -143,7 +144,7 @@ export default function TokenChart() {
 
   const holderCount = holders.data?.holderCount ?? token.data?.holders ?? 0;
   const tabs = ['Transactions', 'Top Traders', `Holders (${holderCount.toLocaleString('en-US')})`];
-  const C = (text: string, align = 'right', extra: Record<string, unknown> = {}) => ({ text, align, fg: '#ECEAF4', weight: 400, plain: true, pill: false, ...extra });
+  const C = (text: React.ReactNode, align = 'right', extra: Record<string, unknown> = {}) => ({ text, align, fg: '#ECEAF4', weight: 400, plain: true, pill: false, ...extra });
   const sym = token.data?.symbol ?? '';
   let cols: [string, string][] = [];
   let rows: { cells: ReturnType<typeof C>[] }[] = [];
@@ -154,12 +155,12 @@ export default function TokenChart() {
       const fg = x.side === 'sell' ? '#FCA5A5' : x.isBuyback ? '#C4B5FD' : '#6EE7B7';
       const pillBg = x.side === 'sell' ? '#3A1623' : x.isBuyback ? '#2E2152' : '#0F2A22';
       return { cells: [
-        C(`${ago(x.timestamp)} ago`, 'left', { fg: '#8C87A3' }),
+        C(<TxLink h={x.txHash} label={`${ago(x.timestamp)} ago`} />, 'left', { fg: '#8C87A3' }),
         C(x.isBuyback ? 'Buyback' : x.side === 'buy' ? 'Buy' : 'Sell', 'left', { pill: true, plain: false, pillBg, pillFg: fg }),
         C(x.valueUsd != null ? Number(x.valueUsd).toFixed(2) : '—', 'right', { fg, weight: 600 }),
         C(compact(x.assetAmount), 'right', { fg }), C(compact(x.numeraireAmount), 'right', { fg }),
         C(x.priceUsd != null ? fmtUsd(x.priceUsd) : `${sig(Number(x.price), 3)} ${numSym}`, 'right', { fg, weight: 600 }),
-        C(x.isBuyback ? 'Buyback vault' : shortAddr(x.trader), 'right', { fg: '#8C87A3' }),
+        C(x.isBuyback ? <AddrLink a={x.sender} label="Buyback vault" /> : <AddrLink a={x.trader} />, 'right', { fg: '#8C87A3' }),
       ] };
     });
     tableState = trades.isLoading ? <div style={{ padding: 12 }}><Loading rows={3} height={28} /></div>
@@ -173,7 +174,7 @@ export default function TokenChart() {
     const priceUsd = token.data?.market?.priceUsd != null ? Number(token.data.market.priceUsd) : null;
     rows = (holders.data?.holders ?? []).map((h, i) => ({ cells: [
       C(`#${i + 1}`, 'left', { fg: '#8C87A3' }),
-      C(h.label ?? shortAddr(h.address), 'left', h.label ? { pill: true, plain: false, pillBg: '#1C1A29', pillFg: '#C9C5DA' } : { weight: 600 }),
+      C(<AddrLink a={h.address} label={h.label ?? undefined} />, 'left', h.label ? { pill: true, plain: false, pillBg: '#1C1A29', pillFg: '#C9C5DA' } : { weight: 600 }),
       C(`${(h.pctBps / 100).toFixed(1)}%`), C(compact(h.balance)), C(priceUsd != null ? fmtUsd(Number(h.balance) * priceUsd) : '—'),
     ] }));
     tableState = holders.isLoading ? <div style={{ padding: 12 }}><Loading rows={3} height={28} /></div>
