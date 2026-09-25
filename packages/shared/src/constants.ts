@@ -106,3 +106,9 @@ export const LAUNCH_FEE_WEI = BigInt(LAUNCH_FEE_MON) * 10n ** 18n;
 export const LAUNCH_RATE_LIMIT = 3;
 /** Rolling window for LAUNCH_RATE_LIMIT, in seconds (24h). */
 export const LAUNCH_RATE_WINDOW_S = 86_400;
+
+// ── Verified badge (SPEC O5, mainnet thresholds; display only) ────────────────
+/** Minimum all-time clean revenue (USDC, 6 dec) for the Verified badge. */
+export const VERIFIED_MIN_CLEAN_REVENUE_USDC = 100_000_000n; // 100 USDC
+/** Minimum distinct clean payers for the Verified badge. */
+export const VERIFIED_MIN_CLEAN_PAYERS = 10;

@@ -92,3 +92,17 @@ export const creatorChain: CreatorChain = {
     return { total, released, releasable, start: Number(start), cliffS, durationS };
   },
 };
+
+// BuybackVault v2 assetData (packages/contracts/src/BuybackVault.sol AssetData).
+const vaultV2Abi = [
+  { type: 'function', name: 'assetData', stateMutability: 'view', inputs: [{ name: 'asset', type: 'address' }],
+    outputs: [{ type: 'tuple', components: [
+      { name: 'poolId', type: 'bytes32' }, { name: 'registered', type: 'bool' }, { name: 'numeraire', type: 'address' },
+      { name: 'balanceUSDC', type: 'uint128' }, { name: 'buybackFromRevenue', type: 'uint128' },
+      { name: 'buybackFromTrading', type: 'uint128' }, { name: 'tokenBalance', type: 'uint128' },
+      { name: 'lastExecuteTime', type: 'uint64' }] }] },
+] as const;
+
+export async function vaultAssetData(asset: string) {
+  return publicClient.readContract({ address: VAULT_ADDR, abi: vaultV2Abi, functionName: 'assetData', args: [asset as Address] });
+}

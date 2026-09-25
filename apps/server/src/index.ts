@@ -45,6 +45,7 @@ import pricesRouter from './routes/prices.js';
 import launchFeeRouter from './routes/launchFee.js';
 import adminRouter from './routes/admin.js';
 import leaderboardRouter from './routes/leaderboard.js';
+import statsRouter from './routes/stats.js';
 import { startProbeWorker } from './lib/probes.js';
 
 const app = new Hono();
@@ -60,6 +61,7 @@ app.route('/api/prices',  pricesRouter);
 app.route('/api/launch-fee', launchFeeRouter);
 app.route('/api/admin',  adminRouter);
 app.route('/api/leaderboard', leaderboardRouter);
+app.route('/api/stats', statsRouter);
 app.route('/s', gateway);
 
 startProbeWorker();

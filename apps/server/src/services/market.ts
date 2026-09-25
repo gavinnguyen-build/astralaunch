@@ -89,7 +89,7 @@ export async function marketSnapshot(db: Db, asset: string, numeraire: string, u
   };
 }
 
-async function launchPrice(db: Db, asset: string): Promise<bigint | null> {
+export async function launchPrice(db: Db, asset: string): Promise<bigint | null> {
   const [i] = await db.select({ p: idxPoolInits.priceWad }).from(idxPoolInits).where(eq(idxPoolInits.asset, asset.toLowerCase())).limit(1);
   return i ? BigInt(i.p) : null;
 }

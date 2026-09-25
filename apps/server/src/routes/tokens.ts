@@ -16,7 +16,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { eq, desc, and, gte, sql, count, or, isNull, lt } from 'drizzle-orm';
-import { createPublicClient, http, type Address } from 'viem';
+import { createPublicClient, formatUnits, http, type Address } from 'viem';
 import { defineChain } from 'viem';
 import { db } from '../db/client.js';
 import {
@@ -24,13 +24,15 @@ import {
   idxRegistrations, idxDistributions, idxBuybacks, idxEscrowClaims,
   idxEscrowForfeits, idxUsdcTransfers, idxCheckpoints,
 } from '../db/schema.js';
-import { tokenMetadataSchema, tokenMetadataMessage } from '@astralaunch/shared';
+import { tokenMetadataSchema, tokenMetadataMessage, WMON } from '@astralaunch/shared';
 import { authorizeTokenCreator, consumeSignedMessage, ServiceAuthError } from '../services/serviceAuth.js';
 import { RPC_URL, CHAIN_ID, REGISTRY_ADDR, SUBMITTERS } from '../env.js';
 import { isAssetListed, isListedSql } from '../services/launchFee.js';
 import { classifyTransfer, excludedPayers } from '../services/cleanRevenue.js';
 import { platformAddrs } from '../lib/platform.js';
-import { holderLabels, usdResolver } from '../lib/chain.js';
+import { creatorChain, holderLabels, usdResolver, vaultAssetData } from '../lib/chain.js';
+import { classifiedPayments, isVerified, serviceHealth, sparkline7d, usageSummary } from '../services/usage.js';
+import { holderCount } from '../services/market.js';
 import { TIMEFRAMES, candles, holders, marketSnapshot, trades, type Timeframe } from '../services/market.js';
 
 // ── viem client ───────────────────────────────────────────────────────────────
@@ -63,27 +65,6 @@ const escrowAbi = [
   },
 ] as const;
 
-const vaultAbi = [
-  { type: 'function', name: 'assetData', stateMutability: 'view',
-    inputs: [{ name: 'asset', type: 'address' }],
-    outputs: [{ type: 'tuple', components: [
-      { name: 'poolKey', type: 'tuple', components: [
-        { name: 'currency0',   type: 'address' },
-        { name: 'currency1',   type: 'address' },
-        { name: 'fee',         type: 'uint24'  },
-        { name: 'tickSpacing', type: 'int24'   },
-        { name: 'hooks',       type: 'address' },
-      ]},
-      { name: 'poolId',             type: 'bytes32' },
-      { name: 'registered',         type: 'bool'    },
-      { name: 'balanceUSDC',        type: 'uint128' },
-      { name: 'buybackFromRevenue', type: 'uint128' },
-      { name: 'buybackFromTrading', type: 'uint128' },
-      { name: 'tokenBalance',       type: 'uint128' },
-      { name: 'lastExecuteTime',    type: 'uint64'  },
-    ]}],
-  },
-] as const;
 
 const erc20Abi = [
   { type: 'function', name: 'name',     stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] },
@@ -106,6 +87,26 @@ import { ESCROW_ADDR, VAULT_ADDR } from '../env.js';
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const nowS = () => BigInt(Math.floor(Date.now() / 1000));
+
+/** Token page "Creator" box: escrow unlocked vs collected, vesting progress, escrow expiry. */
+async function creatorSummary(t: { asset: string; creator: string; numeraire: string }) {
+  const wmon = t.numeraire.toLowerCase() === WMON.toLowerCase();
+  const safe = async <T,>(p: Promise<T>) => { try { return await p; } catch { return null; } };
+  const [escrow, claimable, vest] = await Promise.all([
+    safe(creatorChain.escrowData(t.asset)), safe(creatorChain.escrowClaimable(t.asset, wmon)), safe(creatorChain.vesting(t.asset, t.creator)),
+  ]);
+  const f6 = (v: bigint) => formatUnits(v, 6);
+  const f18 = (v: bigint) => formatUnits(v, 18);
+  return {
+    escrow: escrow ? {
+      symbol: wmon ? 'WMON' : 'USDC',
+      claimable: claimable === null ? null : wmon ? f18(claimable) : f6(claimable),
+      usdcAccrued: f6(escrow.usdcAccrued), usdcClaimed: f6(escrow.usdcClaimed),
+      recordedRevenue: f6(escrow.recordedRevenue), forfeitAt: escrow.launchTime + 365 * 86_400, forfeited: escrow.forfeited,
+    } : null,
+    vesting: vest ? { total: f18(vest.total), vested: f18(vest.released + vest.releasable), start: vest.start, cliffEnd: vest.start + vest.cliffS, end: vest.start + vest.durationS } : null,
+  };
+}
 
 function ago(days: number) {
   const d = new Date();
@@ -157,6 +158,8 @@ app.get('/:asset/*', requireListed);
 // GET /api/tokens?sort=clean_revenue_30d|new&limit=50&offset=0
 app.get('/', async (c) => {
   const sort   = c.req.query('sort') ?? 'clean_revenue_30d';
+  // Usage window for usage30d (Discover range switch): 7, 30 (default) or 90 days.
+  const days   = [7, 30, 90].includes(Number(c.req.query('days'))) ? BigInt(Number(c.req.query('days'))) : 30n;
   const limit  = Math.min(Number(c.req.query('limit') ?? 50), 100);
   const offset = Number(c.req.query('offset') ?? 0);
 
@@ -189,6 +192,9 @@ app.get('/', async (c) => {
     });
     const metrics = revenueMap.get(t.asset) ?? { revenue: 0n, calls: 0 };
     const market = t.numeraire ? await marketSnapshot(db, t.asset, t.numeraire, usdResolver, nowS()) : null;
+    const trend = t.numeraire ? await sparkline7d(db, t.asset, nowS()) : null;
+    const usage30d = t.numeraire ? await usageSummary(db, t, nowS() - days * 86_400n, usdResolver, platformAddrs()) : null;
+    const usageAll = t.numeraire ? await usageSummary(db, t, null, usdResolver, platformAddrs()) : null;
     return {
       asset:         t.asset,
       name:          t.name,
@@ -202,12 +208,19 @@ app.get('/', async (c) => {
         name:        svc.name,
         description: svc.description,
         priceUsdc:   svc.priceUsdc,
+        endpoint:    `/s/${svc.slug}`,
       } : null,
       metrics: {
         cleanRevenue30d: metrics.revenue.toString(),
         calls30d:        metrics.calls,
       },
-      market,
+      market: market && trend ? { ...market, ...trend } : market,
+      usage30d,
+      usageDays:     Number(days),
+      verified:      isVerified(usageAll),
+      holders:       await holderCount(db, t.asset),
+      xHandle:       t.xHandle,
+      description:   t.description,
     };
   }));
 
@@ -306,9 +319,7 @@ app.get('/:asset', async (c) => {
   } catch { /* ignore */ }
 
   try {
-    vaultData = await publicClient.readContract({
-      address: VAULT_ADDR, abi: vaultAbi, functionName: 'assetData', args: [asset as Address],
-    });
+    vaultData = await vaultAssetData(asset);   // v2 layout (the old v1 ABI never decoded)
   } catch { /* ignore */ }
 
   try {
@@ -336,7 +347,14 @@ app.get('/:asset', async (c) => {
     numeraire:  token.numeraire,
     decimals:   token.decimals,
     registeredBlock: token.registeredBlock?.toString() ?? null,
-    market: token.numeraire ? await marketSnapshot(db, token.asset, token.numeraire, usdResolver, nowS()) : null,
+    market: token.numeraire ? { ...(await marketSnapshot(db, token.asset, token.numeraire, usdResolver, nowS())), ...(await sparkline7d(db, token.asset, nowS())) } : null,
+    usage30d: token.numeraire ? await usageSummary(db, token, nowS() - 30n * 86_400n, usdResolver, platformAddrs()) : null,
+    usageAll: token.numeraire ? await usageSummary(db, token, null, usdResolver, platformAddrs()) : null,
+    serviceHealth: svc ? await serviceHealth(db, svc.id) : null,
+    serviceUpdatedAt: svc?.updatedAt ?? null,
+    holders: await holderCount(db, token.asset),
+    verified: isVerified(token.numeraire ? await usageSummary(db, token, null, usdResolver, platformAddrs()) : null),
+    creatorSummary: await creatorSummary(token),
     service: svc ? {
       id:            svc.id,
       slug:          svc.slug,
@@ -345,6 +363,7 @@ app.get('/:asset', async (c) => {
       priceUsdc:     svc.priceUsdc,
       requestSchema: svc.requestSchema,
       responseSchema:svc.responseSchema,
+      endpoint:      `/s/${svc.slug}`,
     } : null,
     metrics: {
       cleanRevenue24h:  rev24.toString(),
@@ -494,6 +513,12 @@ app.get('/:asset/payments', async (c) => {
   const source = c.req.query('source');
   const limit  = Math.min(Number(c.req.query('limit') ?? 20), 100);
   const offset = Number(c.req.query('offset') ?? 0);
+
+  if (source === 'classified') {
+    const token = await db.query.tokens.findFirst({ where: eq(tokens.asset, asset) });
+    if (!token?.router) return c.json({ payments: [], limit, offset });
+    return c.json({ payments: await classifiedPayments(db, token, platformAddrs(), limit), limit, offset });
+  }
 
   if (source === 'indexed') {
     // Read from indexed USDC transfers

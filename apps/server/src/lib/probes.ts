@@ -12,6 +12,8 @@ import { signRequest } from './hmac.js';
 const PROBE_INTERVAL_MS = 5 * 60_000; // 5 minutes
 
 export function startProbeWorker(): void {
+  // Read-only preview instances (e.g. a second local server on mainnet data) must not write probes.
+  if (process.env.PROBES_DISABLED === 'true') { console.log('[probes] disabled (PROBES_DISABLED=true)'); return; }
   // Run once on start, then on schedule
   runProbes().catch(console.error);
   setInterval(() => runProbes().catch(console.error), PROBE_INTERVAL_MS);
