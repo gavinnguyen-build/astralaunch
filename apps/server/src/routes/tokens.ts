@@ -11,8 +11,8 @@
  */
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { eq, desc, and, gte, sql, count } from 'drizzle-orm';
-import { createPublicClient, http, verifyMessage, getAddress, type Address } from 'viem';
+import { eq, desc, and, gte, sql, count, or, isNull, lt } from 'drizzle-orm';
+import { createPublicClient, http, type Address } from 'viem';
 import { defineChain } from 'viem';
 import { db } from '../db/client.js';
 import {
@@ -20,7 +20,8 @@ import {
   idxRegistrations, idxDistributions, idxBuybacks, idxEscrowClaims,
   idxEscrowForfeits, idxUsdcTransfers, idxCheckpoints,
 } from '../db/schema.js';
-import { tokenMetadataSchema, tokenMetadataMessage, TOKEN_METADATA_MAX_AGE_S } from '@astralaunch/shared';
+import { tokenMetadataSchema, tokenMetadataMessage } from '@astralaunch/shared';
+import { authorizeTokenCreator, consumeSignedMessage, ServiceAuthError } from '../services/serviceAuth.js';
 import { RPC_URL, CHAIN_ID, REGISTRY_ADDR, SUBMITTERS } from '../env.js';
 import { isAssetListed, isListedSql } from '../services/launchFee.js';
 
@@ -210,43 +211,41 @@ app.get('/', async (c) => {
 });
 
 // POST /api/tokens — metadata only (image, X handle, website, description), signed by
-// the token's on-chain creator. Token rows are created by the indexer from the Registered
+// the token's on-chain creator (same JSON signed-message + replay protection as services,
+// D-SV1). Token rows are created by the indexer from the Registered
 // event (D-TK1); this cannot create a token that is not registered on-chain.
 app.post('/', zValidator('json', tokenMetadataSchema), async (c) => {
   const body = c.req.valid('json');
   const asset = body.asset.toLowerCase();
 
-  const token = await db.query.tokens.findFirst({ where: eq(tokens.asset, asset) });
-  if (!token) {
-    return c.json({ error: 'Token is not registered on-chain (or not indexed yet). Metadata can only be set on registered tokens.' }, 404);
-  }
-
-  const nowS = Math.floor(Date.now() / 1000);
-  if (Math.abs(nowS - body.issuedAt) > TOKEN_METADATA_MAX_AGE_S) {
-    return c.json({ error: `issuedAt must be within ${TOKEN_METADATA_MAX_AGE_S}s of server time` }, 400);
-  }
-  if (token.metadataSignedAt !== null && BigInt(body.issuedAt) <= token.metadataSignedAt) {
-    return c.json({ error: 'A newer metadata update was already accepted (issuedAt too old)' }, 409);
-  }
-
   const { signature, ...signed } = body;
-  let sigValid = false;
-  try {
-    sigValid = await verifyMessage({
-      address:   getAddress(token.creator),
-      message:   tokenMetadataMessage(signed),
-      signature: signature as `0x${string}`,
-    });
-  } catch { /* invalid signature encoding */ }
-  if (!sigValid) return c.json({ error: 'Signature must be from the token creator' }, 401);
+  const message = tokenMetadataMessage(signed);
+  const existing = await db.query.tokens.findFirst({ where: eq(tokens.asset, asset) });
 
-  await db.update(tokens).set({
-    ...(body.imageUrl    !== undefined && { imageUrl:    body.imageUrl }),
-    ...(body.xHandle     !== undefined && { xHandle:     body.xHandle.replace(/^@/, '') }),
-    ...(body.website     !== undefined && { website:     body.website }),
-    ...(body.description !== undefined && { description: body.description }),
-    metadataSignedAt: BigInt(body.issuedAt),
-  }).where(eq(tokens.asset, asset));
+  try {
+    const token = await authorizeTokenCreator(db, {
+      asset, message, signature, issuedAt: body.issuedAt, nowS: Math.floor(Date.now() / 1000),
+      lastIssuedAt: existing?.metadataSignedAt ?? null, requireListed: false,
+    });
+    await db.transaction(async (tx) => {
+      await consumeSignedMessage(tx, message, token.creator, 'token_metadata', body.issuedAt);
+      const [row] = await tx.update(tokens).set({
+        ...(body.imageUrl    !== undefined && { imageUrl:    body.imageUrl }),
+        ...(body.xHandle     !== undefined && { xHandle:     body.xHandle.replace(/^@/, '') }),
+        ...(body.website     !== undefined && { website:     body.website }),
+        ...(body.description !== undefined && { description: body.description }),
+        metadataSignedAt: BigInt(body.issuedAt),
+      })
+        // Monotonic guard against a concurrent, older signed update.
+        .where(and(eq(tokens.asset, asset),
+          or(isNull(tokens.metadataSignedAt), lt(tokens.metadataSignedAt, BigInt(body.issuedAt)))))
+        .returning({ asset: tokens.asset });
+      if (!row) throw new ServiceAuthError(409, 'A newer signed request was already accepted (issuedAt too old)');
+    });
+  } catch (e) {
+    if (e instanceof ServiceAuthError) return c.json({ error: e.message }, e.status);
+    throw e;
+  }
 
   return c.json({ asset, updated: true });
 });

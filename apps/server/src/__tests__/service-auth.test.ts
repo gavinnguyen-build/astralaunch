@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { serviceCreateMessage, serviceUpdateMessage, createServiceSchema } from '@astralaunch/shared';
+import { serviceCreateMessage, serviceUpdateMessage, createServiceSchema, tokenMetadataMessage } from '@astralaunch/shared';
 
 const BASE = {
   asset: '0xABCD1234567890ABCDEF1234567890ABCDEF1234', slug: 'my-service', name: 'My service',
@@ -41,5 +41,20 @@ describe('service auth messages', () => {
   it('client-supplied creator is not part of the schema', () => {
     const parsed = createServiceSchema.parse({ ...BASE, creator: '0x2222222222222222222222222222222222222222', signature: '0x00' });
     expect('creator' in parsed).toBe(false);
+  });
+
+  it('token metadata message: canonical JSON, binds every field, @ stripped from X handle', () => {
+    const m = { asset: BASE.asset, imageUrl: 'https://i.example/a.png', xHandle: '@abc', website: 'https://w.example',
+      description: 'line1\nimage: https://evil', issuedAt: 1_800_000_000 };
+    const msg = tokenMetadataMessage(m);
+    expect(msg.startsWith('Astralaunch: update token metadata\n')).toBe(true);
+    expect(msg.split('\n')).toHaveLength(2);
+    const json = JSON.parse(msg.split('\n')[1]!);
+    expect(json).toMatchObject({ asset: BASE.asset.toLowerCase(), xHandle: 'abc', imageUrl: m.imageUrl });
+    expect(tokenMetadataMessage({ ...m, xHandle: 'abc' })).toBe(msg);
+    for (const v of [{ imageUrl: 'https://x.example' }, { website: 'https://x.example' }, { description: 'x' },
+      { xHandle: 'other' }, { issuedAt: 1 }]) {
+      expect(tokenMetadataMessage({ ...m, ...v })).not.toBe(msg);
+    }
   });
 });

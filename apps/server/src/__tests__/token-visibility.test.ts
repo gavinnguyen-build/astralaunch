@@ -17,7 +17,7 @@ vi.mock('../env.js', () => ({
   USDC_ADDR: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603', PAYMENT_TIMEOUT_S: 60, HMAC_MASTER_KEY: 'k',
 }));
 
-const { tokens, services, idxRegistrations } = await import('../db/schema.js');
+const { tokens, services, idxRegistrations, signedRequests } = await import('../db/schema.js');
 const { consumeForRegistration, verifyLaunchFee } = await import('../services/launchFee.js');
 const { upsertTokenFromRegistration } = await import('../services/tokenSync.js');
 const { LAUNCH_FEE_TREASURY, LAUNCH_FEE_WEI, tokenMetadataMessage, serviceCreateMessage } = await import('@astralaunch/shared');
@@ -117,6 +117,13 @@ describe('token visibility', () => {
   });
   const now = () => Math.floor(Date.now() / 1000);
 
+  it('POST /api/tokens: metadata can be prepared for an unlisted token (still hidden)', async () => {
+    const m = { asset: UNPAID, description: 'soon', issuedAt: now() };
+    const res = await post('/api/tokens', { ...m, signature: await creatorAcct.signMessage({ message: tokenMetadataMessage(m) }) });
+    expect(res.status).toBe(200);
+    expect((await app.request(`/api/tokens/${UNPAID}`)).status).toBe(404);
+  });
+
   it('POST /api/tokens cannot create a token that is not registered on-chain', async () => {
     const asset = '0x' + 'c'.repeat(40);
     const m = { asset, description: 'fake', issuedAt: now() };
@@ -130,9 +137,9 @@ describe('token visibility', () => {
     const msg = tokenMetadataMessage(m);
 
     const wrong = await post('/api/tokens', { ...m, signature: await otherAcct.signMessage({ message: msg }) });
-    expect(wrong.status).toBe(401);
+    expect(wrong.status).toBe(403);
     const tampered = await post('/api/tokens', { ...m, description: 'evil', signature: await creatorAcct.signMessage({ message: msg }) });
-    expect(tampered.status).toBe(401);
+    expect(tampered.status).toBe(403);
     // Unknown fields (e.g. trying to change on-chain columns) are stripped by the schema.
     const ok = await post('/api/tokens', { ...m, name: 'HACK', creator: otherAcct.address, signature: await creatorAcct.signMessage({ message: msg }) });
     expect(ok.status).toBe(200);
@@ -140,8 +147,13 @@ describe('token visibility', () => {
     const [t] = await db.select().from(tokens).where(eq(tokens.asset, PAID));
     expect(t).toMatchObject({ name: 'T0', creator: CREATOR, imageUrl: m.imageUrl, xHandle: 'nullsight', website: m.website, description: 'hi' });
 
-    // Replaying the same signed update (or an older one) is rejected.
+    // Replaying the same signed update (or an older one) is rejected, and the message is recorded.
     expect((await post('/api/tokens', { ...m, signature: await creatorAcct.signMessage({ message: msg }) })).status).toBe(409);
+    const { keccak256, toHex } = await import('viem');
+    const used = await db.select().from(signedRequests).where(eq(signedRequests.messageHash, keccak256(toHex(msg))));
+    expect(used).toMatchObject([{ purpose: 'token_metadata', signer: CREATOR }]);
+    const older = { asset: PAID, description: 'older', issuedAt: m.issuedAt - 1 };
+    expect((await post('/api/tokens', { ...older, signature: await creatorAcct.signMessage({ message: tokenMetadataMessage(older) }) })).status).toBe(409);
     const stale = { asset: PAID, description: 'old', issuedAt: now() - 3600 };
     expect((await post('/api/tokens', { ...stale, signature: await creatorAcct.signMessage({ message: tokenMetadataMessage(stale) }) })).status).toBe(400);
   });

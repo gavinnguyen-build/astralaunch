@@ -94,7 +94,7 @@ export function serviceUpdateMessage(
 // Tokens themselves come from the indexer (on-chain Registered event). This only
 // updates off-chain display metadata, signed by the token's on-chain creator.
 
-/** Max clock skew / age for a signed metadata update, in seconds. */
+/** Max clock skew / age for a signed metadata update, in seconds (same window as services). */
 export const TOKEN_METADATA_MAX_AGE_S = 600;
 
 export const tokenMetadataSchema = z.object({
@@ -115,13 +115,13 @@ export const tokenMetadataSchema = z.object({
 
 export type TokenMetadataInput = z.infer<typeof tokenMetadataSchema>;
 
-/** Message the creator signs; binds every provided field, the asset and issuedAt. */
+const TOKEN_METADATA_KEYS = ['asset', 'imageUrl', 'xHandle', 'website', 'description', 'issuedAt'] as const;
+
+/** Message the token creator signs: header + canonical JSON of every provided field and issuedAt. */
 export function tokenMetadataMessage(m: Omit<TokenMetadataInput, 'signature'>): string {
-  const lines = [`Astralaunch: update metadata for token ${m.asset.toLowerCase()}`];
-  if (m.imageUrl    !== undefined) lines.push(`image: ${m.imageUrl}`);
-  if (m.xHandle     !== undefined) lines.push(`x: ${m.xHandle.replace(/^@/, '')}`);
-  if (m.website     !== undefined) lines.push(`website: ${m.website}`);
-  if (m.description !== undefined) lines.push(`description: ${m.description}`);
-  lines.push(`issuedAt: ${m.issuedAt}`);
-  return lines.join('\n');
+  return `Astralaunch: update token metadata\n${canonical({
+    ...m,
+    asset:   m.asset.toLowerCase(),
+    xHandle: m.xHandle?.replace(/^@/, ''),
+  }, TOKEN_METADATA_KEYS)}`;
 }

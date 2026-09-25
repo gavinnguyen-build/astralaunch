@@ -1,5 +1,5 @@
 /**
- * Creator-signed requests for service create/update (docs/decisions.md D-SV1).
+ * Creator-signed requests: service create/update and token metadata (docs/decisions.md D-SV1).
  *
  * The signer must be the token's ON-CHAIN creator, taken from the tokens row the
  * indexer writes from the Registered event, never from the request body.
@@ -25,6 +25,8 @@ export interface CreatorAuthInput {
   nowS:      number;
   /** issuedAt of the last accepted request for the target (updates only). */
   lastIssuedAt?: bigint | null;
+  /** Services require a listed token; token metadata may be prepared while unlisted. Default true. */
+  requireListed?: boolean;
 }
 
 /** Returns the token row if the request is signed by its on-chain creator; throws ServiceAuthError otherwise. */
@@ -32,14 +34,14 @@ export async function authorizeTokenCreator(db: Db, a: CreatorAuthInput): Promis
   const asset = a.asset.toLowerCase();
   const [token] = await db.select().from(tokens).where(eq(tokens.asset, asset)).limit(1);
   if (!token) throw new ServiceAuthError(404, 'Token is not registered on-chain (or not indexed yet).');
-  if (!(await isAssetListed(db, asset))) {
+  if ((a.requireListed ?? true) && !(await isAssetListed(db, asset))) {
     throw new ServiceAuthError(403, 'Token is not listed: its launch fee has not been paid and consumed. Services can only be registered for listed tokens.');
   }
   if (Math.abs(a.nowS - a.issuedAt) > SERVICE_AUTH_MAX_AGE_S) {
     throw new ServiceAuthError(400, `issuedAt must be within ${SERVICE_AUTH_MAX_AGE_S}s of server time`);
   }
   if (a.lastIssuedAt != null && BigInt(a.issuedAt) <= a.lastIssuedAt) {
-    throw new ServiceAuthError(409, 'A newer signed request for this service was already accepted (issuedAt too old)');
+    throw new ServiceAuthError(409, 'A newer signed request was already accepted (issuedAt too old)');
   }
 
   let valid = false;
@@ -55,7 +57,7 @@ export async function authorizeTokenCreator(db: Db, a: CreatorAuthInput): Promis
  * authorizes; throws 409 if the exact message was already accepted (replay).
  */
 export async function consumeSignedMessage(
-  tx: Db, message: string, signer: string, purpose: 'service_create' | 'service_update', issuedAt: number,
+  tx: Db, message: string, signer: string, purpose: 'service_create' | 'service_update' | 'token_metadata', issuedAt: number,
 ): Promise<void> {
   const [row] = await tx.insert(signedRequests).values({
     messageHash: keccak256(toHex(message)),
