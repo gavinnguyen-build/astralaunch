@@ -219,3 +219,8 @@ ENS is not available on Monad, so the fee recipient must be a 0x address.
 **D-LC4. Fork testing.** `apps/web/scripts/fork-prepare.sh` prepares a fresh scratch DB and a fork env in
 the gitignored `astralaunch-anvil/.anvil-state/`. `scripts/fork-launch-test.ts` runs the flow from Node
 against a local RPC only.
+
+**D-LC5. Confirmation display (2026-09-26, per Tun).** The confirmation dialog shows only Token, Pairing,
+Fee recipient, Supply, Vesting, Launch fee (10 MON) and Estimated total (fee + gas), with Cancel and
+"Confirm and launch". The plan simulation and every check in `lib/launch.ts` are unchanged; only the
+display was reduced.

@@ -191,33 +191,16 @@ export default function Launch() {
 
 function Confirm({ plan, input, onCancel, onConfirm }: { plan: LaunchPlan; input: LaunchInput; onCancel: () => void; onConfirm: () => void }) {
   const R = ({ k, children }: { k: string; children: React.ReactNode }) => <div style={row}><span style={{ color: '#8C87A3' }}>{k}</span><span style={mono}>{children}</span></div>;
-  const gp = Number(plan.gasPrice) / 1e9;
   return (
     <div>
       <h2 style={{ margin: '0 0 6px', fontSize: '20px' }}>Confirm launch</h2>
-      <p style={{ margin: '0 0 14px', fontSize: 13, color: '#A7A2BD' }}>Simulated on {plan.numeraireSymbol === 'MON' ? 'the MON pool path' : 'the USDC pool path'}. The start time is recomputed from the latest block right before sending.</p>
       <R k="Token">{input.name} ({input.symbol})</R>
-      <R k="Pairing">{plan.numeraireSymbol} · <AddrLink a={plan.numeraire} /></R>
-      <R k="Price source">{plan.oracleNote}</R>
-      <R k="Fee recipient (creator)"><AddrLink a={plan.creator} /></R>
+      <R k="Pairing">{plan.numeraireSymbol}</R>
+      <R k="Fee recipient"><AddrLink a={plan.creator} /></R>
       <R k="Supply">1,000,000,000 · 85% pool · 15% vested</R>
       <R k="Vesting">15% to the fee recipient · 30-day cliff · 1 year</R>
-      <R k="Pool fee">2% · tick spacing 200 · Uniswap v4</R>
-      <R k="Curves">2 · 10 + 10 positions · 40% / 60% of liquidity</R>
-      <R k="Balance cap">1% of supply per wallet for 12 minutes</R>
-      <R k="Excluded from cap">{plan.excludedFromBalanceLimit.map((a) => <span key={a}><AddrLink a={a} /> </span>)}</R>
-      <R k="Governance / migration">none / none</R>
-      <div style={{ margin: '12px 0 4px', fontSize: 12, color: '#8C87A3', letterSpacing: '0.08em' }}>TRADING FEE SPLIT</div>
-      {plan.beneficiaries.map((b) => <R key={b.beneficiary} k={b.label}>{(Number(b.shares) / 1e16).toFixed(0)}% · <AddrLink a={b.beneficiary} /></R>)}
-      <div style={{ margin: '12px 0 4px', fontSize: 12, color: '#8C87A3', letterSpacing: '0.08em' }}>TRANSACTIONS</div>
-      <R k="1. Launch fee">{plan.feeTx.needed ? `${fmtMon(plan.feeTx.valueWei)} to treasury · gas ${plan.feeTx.gas}` : `already paid (${shortAddr(plan.feeTx.reusingReceipt ?? '')})`}</R>
-      <R k="2. createMulticurve">gas limit {plan.launchGas.toString()} (simulated)</R>
-      <R k="3. register">gas estimated after launch (≈1,000,000)</R>
-      {input.imageUrl || input.xHandle || input.website ? <R k="4. Token details">signature only, no gas</R> : null}
-      {input.service ? <R k="5. Service">{input.service.slug} · {Number(input.service.priceUsdc) / 1e6} USDC per call · signature only</R> : null}
-      <R k="Gas price">{gp.toFixed(2)} gwei</R>
+      <R k="Launch fee">{plan.feeTx.needed ? fmtMon(plan.feeTx.valueWei) : `${fmtMon(plan.feeTx.valueWei)} · already paid`}</R>
       <R k="Estimated total">{fmtMon(plan.estimatedMonCost)} (fee + gas)</R>
-      <R k="Wallet balance">{fmtMon(plan.monBalance)}</R>
       <div style={{ display: 'flex', gap: 10, marginTop: 18, justifyContent: 'flex-end' }}>
         <button type="button" style={btn(false)} onClick={onCancel}>Cancel</button>
         <button type="button" style={btn(true)} onClick={onConfirm}>Confirm and launch</button>
