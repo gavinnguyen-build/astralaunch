@@ -602,7 +602,7 @@ app.get('/:asset/holders', zValidator('query', z.object({
 })), async (c) => {
   const token = await db.query.tokens.findFirst({ where: eq(tokens.asset, c.req.param('asset').toLowerCase()) });
   if (!token) return c.json({ error: 'Token not found' }, 404);
-  return c.json(await holders(db, token.asset, holderLabels(token.creator), c.req.valid('query').limit));
+  return c.json(await holders(db, token.asset, holderLabels(token.creator, token.asset), c.req.valid('query').limit));
 });
 
 // GET /api/tokens/:asset/health — service probe uptime

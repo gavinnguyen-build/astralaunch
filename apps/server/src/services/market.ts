@@ -28,6 +28,11 @@ export const numeraireSymbol = (n: string) =>
 export const numeraireDecimals = (n: string) =>
   Object.entries(NUMERAIRE_DECIMALS).find(([k]) => k.toLowerCase() === n.toLowerCase())?.[1] ?? 18;
 
+/** db.execute() rows: postgres-js returns an array, PGlite returns { rows }. */
+export function rowsOf<T>(res: unknown): T[] {
+  return (Array.isArray(res) ? res : (res as { rows: T[] }).rows) as T[];
+}
+
 const wad = (v: bigint | null) => (v === null ? null : formatUnits(v, 18));
 const toUsd = (priceWad: bigint | null, rate: UsdRate) => (priceWad === null || !rate ? null : mulPrice(priceWad, rate.price, rate.decimals));
 
@@ -109,7 +114,7 @@ export async function candles(db: Db, asset: string, numeraire: string, tf: Time
     GROUP BY 1 ORDER BY 1 DESC LIMIT ${limit}`);
   const rate = await usd(numeraire);
   const nd = numeraireDecimals(numeraire);
-  const list = (rows.rows as Array<Record<string, string | number>>).reverse();
+  const list = rowsOf<Record<string, string | number>>(rows).reverse();
   const px = (x: string | number) => ({ num: wad(BigInt(x))!, usd: wad(toUsd(BigInt(x), rate)) });
   return {
     tf, numeraire: numeraire.toLowerCase(), numeraireSymbol: numeraireSymbol(numeraire),
@@ -174,7 +179,7 @@ export async function holders(db: Db, asset: string, labels: Record<string, stri
     ), bal AS (SELECT addr, SUM(d) AS balance FROM moves WHERE addr NOT IN (${ZERO}, ${DEAD}) GROUP BY addr HAVING SUM(d) > 0)
     SELECT addr, balance, COUNT(*) OVER ()::int AS total FROM bal ORDER BY balance DESC LIMIT ${limit}`);
   const supply = await supplyOf(db, asset);
-  const list = rows.rows as Array<{ addr: string; balance: string; total: number }>;
+  const list = rowsOf<{ addr: string; balance: string; total: number }>(rows);
   return {
     holderCount: list[0]?.total ?? 0,
     supply: formatUnits(supply, ASSET_DECIMALS),

@@ -16,7 +16,7 @@ export const publicClient = createPublicClient({ chain: monad, transport: http(R
 export const usdResolver = createUsdResolver(chainlinkReader(publicClient, MON_USD_ORACLE as Address));
 
 /** Labels for holder lists (lowercase address → label). */
-export function holderLabels(creator?: string): Record<string, string> {
+export function holderLabels(creator?: string, asset?: string): Record<string, string> {
   const l: Record<string, string> = {
     [POOL_MANAGER.toLowerCase()]: 'Uniswap v4 pool',
     [VAULT_ADDR.toLowerCase()]: 'Buyback vault',
@@ -25,6 +25,8 @@ export function holderLabels(creator?: string): Record<string, string> {
     [DEAD]: 'Burn address',
   };
   if (creator) l[creator.toLowerCase()] = 'Creator';
+  // DopplerERC20 holds the creator's vesting allocation in the token contract itself.
+  if (asset) l[asset.toLowerCase()] = 'Creator vesting (locked)';
   return l;
 }
 

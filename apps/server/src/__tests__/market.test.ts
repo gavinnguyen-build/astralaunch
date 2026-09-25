@@ -204,3 +204,11 @@ describe('creator leaderboard + dashboard', () => {
     await db.execute(sql`SELECT 1`);
   });
 });
+
+describe('rowsOf (driver shapes)', async () => {
+  const { rowsOf } = await import('../services/market.js');
+  it('accepts postgres-js arrays and PGlite { rows }', () => {
+    expect(rowsOf([{ a: 1 }])).toEqual([{ a: 1 }]);
+    expect(rowsOf({ rows: [{ a: 1 }] })).toEqual([{ a: 1 }]);
+  });
+});

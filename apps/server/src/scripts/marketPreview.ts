@@ -32,7 +32,7 @@ run(async () => {
       const c = await candles(db, a, t.numeraire, '1h', usdResolver);
       show('GET /candles?tf=1h', { ...c, candles: c.candles.slice(-5) });
       show('GET /trades', await trades(db, a, t.numeraire, usdResolver, 10));
-      show('GET /holders', await holders(db, a, holderLabels(t.creator), 10));
+      show('GET /holders', await holders(db, a, holderLabels(t.creator, a), 10));
     }
     show('GET /api/leaderboard?group=creators&period=all', await creatorLeaderboard(db, 'all', nowS, platformAddrs()));
     for (const c of creators) show(`GET /api/creator/${c}`, await creatorDashboard(db, creatorChain, c));
