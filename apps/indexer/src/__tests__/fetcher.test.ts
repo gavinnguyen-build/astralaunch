@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ChunkManager, RateLimiter, MIN_CHUNK_SIZE, isRangeError } from '../fetcher.js';
+import { ChunkManager, RateLimiter, MIN_CHUNK_SIZE, isRangeError, isTransientError } from '../fetcher.js';
 import type { PublicClient, Log } from 'viem';
 import { transferEvent } from '../abis.js';
 
@@ -13,9 +13,10 @@ function makeMockClient(
 
 const ADDR = '0x1234567890abcdef1234567890abcdef12345678' as `0x${string}`;
 
+// ── isRangeError ────────────────────────────────────────────────────────────
+
 describe('isRangeError', () => {
   it('detects Monad RPC -32614 code (viem-wrapped)', () => {
-    // Exact shape viem produces for Monad's public RPC error
     const viemErr = new Error(
       'RPC Request failed.\n\nURL: https://rpc.monad.xyz\nRequest body: ...',
     );
@@ -53,6 +54,54 @@ describe('isRangeError', () => {
     expect(isRangeError(new Error('timeout'))).toBe(false);
   });
 });
+
+// ── isTransientError ────────────────────────────────────────────────────────
+
+describe('isTransientError', () => {
+  it('detects viem TimeoutError (name contains "timeout")', () => {
+    const err = new Error('The request took too long to respond.');
+    err.name = 'TimeoutError';
+    (err as any).details = 'The request timed out.';
+    expect(isTransientError(err)).toBe(true);
+  });
+
+  it('detects "timed out" in details', () => {
+    const err = new Error('Request failed');
+    (err as any).details = 'The request timed out.';
+    expect(isTransientError(err)).toBe(true);
+  });
+
+  it('detects 429 in message', () => {
+    expect(isTransientError(new Error('rate limit exceeded 429'))).toBe(true);
+  });
+
+  it('detects HTTP 502/503/504', () => {
+    expect(isTransientError(new Error('502 Bad Gateway'))).toBe(true);
+    expect(isTransientError(new Error('503 Service Unavailable'))).toBe(true);
+    expect(isTransientError(new Error('504 Gateway Timeout'))).toBe(true);
+  });
+
+  it('detects ECONNRESET / ECONNREFUSED / ENOTFOUND', () => {
+    expect(isTransientError(new Error('ECONNRESET'))).toBe(true);
+    expect(isTransientError(new Error('ECONNREFUSED'))).toBe(true);
+    expect(isTransientError(new Error('ENOTFOUND'))).toBe(true);
+  });
+
+  it('detects "fetch failed"', () => {
+    expect(isTransientError(new Error('fetch failed'))).toBe(true);
+  });
+
+  it('detects "socket hang up"', () => {
+    expect(isTransientError(new Error('socket hang up'))).toBe(true);
+  });
+
+  it('returns false for non-transient errors', () => {
+    expect(isTransientError(new Error('invalid argument'))).toBe(false);
+    expect(isTransientError(new Error('block range too wide'))).toBe(false);
+  });
+});
+
+// ── ChunkManager ────────────────────────────────────────────────────────────
 
 describe('ChunkManager', () => {
   it('returns logs for a normal chunk', async () => {
@@ -198,6 +247,7 @@ describe('ChunkManager', () => {
   });
 
   it('retries with exponential backoff on transient errors', async () => {
+    vi.useFakeTimers();
     let callCount = 0;
     const client = makeMockClient(async () => {
       callCount++;
@@ -209,15 +259,18 @@ describe('ChunkManager', () => {
 
     const mgr = new ChunkManager(client, 1000, 1000);
 
-    const result = await mgr.getLogs({
+    const promise = mgr.getLogs({
       fromBlock: 0n,
       toBlock: 100n,
       address: ADDR,
       events: [transferEvent],
     });
+    await vi.runAllTimersAsync();
+    const result = await promise;
 
     expect(callCount).toBe(3); // 2 retries + 1 success
     expect(result.logs).toEqual([]);
+    vi.useRealTimers();
   });
 
   it('rethrows non-retriable errors', async () => {
@@ -235,6 +288,150 @@ describe('ChunkManager', () => {
         events: [transferEvent],
       }),
     ).rejects.toThrow('invalid argument');
+  });
+
+  // ── New tests for enhanced retry logic ──────────────────────────────────
+
+  it('timeout then success — recovers without crashing', async () => {
+    vi.useFakeTimers();
+    let callCount = 0;
+    const client = makeMockClient(async () => {
+      callCount++;
+      if (callCount === 1) {
+        // Simulate viem TimeoutError shape
+        const err = new Error('The request took too long to respond.');
+        err.name = 'TimeoutError';
+        (err as any).details = 'The request timed out.';
+        throw err;
+      }
+      return [{ blockNumber: 100n, logIndex: 0, data: '0x', topics: [], address: '0x0', removed: false } as unknown as Log];
+    });
+
+    const mgr = new ChunkManager(client, 1000, 1000);
+    const promise = mgr.getLogs({
+      fromBlock: 100n,
+      toBlock: 200n,
+      address: ADDR,
+      events: [transferEvent],
+    });
+    await vi.runAllTimersAsync();
+    const result = await promise;
+
+    expect(callCount).toBe(2);
+    expect(result.logs).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
+  it('HTTP 429 then success — recovers without crashing', async () => {
+    vi.useFakeTimers();
+    let callCount = 0;
+    const client = makeMockClient(async () => {
+      callCount++;
+      if (callCount === 1) {
+        const err = new Error('HTTP request failed.');
+        err.name = 'HttpRequestError';
+        (err as any).details = '429 Too Many Requests';
+        throw err;
+      }
+      return [];
+    });
+
+    const mgr = new ChunkManager(client, 1000, 1000);
+    const promise = mgr.getLogs({
+      fromBlock: 0n,
+      toBlock: 100n,
+      address: ADDR,
+      events: [transferEvent],
+    });
+    await vi.runAllTimersAsync();
+    const result = await promise;
+
+    expect(callCount).toBe(2);
+    expect(result.logs).toEqual([]);
+    vi.useRealTimers();
+  });
+
+  it('persistent transient failure halves chunk after ~10 retries', async () => {
+    vi.useFakeTimers();
+    let callCount = 0;
+    const client = makeMockClient(async () => {
+      callCount++;
+      // Fail 10 times (triggers halve), then succeed on attempt 11
+      if (callCount <= 10) {
+        throw new Error('503 Service Unavailable');
+      }
+      return [];
+    });
+
+    const mgr = new ChunkManager(client, 200, 1000);
+    const promise = mgr.getLogs({
+      fromBlock: 0n,
+      toBlock: 500n,
+      address: ADDR,
+      events: [transferEvent],
+    });
+    await vi.runAllTimersAsync();
+    const result = await promise;
+
+    // 10 retries → halve (200→100) → 1 success
+    expect(callCount).toBe(11);
+    expect(mgr.getChunkSize()).toBe(100);
+    expect(result.toBlock).toBe(99n); // clamped to halved chunk
+    vi.useRealTimers();
+  });
+
+  it('at MIN_CHUNK_SIZE, transient errors keep retrying (never throws)', async () => {
+    vi.useFakeTimers();
+    let callCount = 0;
+    const client = makeMockClient(async () => {
+      callCount++;
+      // Fail 15 times then succeed — at MIN_CHUNK_SIZE the whole time
+      if (callCount <= 15) {
+        throw new Error('ECONNRESET');
+      }
+      return [];
+    });
+
+    const mgr = new ChunkManager(client, MIN_CHUNK_SIZE, 1000);
+    const promise = mgr.getLogs({
+      fromBlock: 0n,
+      toBlock: 100n,
+      address: ADDR,
+      events: [transferEvent],
+    });
+    await vi.runAllTimersAsync();
+    const result = await promise;
+
+    // Should succeed after 15 failures — never throws
+    expect(callCount).toBe(16);
+    expect(result.logs).toEqual([]);
+    expect(mgr.getChunkSize()).toBe(MIN_CHUNK_SIZE);
+    vi.useRealTimers();
+  });
+
+  it('transient errors do not affect range-error halving', async () => {
+    vi.useFakeTimers();
+    let callCount = 0;
+    const client = makeMockClient(async () => {
+      callCount++;
+      if (callCount === 1) throw new Error('ECONNRESET');
+      if (callCount === 2) throw new Error('block range too wide');
+      return [];
+    });
+
+    const mgr = new ChunkManager(client, 1000, 1000);
+    const promise = mgr.getLogs({
+      fromBlock: 0n,
+      toBlock: 2000n,
+      address: ADDR,
+      events: [transferEvent],
+    });
+    await vi.runAllTimersAsync();
+    const result = await promise;
+
+    expect(callCount).toBe(3);
+    expect(mgr.getChunkSize()).toBe(500); // halved from 1000
+    vi.useRealTimers();
   });
 });
 

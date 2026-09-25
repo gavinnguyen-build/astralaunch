@@ -7,9 +7,16 @@ export const MIN_CHUNK_SIZE = 10;
 const GROW_AFTER = 3;
 const GROW_FACTOR = 1.5;
 
-/** Default max retries with exponential backoff. */
-const MAX_RETRIES = 5;
-const BASE_DELAY_MS = 500;
+/**
+ * After this many consecutive transient retries, halve the chunk size
+ * (smaller range may succeed under RPC load). Resets on success or halve.
+ */
+const TRANSIENT_RETRIES_BEFORE_HALVE = 10;
+
+/** Exponential backoff: 1s, 2s, 4s, 8s, … capped at 60s, plus 0–500ms jitter. */
+const BASE_DELAY_MS = 1_000;
+const MAX_DELAY_MS  = 60_000;
+const JITTER_MS     = 500;
 
 export interface ChunkResult {
   logs: Log[];
@@ -45,14 +52,18 @@ export class RateLimiter {
 
 /**
  * Extract all relevant text from a (possibly viem-wrapped) error.
- * Checks `.message`, `.cause.message`, `.details`, `.cause.details`.
+ * Checks `.name`, `.message`, `.cause.message`, `.details`, `.cause.details`.
  */
 function collectErrorText(err: unknown): string {
   const parts: string[] = [];
   if (err instanceof Error) {
+    parts.push(err.name);
     parts.push(err.message);
     const cause = (err as any).cause;
-    if (cause instanceof Error) parts.push(cause.message);
+    if (cause instanceof Error) {
+      parts.push(cause.name);
+      parts.push(cause.message);
+    }
     if (typeof cause === 'string') parts.push(cause);
   }
   const details = (err as any)?.details;
@@ -86,28 +97,43 @@ export function isRangeError(err: unknown): boolean {
   );
 }
 
-function isTransientError(err: unknown): boolean {
+/**
+ * Detect transient/retryable errors: timeouts, network errors, HTTP 429/5xx.
+ * These should never kill the process — retry with backoff instead.
+ */
+export function isTransientError(err: unknown): boolean {
   const text = collectErrorText(err);
   return (
+    text.includes('timeout') ||
+    text.includes('timed out') ||
     text.includes('rate limit') ||
     text.includes('429') ||
-    text.includes('timeout') ||
     text.includes('econnreset') ||
     text.includes('econnrefused') ||
+    text.includes('enotfound') ||
     text.includes('socket hang up') ||
     text.includes('network') ||
+    text.includes('fetch failed') ||
     text.includes('502') ||
     text.includes('503') ||
     text.includes('504')
   );
 }
 
+/** Compute backoff delay: min(BASE × 2^(attempt-1), MAX) + jitter. */
+function backoffDelay(attempt: number): number {
+  const exponential = Math.min(BASE_DELAY_MS * 2 ** (attempt - 1), MAX_DELAY_MS);
+  return exponential + Math.random() * JITTER_MS;
+}
+
 /**
  * ChunkManager: fetches logs in configurable chunks.
  * - Auto-halves chunk size on RPC "block range too wide" errors (floor: 10).
  * - Grows chunk size back gradually after consecutive successes.
- * - Exponential backoff with jitter on transient errors.
+ * - Retries transient errors indefinitely with exponential backoff + jitter.
+ *   After ~10 consecutive retries, halves the chunk as a mitigation.
  * - Token-bucket rate limiter for max RPS.
+ * - Never throws on retryable (transient) errors.
  */
 export class ChunkManager {
   private chunkSize: number;
@@ -144,7 +170,7 @@ export class ChunkManager {
     const maxTo = fromBlock + BigInt(currentChunk) - 1n;
     if (toBlock > maxTo) toBlock = maxTo;
 
-    let retries = 0;
+    let transientRetries = 0;
 
     while (true) {
       await this.limiter.acquire();
@@ -187,7 +213,7 @@ export class ChunkManager {
           console.log(`[fetcher] Chunk size now ${currentChunk}`);
         }
         this.chunkSize = currentChunk;
-        retries = 0;
+        transientRetries = 0;
 
         this.consecutiveSuccesses++;
         if (this.consecutiveSuccesses >= GROW_AFTER && this.chunkSize < this.maxChunkSize) {
@@ -205,7 +231,7 @@ export class ChunkManager {
         return { logs, fromBlock, toBlock: effectiveTo };
 
       } catch (err) {
-        // Block range too wide → halve chunk and retry immediately
+        // ── Range error → halve chunk, retry immediately ────────────
         if (isRangeError(err)) {
           this.consecutiveSuccesses = 0;
           const prev = currentChunk;
@@ -214,20 +240,33 @@ export class ChunkManager {
           if (currentChunk <= MIN_CHUNK_SIZE && prev <= MIN_CHUNK_SIZE) {
             throw err;
           }
-          retries = 0;
+          transientRetries = 0;
           continue;
         }
 
-        // Transient error → exponential backoff with jitter
-        if (isTransientError(err) && retries < MAX_RETRIES) {
-          retries++;
-          const msg = collectErrorText(err);
-          const delayMs = BASE_DELAY_MS * 2 ** (retries - 1) + Math.random() * 200;
-          console.log(`[fetcher] Transient error, retry ${retries}/${MAX_RETRIES} in ${Math.round(delayMs)}ms: ${msg}`);
+        // ── Transient error → backoff, never crash ──────────────────
+        if (isTransientError(err)) {
+          transientRetries++;
+          this.consecutiveSuccesses = 0;
+
+          // After TRANSIENT_RETRIES_BEFORE_HALVE consecutive failures,
+          // halve the chunk (smaller range may succeed under RPC load).
+          if (transientRetries >= TRANSIENT_RETRIES_BEFORE_HALVE && currentChunk > MIN_CHUNK_SIZE) {
+            const prev = currentChunk;
+            currentChunk = Math.max(Math.floor(currentChunk / 2), MIN_CHUNK_SIZE);
+            console.log(`[fetcher] ${transientRetries} transient retries, halving chunk ${prev} → ${currentChunk}`);
+            transientRetries = 0;
+            continue;
+          }
+
+          const delayMs = backoffDelay(transientRetries);
+          const msg = collectErrorText(err).slice(0, 120);
+          console.log(`[fetcher] Retry ${transientRetries} in ${Math.round(delayMs)}ms: ${msg}`);
           await new Promise(r => setTimeout(r, delayMs));
           continue;
         }
 
+        // ── Non-retryable error → throw ─────────────────────────────
         throw err;
       }
     }

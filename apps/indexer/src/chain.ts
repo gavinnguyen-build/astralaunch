@@ -1,5 +1,5 @@
 import { createPublicClient, defineChain, http } from 'viem';
-import { CHAIN_ID, MONAD_RPC_URL } from './config.js';
+import { CHAIN_ID, MONAD_RPC_URL, RPC_TIMEOUT_MS } from './config.js';
 
 export const monad = defineChain({
   id: CHAIN_ID,
@@ -10,5 +10,5 @@ export const monad = defineChain({
 
 export const publicClient = createPublicClient({
   chain: monad,
-  transport: http(MONAD_RPC_URL),
+  transport: http(MONAD_RPC_URL, { timeout: RPC_TIMEOUT_MS }),
 });

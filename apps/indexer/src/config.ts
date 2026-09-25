@@ -45,6 +45,7 @@ export const CHUNK_SIZE        = Number(process.env.INDEXER_CHUNK_SIZE ?? 10_000
 export const POLL_INTERVAL_S   = Number(process.env.INDEXER_POLL_INTERVAL_S ?? 10);
 export const FINALITY_LAG      = Number(process.env.INDEXER_FINALITY_LAG ?? 0);
 export const MAX_RPS           = Number(process.env.INDEXER_MAX_RPS ?? 25);
+export const RPC_TIMEOUT_MS    = Number(process.env.INDEXER_RPC_TIMEOUT_MS ?? 30_000);
 
 export const USDC_ADDR = USDC as `0x${string}`;
 
