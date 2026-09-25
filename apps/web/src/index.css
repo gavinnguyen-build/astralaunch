@@ -8,6 +8,3 @@ button:disabled { cursor: not-allowed !important; opacity: 0.55; }
 #root > div { margin: 0 auto; }
 .al-skeleton { background: linear-gradient(90deg, #1C1A29 0%, #25213A 50%, #1C1A29 100%); background-size: 200% 100%; animation: alShimmer 1.4s linear infinite; border-radius: 8px; }
 @keyframes alShimmer { to { background-position: -200% 0; } }
-/* Tokens used by the Docs page. */
-:root { --color-muted: #8C87A3; --color-border: #25213A; --color-surface: #13111C; --color-text: #ECEAF4; }
-.usage { color: #34D399; } .trade { color: #A78BFA; }
