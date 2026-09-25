@@ -190,7 +190,7 @@ Fork tests verify both bounds via `vm.mockCall`.
 
 ## J. Fix 4 — BuybackVault.execute() disabled during balance-cap window (Decision D19)
 
-**Finding**: At launch price (~$0.00001/token, START_MCAP_USD = 10,000), a single USDC spent in
+**Finding**: At launch price (~$0.0000025/token, INITIAL_MCAP_USD = 2,500), a single USDC spent in
 `execute()` buys roughly 100,000 tokens. The vault's own accumulated balance would exceed
 `maxBalanceLimit` (1% = 10M tokens) after about 100 USDC of buybacks, causing a cryptic
 ERC-20 transfer revert inside `unlockCallback` rather than a clear error at the call site.

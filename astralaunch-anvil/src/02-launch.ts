@@ -7,7 +7,7 @@ import {
   POOL_FEE,
   POOL_TOKENS,
   SHARES,
-  START_MCAP_USD,
+  INITIAL_MCAP_USD,
   SUPPLY,
   TICK_SPACING,
   USDC,
@@ -106,8 +106,8 @@ async function main() {
       tickSpacing: TICK_SPACING,
       beneficiaries,
       curves: [
-        { marketCap: { start: START_MCAP_USD, end: START_MCAP_USD * 20 }, numPositions: 10, shares: 400_000_000_000_000_000n },
-        { marketCap: { start: START_MCAP_USD * 20, end: 'max' }, numPositions: 10, shares: 600_000_000_000_000_000n },
+        { marketCap: { start: INITIAL_MCAP_USD, end: INITIAL_MCAP_USD * 20 }, numPositions: 10, shares: 400_000_000_000_000_000n },
+        { marketCap: { start: INITIAL_MCAP_USD * 20, end: 'max' }, numPositions: 10, shares: 600_000_000_000_000_000n },
       ],
     })
     .withSchedule({ startTime })

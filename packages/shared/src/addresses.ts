@@ -36,6 +36,10 @@ export const USDC = '0x754704Bc059F8C67012fEd69BC8A327a5aafb603';
 export const WMON = '0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A';
 
 
+// ── Chainlink oracles ─────────────────────────────────────────────────────────
+/** Chainlink MON/USD price feed on Monad mainnet, 8 decimals — AstralaunchConstants.sol */
+export const MON_USD_ORACLE = '0xBcD78f76005B7515837af6b50c7C52BCf73822fb';
+
 /** Supported numeraire addresses for Astralaunch launches. */
 export const SUPPORTED_NUMERAIRES = [USDC, WMON] as const;
 

@@ -1,10 +1,24 @@
-// Mainnet launch + register — interactive CLI for first token on Monad mainnet.
+// Mainnet launch + register — v2 CLI for launching tokens on Monad mainnet.
+// Supports both USDC and MON (WMON) pairing. MON price from Chainlink oracle.
 //
 //   read -s CREATOR_PRIVATE_KEY && export CREATOR_PRIVATE_KEY
 //   CONTRACTS_JSON_PATH=../packages/contracts/deployments/monad-mainnet.json \
 //   MONAD_RPC_URL=https://rpc.monad.xyz \
+//   PAIRING=usdc \
 //   TOKEN_NAME="MyToken" TOKEN_SYMBOL="MTK" \
 //     npx tsx src/mainnet-launch.ts
+//
+// Env vars:
+//   TOKEN_NAME            (required)
+//   TOKEN_SYMBOL          (required)
+//   PAIRING               (required: usdc | mon)
+//   CREATOR_PRIVATE_KEY   (required)
+//   CONTRACTS_JSON_PATH   (required — points to monad-mainnet.json)
+//   MONAD_RPC_URL         (required)
+//   TOKEN_URI             (optional)
+//
+// Flags:
+//   --yes                 Skip interactive confirmation (for CI / Anvil scripting)
 //
 // Safety:
 //   - Refuses Anvil dev accounts on non-localhost RPC
@@ -44,9 +58,14 @@ const SUPPLY = 1_000_000_000n * WAD;
 const POOL_TOKENS = (SUPPLY * 85n) / 100n;
 const VESTED_TOKENS = SUPPLY - POOL_TOKENS;
 const DAY = 86_400;
-const START_MCAP_USD = 10_000;
+const INITIAL_MCAP_USD = 2_500; // $2,500 initial FDV — fixed, not user-visible (O1 closed)
 const GAS_BUFFER_BPS = 11_000n;
-const USDC: Address = '0x754704Bc059F8C67012fEd69BC8A327a5aafb603'; // Monad mainnet USDC
+const MAX_ORACLE_STALENESS_S = 3_600; // 1 hour
+
+// Known Monad mainnet addresses
+const USDC_ADDR: Address = '0x754704Bc059F8C67012fEd69BC8A327a5aafb603';
+const WMON_ADDR: Address = '0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A';
+const MON_USD_ORACLE: Address = '0xBcD78f76005B7515837af6b50c7C52BCf73822fb';
 
 // Balance cap window bounds (from AstralaunchConstants.sol)
 const CAP_WINDOW_MIN = 600;  // 10 minutes
@@ -80,6 +99,8 @@ function askYes(question: string): Promise<boolean> {
   });
 }
 
+const autoConfirm = process.argv.includes('--yes');
+
 export const registryAbi = [
   {
     type: 'function' as const, name: 'register' as const, stateMutability: 'nonpayable' as const,
@@ -98,6 +119,47 @@ const tokenCapAbi = [
   { type: 'function' as const, name: 'balanceLimitEnd' as const, stateMutability: 'view' as const, inputs: [], outputs: [{ type: 'uint48' }] },
 ] as const;
 
+const latestRoundDataAbi = [
+  {
+    type: 'function' as const, name: 'latestRoundData' as const, stateMutability: 'view' as const,
+    inputs: [],
+    outputs: [
+      { type: 'uint80' },  // roundId
+      { type: 'int256' },  // answer
+      { type: 'uint256' }, // startedAt
+      { type: 'uint256' }, // updatedAt
+      { type: 'uint80' },  // answeredInRound
+    ],
+  },
+] as const;
+
+type Pairing = 'usdc' | 'mon';
+
+/** Read Chainlink MON/USD price. Rejects if stale. Returns price as a number (e.g. 0.38). */
+async function readOraclePrice(client: PublicClient): Promise<{ priceUsd: number; updatedAt: number }> {
+  const [, answer, , updatedAt] = await client.readContract({
+    address: MON_USD_ORACLE,
+    abi: latestRoundDataAbi,
+    functionName: 'latestRoundData',
+  });
+
+  const block = await client.getBlock();
+  const blockTs = Number(block.timestamp);
+  const oracleUpdatedAt = Number(updatedAt);
+
+  if (blockTs - oracleUpdatedAt > MAX_ORACLE_STALENESS_S) {
+    throw new Error(
+      `Chainlink MON/USD oracle stale: updatedAt=${oracleUpdatedAt}, blockTs=${blockTs}, ` +
+      `delta=${blockTs - oracleUpdatedAt}s > ${MAX_ORACLE_STALENESS_S}s max.`
+    );
+  }
+
+  // Chainlink MON/USD has 8 decimals.
+  const priceUsd = Number(answer) / 1e8;
+  if (priceUsd <= 0) throw new Error(`Oracle returned non-positive price: ${priceUsd}`);
+  return { priceUsd, updatedAt: oracleUpdatedAt };
+}
+
 /** Build SDK launch params for a given startTime. */
 function buildParams(
   sdk: DopplerSDK,
@@ -105,6 +167,8 @@ function buildParams(
     tokenName: string; tokenSymbol: string; tokenURI: string;
     startTime: number; beneficiaries: Array<{ beneficiary: Address; shares: bigint }>;
     creator: Address; pfrAddr: Address;
+    numeraire: Address; numerairePrice: number; numeraireDecimals: number;
+    excludedFromBalanceLimit: Address[];
   },
 ) {
   return sdk
@@ -115,18 +179,19 @@ function buildParams(
       tokenURI: opts.tokenURI,
       maxBalanceLimit: SUPPLY / 100n,
       balanceLimitEnd: opts.startTime + 720,
+      excludedFromBalanceLimit: opts.excludedFromBalanceLimit,
     })
-    .saleConfig({ initialSupply: SUPPLY, numTokensToSell: POOL_TOKENS, numeraire: USDC })
+    .saleConfig({ initialSupply: SUPPLY, numTokensToSell: POOL_TOKENS, numeraire: opts.numeraire })
     .withCurves({
-      numerairePrice: 1,
-      numeraireDecimals: 6,
+      numerairePrice: opts.numerairePrice,
+      numeraireDecimals: opts.numeraireDecimals,
       tokenDecimals: 18,
       fee: POOL_FEE,
       tickSpacing: TICK_SPACING,
       beneficiaries: opts.beneficiaries,
       curves: [
-        { marketCap: { start: START_MCAP_USD, end: START_MCAP_USD * 20 }, numPositions: 10, shares: 400_000_000_000_000_000n },
-        { marketCap: { start: START_MCAP_USD * 20, end: 'max' }, numPositions: 10, shares: 600_000_000_000_000_000n },
+        { marketCap: { start: INITIAL_MCAP_USD, end: INITIAL_MCAP_USD * 20 }, numPositions: 10, shares: 400_000_000_000_000_000n },
+        { marketCap: { start: INITIAL_MCAP_USD * 20, end: 'max' }, numPositions: 10, shares: 600_000_000_000_000_000n },
       ],
     })
     .withSchedule({ startTime: opts.startTime })
@@ -211,7 +276,14 @@ async function main() {
     if (!addr) throw new Error(`contracts.json missing "${name}"`);
   }
 
-  // ── 4. Chain client ─────────────────────────────────────────────────────────
+  // ── 4. Determine numeraire ────────────────────────────────────────────────────
+  const pairingEnv = (process.env.PAIRING ?? 'usdc').toLowerCase();
+  if (pairingEnv !== 'usdc' && pairingEnv !== 'mon') {
+    throw new Error(`PAIRING must be "usdc" or "mon", got "${pairingEnv}"`);
+  }
+  const pairing: Pairing = pairingEnv;
+
+  // ── 5. Chain client ─────────────────────────────────────────────────────────
   const chainId = contracts.chainId ?? 143;
   const monad = defineChain({
     id: chainId,
@@ -239,12 +311,36 @@ async function main() {
   }
   console.log(`All contract addresses verified on chain ${chainId}.`);
 
-  // ── 5. Token config ──────────────────────────────────────────────────────────
+  // ── 6. Numeraire config ───────────────────────────────────────────────────────
+  let numeraire: Address;
+  let numerairePrice: number;
+  let numeraireDecimals: number;
+  let numeraireSymbol: string;
+  let oraclePriceStr: string;
+
+  if (pairing === 'usdc') {
+    numeraire = USDC_ADDR;
+    numerairePrice = 1;
+    numeraireDecimals = 6;
+    numeraireSymbol = 'USDC';
+    oraclePriceStr = '$1.00 (stablecoin)';
+  } else {
+    numeraire = WMON_ADDR;
+    numeraireDecimals = 18;
+    numeraireSymbol = 'MON';
+    console.log('Reading Chainlink MON/USD oracle...');
+    const oracle = await readOraclePrice(publicClient);
+    numerairePrice = oracle.priceUsd;
+    oraclePriceStr = `$${numerairePrice.toFixed(4)} (Chainlink, updated ${new Date(oracle.updatedAt * 1000).toISOString()})`;
+    console.log(`  MON/USD: ${oraclePriceStr}`);
+  }
+
+  // ── 7. Token config ──────────────────────────────────────────────────────────
   const tokenName   = need('TOKEN_NAME');
   const tokenSymbol = need('TOKEN_SYMBOL');
   const tokenURI    = process.env.TOKEN_URI ?? '';
 
-  // ── 6. Build preview params (preliminary startTime for gas estimate) ────────
+  // ── 8. Build preview params (preliminary startTime for gas estimate) ────────
   const sdk = new DopplerSDK({ publicClient, walletClient, chainId });
   const airlockOwner = (await getAirlockOwner(publicClient)) as Address;
 
@@ -267,7 +363,12 @@ async function main() {
     throw new Error(`PlatformFeeReceiver must have 30% share`);
   }
 
-  const buildOpts = { tokenName, tokenSymbol, tokenURI, beneficiaries, creator, pfrAddr };
+  const excludedFromBalanceLimit = [escrowAddr, buybackAddr, pfrAddr];
+
+  const buildOpts = {
+    tokenName, tokenSymbol, tokenURI, beneficiaries, creator, pfrAddr,
+    numeraire, numerairePrice, numeraireDecimals, excludedFromBalanceLimit,
+  };
 
   // Preliminary simulation for gas preview
   const previewBlock = await publicClient.getBlock();
@@ -282,7 +383,7 @@ async function main() {
   const launchCost = withBuffer(launchGas) * gasPrice;
   const monBalance = await publicClient.getBalance({ address: creator });
 
-  // ── 7. Display summary ───────────────────────────────────────────────────────
+  // ── 9. Display summary ───────────────────────────────────────────────────────
   const sep = '══════════════════════════════════════════════════════════════';
   console.log(`\n╔${sep}╗`);
   console.log( '║             MAINNET LAUNCH CONFIRMATION                     ║');
@@ -293,10 +394,12 @@ async function main() {
   console.log(`  MON balance : ${formatEther(monBalance)} MON`);
   console.log(`╠${sep}╣`);
   console.log(`  Token       : ${tokenName} (${tokenSymbol})`);
+  console.log(`  Pairing     : ${numeraireSymbol} (${numeraire})`);
   console.log(`  Supply      : 1,000,000,000 (1e9)`);
   console.log(`  Pool        : 85% (${formatEther(POOL_TOKENS)})`);
   console.log(`  Vested      : 15% (${formatEther(VESTED_TOKENS)}) -- 30d cliff, 365d duration`);
-  console.log(`  Start FDV   : $${START_MCAP_USD.toLocaleString()}`);
+  console.log(`  Initial FDV : $${INITIAL_MCAP_USD.toLocaleString()}`);
+  console.log(`  Numeraire $ : ${oraclePriceStr}`);
   console.log(`  Balance cap : 1% of supply, 720s target window`);
   console.log(`╠${sep}╣`);
   console.log(`  Beneficiaries (trading fee split):`);
@@ -312,6 +415,12 @@ async function main() {
     console.log(`    ${pct.padStart(2)}%  ${b.beneficiary}  ${label}`);
   }
   console.log(`╠${sep}╣`);
+  console.log(`  Excluded from balance limit: ${excludedFromBalanceLimit.join(', ')}`);
+  console.log(`╠${sep}╣`);
+  console.log(`  Curves:`);
+  console.log(`    [1] $${INITIAL_MCAP_USD} → $${INITIAL_MCAP_USD * 20}  (10 positions, 40% liquidity)`);
+  console.log(`    [2] $${INITIAL_MCAP_USD * 20} → max  (10 positions, 60% liquidity)`);
+  console.log(`╠${sep}╣`);
   console.log(`  Launch gas  : ${launchGas} (limit ${withBuffer(launchGas)})`);
   console.log(`  Register gas: estimated after launch (not hardcoded)`);
   console.log(`  Gas price   : ${gasPrice} wei (${Number(gasPrice) / 1e9} gwei)`);
@@ -326,14 +435,18 @@ async function main() {
     );
   }
 
-  // ── 8. Confirm ───────────────────────────────────────────────────────────────
-  const ok = await askYes('\nType "yes" to proceed with mainnet launch: ');
-  if (!ok) {
-    console.log('Aborted.');
-    process.exit(0);
+  // ── 10. Confirm ──────────────────────────────────────────────────────────────
+  if (autoConfirm) {
+    console.log('\n--yes flag set, skipping confirmation.');
+  } else {
+    const ok = await askYes('\nType "yes" to proceed with mainnet launch: ');
+    if (!ok) {
+      console.log('Aborted.');
+      process.exit(0);
+    }
   }
 
-  // ── 9. Recompute startTime from latest block (not wall-clock) ──────────────
+  // ── 11. Recompute startTime from latest block (not wall-clock) ──────────────
   const freshBlock = await publicClient.getBlock();
   const startTime = Number(freshBlock.timestamp) + 60;
   const balanceLimitEnd = startTime + 720;
@@ -345,9 +458,13 @@ async function main() {
   const sim = await sdk.factory.simulateCreateMulticurve(params);
   console.log(`  predicted token: ${sim.tokenAddress}, gas: ${sim.gasEstimate ?? 'n/a'}`);
 
-  // ── 10. Launch ───────────────────────────────────────────────────────────────
+  // ── 12. Launch ───────────────────────────────────────────────────────────────
   console.log('\nSending createMulticurve...');
-  const res = await sdk.factory.createMulticurve(params);
+  const finalGas = sim.gasEstimate ?? launchGas;
+  const res = await sdk.factory.createMulticurve({
+    ...params,
+    gas: withBuffer(finalGas),
+  });
   const receipt = await publicClient.waitForTransactionReceipt({ hash: res.transactionHash });
   if (receipt.status !== 'success') throw new Error(`Launch tx reverted: ${res.transactionHash}`);
   console.log(`  token   : ${res.tokenAddress}`);
@@ -355,13 +472,13 @@ async function main() {
   console.log(`  tx      : ${res.transactionHash}`);
   console.log(`  gasUsed : ${receipt.gasUsed}`);
 
-  // ── 11. Validate balance cap window on-chain before register ───────────────
+  // ── 13. Validate balance cap window on-chain before register ───────────────
   console.log('\nChecking on-chain balance cap window...');
   const { vestingStart, balanceLimitEnd: capEnd, window: capWindow } =
     await checkCapWindow(publicClient, res.tokenAddress as Address);
   console.log(`  vestingStart=${vestingStart}, balanceLimitEnd=${capEnd}, window=${capWindow}s -- OK`);
 
-  // ── 12. Register with on-chain gas estimate ────────────────────────────────
+  // ── 14. Register with on-chain gas estimate ────────────────────────────────
   console.log('\nEstimating register() gas...');
   let regGas: bigint;
   try {
@@ -404,11 +521,12 @@ async function main() {
     args: [res.tokenAddress as Address],
   });
 
-  // ── 13. Results ──────────────────────────────────────────────────────────────
+  // ── 15. Results ──────────────────────────────────────────────────────────────
   console.log('\n=== MAINNET LAUNCH + REGISTER COMPLETE ===');
   console.log(`  asset    : ${res.tokenAddress}`);
   console.log(`  poolId   : ${res.poolId}`);
   console.log(`  router   : ${routerAddr}`);
+  console.log(`  pairing  : ${numeraireSymbol}`);
   console.log(`  launch tx: ${res.transactionHash}  (gas ${receipt.gasUsed})`);
   console.log(`  register : ${registerHash}  (gas ${regReceipt.gasUsed})`);
 }

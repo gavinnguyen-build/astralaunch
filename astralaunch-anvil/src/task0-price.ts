@@ -1,4 +1,4 @@
-// Task 0 — Measure real launch price and verify START_MCAP_USD=10000 is correct.
+// Task 0 — Measure real launch price and verify INITIAL_MCAP_USD=2500 is correct.
 // Buys exactly 1 USDC of tokens, computes implied price and FDV, compares to expected.
 // Usage: npm run task0
 import { ADDRESSES } from '@whetstone-research/doppler-sdk/evm';
@@ -15,7 +15,7 @@ import {
 } from 'viem';
 import {
   CHAIN_ID,
-  START_MCAP_USD,
+  INITIAL_MCAP_USD,
   SUPPLY,
   USDC,
   account,
@@ -161,7 +161,7 @@ async function main() {
   // Price in USD per token (floating point for display only)
   const priceUsd = 1.0 / (Number(received) / 1e18);
 
-  const expectedFdv = START_MCAP_USD; // 10000
+  const expectedFdv = INITIAL_MCAP_USD; // 2500
   const ratio = impliedFdvUsdc / expectedFdv;
 
   console.log('\n=== Task 0 Price Report ===');
@@ -169,11 +169,11 @@ async function main() {
   console.log(`  Tokens received    : ${formatUnits(received, 18)}`);
   console.log(`  Implied price      : $${priceUsd.toExponential(4)} per token`);
   console.log(`  Implied FDV        : $${impliedFdvUsdc.toFixed(2)}`);
-  console.log(`  Expected FDV       : $${expectedFdv.toFixed(2)} (START_MCAP_USD)`);
+  console.log(`  Expected FDV       : $${expectedFdv.toFixed(2)} (INITIAL_MCAP_USD)`);
   console.log(`  Ratio actual/expected: ${ratio.toFixed(3)}x`);
 
   const ok = ratio >= 0.5 && ratio <= 2.0;
-  pass(ok, 'implied FDV within 2x of START_MCAP_USD', `${impliedFdvUsdc.toFixed(2)} vs ${expectedFdv}`);
+  pass(ok, 'implied FDV within 2x of INITIAL_MCAP_USD', `${impliedFdvUsdc.toFixed(2)} vs ${expectedFdv}`);
 
   if (!ok) {
     console.log('\nDIAGNOSIS:');
@@ -183,14 +183,14 @@ async function main() {
       console.log('  - If numerairePrice expects USD (1 = $1): current value 1 is correct.');
       console.log('  - If marketCap.start is interpreted in raw numeraire units (micro-USDC),');
       console.log('    then 10000 means $0.01 target FDV → price is 1000x too low.');
-      console.log('  - Fix candidate: marketCap: { start: START_MCAP_USD * 1e6, end: START_MCAP_USD * 20 * 1e6 }');
+      console.log('  - Fix candidate: marketCap: { start: INITIAL_MCAP_USD * 1e6, end: INITIAL_MCAP_USD * 20 * 1e6 }');
       console.log('    ... but verify Doppler SDK docs for the correct unit.');
     } else if (ratio > 10) {
       console.log(`  Price is ~${ratio.toFixed(0)}x TOO EXPENSIVE.`);
       console.log('  Likely cause: numerairePrice or marketCap values are too large.');
     }
   } else {
-    console.log('\nPrice is correct. START_MCAP_USD=10000 launches at the right price.');
+    console.log('\nPrice is correct. INITIAL_MCAP_USD=2500 launches at the right price.');
   }
 }
 

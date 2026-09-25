@@ -1,7 +1,7 @@
 /**
  * Launch page (SPEC §7) — Astralaunch v2
  *
- * Step 1: Creator fills token metadata + launch config (pairing, start mcap)
+ * Step 1: Creator fills token metadata + launch config (pairing)
  *         + optional service details.
  * Step 2: Frontend shows fixed economics + MON gas estimate.
  * Step 3: On confirm -> Doppler SDK launch (in wallet) -> registry.register -> POST /api/tokens.
@@ -30,7 +30,6 @@ interface FormData {
   twitter:     string;
   // Launch config
   pairing:         Pairing;
-  startMarketCap:  string; // human-readable USD, e.g. "50000"
   // Service (optional)
   attachService:  boolean;
   serviceSlug:    string;
@@ -42,7 +41,7 @@ interface FormData {
 
 const DEFAULTS: FormData = {
   name: '', symbol: '', description: '', imageUrl: '', website: '', twitter: '',
-  pairing: 'USDC', startMarketCap: '50000',
+  pairing: 'USDC',
   attachService: false, serviceSlug: '', serviceName: '', serviceDesc: '',
   upstreamUrl: '', priceUsdc: '1.00',
 };
@@ -101,28 +100,13 @@ export default function Launch() {
     let cancelled = false;
     setMonPriceLoading(true);
 
-    // Try server API first, fall back to CoinGecko-style endpoint
     (async () => {
       try {
-        // Try our own API
         const res = await fetch(`${API_BASE}/api/prices/mon`);
         if (res.ok) {
           const data = await res.json();
           if (!cancelled && typeof data.priceUsd === 'number') {
             setMonPrice(data.priceUsd);
-            setMonPriceLoading(false);
-            return;
-          }
-        }
-      } catch { /* fall through */ }
-
-      try {
-        // Fallback: CoinGecko
-        const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=monad&vs_currencies=usd');
-        if (res.ok) {
-          const data = await res.json();
-          if (!cancelled && data.monad?.usd) {
-            setMonPrice(data.monad.usd);
           }
         }
       } catch { /* ignore */ }
@@ -136,12 +120,6 @@ export default function Launch() {
   function set<K extends keyof FormData>(k: K, v: FormData[K]) {
     setForm(f => ({ ...f, [k]: v }));
   }
-
-  // Compute start price in numeraire from market cap
-  const startMcapUsd = Number(form.startMarketCap) || 0;
-  const startPriceNumeraire = nc.numerairePrice > 0
-    ? (startMcapUsd / 1_000_000_000) / nc.numerairePrice
-    : 0;
 
   async function handleLaunch() {
     if (!wallet) return;
@@ -161,7 +139,7 @@ export default function Launch() {
       //   - balanceLimitEnd: startTime + 720s (target ~12 min)
       //   - numeraire: nc.numeraire (USDC or WMON based on pairing choice)
       //   - numeraireDecimals: nc.numeraireDecimals
-      //   - startPriceNumeraire: computed from start market cap / supply / numerairePrice
+      //   - INITIAL_MCAP_USD: $2,500 fixed (not user-configurable)
       //   - integrator: treasury
       //
       // const walletClient = createWalletClient({ account: wallet.address as Address, chain: monadChain, transport: custom(await wallet.getEthereumProvider()) });
@@ -286,37 +264,6 @@ export default function Launch() {
               </div>
             </Field>
 
-            {form.pairing === 'MON' && monPrice === null && !monPriceLoading && (
-              <div style={{ padding: '8px 12px', borderRadius: '8px', background: '#2D2D10',
-                border: '1px solid #A89332', fontSize: '12px', color: '#E8D44D' }}>
-                Could not fetch MON/USD price. The start market cap calculation requires an accurate MON price.
-                You may enter it manually or retry.
-              </div>
-            )}
-
-            {/* Start market cap */}
-            <Field label="Start market cap (USD) *" hint="Fully-diluted valuation at launch">
-              <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
-                  color: 'var(--color-muted)', fontSize: '14px', pointerEvents: 'none' }}>$</span>
-                <input
-                  type="number"
-                  min="1000"
-                  step="1000"
-                  value={form.startMarketCap}
-                  onChange={e => set('startMarketCap', e.target.value)}
-                  placeholder="50000"
-                  style={{ paddingLeft: '24px' }}
-                />
-              </div>
-              {startMcapUsd > 0 && nc.numerairePrice > 0 && (
-                <div style={{ fontSize: '11px', color: 'var(--color-muted)', marginTop: '4px' }}>
-                  Start price: {startPriceNumeraire.toFixed(nc.numeraireDecimals === 18 ? 12 : 6)} {nc.numeraireSymbol} per token
-                  (${(startMcapUsd / 1_000_000_000).toFixed(9)} USD per token)
-                </div>
-              )}
-            </Field>
-
           </div>
         </div>
 
@@ -357,7 +304,7 @@ export default function Launch() {
 
         <button
           className="btn btn-primary"
-          disabled={!form.name || !form.symbol || !form.startMarketCap || step === 'launching'}
+          disabled={!form.name || !form.symbol || step === 'launching'}
           onClick={() => setStep(step === 'form' ? 'review' : 'form')}
           style={{ alignSelf: 'flex-start' }}
         >
@@ -381,12 +328,6 @@ export default function Launch() {
             <SummaryRow label="Numeraire" value={nc.numeraire.slice(0, 6) + '...' + nc.numeraire.slice(-4)} />
             <SummaryRow label="Numeraire decimals" value={String(nc.numeraireDecimals)} />
             <SummaryRow label="Numeraire price" value={nc.numerairePrice > 0 ? `$${nc.numerairePrice.toFixed(2)}` : 'unknown'} />
-            <SummaryRow label="Start market cap" value={startMcapUsd > 0 ? `$${startMcapUsd.toLocaleString()}` : '--'} />
-            <SummaryRow label="Start price" value={
-              startPriceNumeraire > 0
-                ? `${startPriceNumeraire.toFixed(nc.numeraireDecimals === 18 ? 12 : 6)} ${nc.numeraireSymbol}`
-                : '--'
-            } />
 
           </div>
         </div>

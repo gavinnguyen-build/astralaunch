@@ -37,7 +37,7 @@
 ### Open
 | # | Question | Current default |
 |---|---|---|
-| O1 | Standard starting market cap | **Verified on Anvil fork (2026-09-23): 1 USDC buys ~96,776 tokens → implied FDV $10,333 (~1.03× target, within tick-rounding). `withCurves` config is correct. Keeping $10,000 for v1. Revisit for mainnet.** |
+| ~~O1~~ | ~~Standard starting market cap~~ | **Closed.** Initial market cap fixed at $2,500 USD. Not user-visible, not creator-configurable. Operating model: direct Uniswap v4 pool (Doppler multicurve), no graduation, no migration. |
 | O2 | Stronger anti-snipe: Rehype hook (`startFee`→`endFee` decay + native asset buyback) | **Deferred — research later.** v1 uses D12 only |
 | O4 | Token-denominated escrow fees | Keeper swaps them to USDC (single-currency escrow accounting) |
 | O5 | Verified badge thresholds | Hackathon: ≥20 USDC clean revenue from ≥5 clean payers; mainnet: ≥100 USDC / ≥10 |
@@ -215,7 +215,7 @@ Solidity ^0.8.24, Foundry. Custom errors, events on every state change, NatSpec 
 Why: re-implementing the Doppler multicurve encoding in Solidity is long and error-prone. The SDK launch path is already verified on the fork. The registry enforces the same guarantees by **checking** the result on-chain instead of **building** it.
 
 Flow:
-1. Frontend launches with the Doppler SDK using the fixed Astralaunch config (§4): scheduled multicurve, fee 20000, tick spacing 200, beneficiaries [Airlock owner 5%, creator 35%, FeeEscrow 20%, BuybackVault 10%, PlatformFeeReceiver 30%], supply 1e9 with 85/15, vesting 30d/365d, balance cap 1% for 12 min (720 s target; registry accepts 10–15 min), noOp governance and migration, numeraire USDC, integrator = PlatformFeeReceiver.
+1. Frontend launches with the Doppler SDK using the fixed Astralaunch config (§4): scheduled multicurve, fee 20000, tick spacing 200, beneficiaries [Airlock owner 5%, creator 35%, FeeEscrow 20%, BuybackVault 10%, PlatformFeeReceiver 30%], supply 1e9 with 85/15, vesting 30d/365d, balance cap 1% for 12 min (720 s target; registry accepts 10–15 min), noOp governance and migration, numeraire USDC or WMON, integrator = PlatformFeeReceiver. Initial FDV is fixed at $2,500 USD (O1 closed) — not user-visible, not creator-configurable. For MON-paired launches, `numerairePrice` comes from the on-chain Chainlink MON/USD feed (staleness ≤ 1 hour).
 2. Anyone calls `register(asset, creator)`. No `poolId` parameter — it is derived on-chain (D16).
 
 ```solidity
@@ -230,7 +230,7 @@ function isRegistered(address asset) external view returns (bool);
 | Airlock.getAssetData: poolInitializer == INITIALIZER | `WrongInitializer` |
 | Airlock.getAssetData: liquidityMigrator == NOMIG | `WrongMigrator` |
 | Airlock.getAssetData: governance == 0x…dEaD | `WrongGovernance` |
-| Airlock.getAssetData: numeraire == USDC | `WrongNumeraire` |
+| Airlock.getAssetData: numeraire ∈ {USDC, WMON} | `WrongNumeraire` |
 | Airlock.getAssetData: totalSupply == 1e9×1e18 | `WrongTotalSupply` |
 | Airlock.getAssetData: numTokensToSell == 850M×1e18 | `WrongNumTokensToSell` |
 | Airlock.getAssetData: integrator == PlatformFeeReceiver (D17, D21) | `WrongIntegrator` |

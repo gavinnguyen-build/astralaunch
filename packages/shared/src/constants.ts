@@ -41,8 +41,11 @@ export const BALANCE_CAP_NUM = TOTAL_SUPPLY / 100n;
 export const VESTING_CLIFF_S    = 30  * 86_400; // 30 days
 export const VESTING_DURATION_S = 365 * 86_400; // 365 days
 
-// ── Launch pricing (open O1 — verified 2026-09-23) ────────────────────────────
-export const START_MCAP_USD = 10_000; // $10,000 FDV at launch
+// ── Launch pricing (O1 closed) ─────────────────────────────────────────────────
+export const INITIAL_MCAP_USD = 2_500; // $2,500 initial FDV — fixed, not user-visible (O1 closed)
+
+// ── Oracle ──────────────────────────────────────────────────────────────────────
+export const MAX_ORACLE_STALENESS_S = 3_600; // 1 hour, matches AstralaunchConstants.sol
 
 // ── Treasury change delay ──────────────────────────────────────────────────────
 /** Two-step treasury change delay in seconds (48 hours). */

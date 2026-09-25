@@ -77,7 +77,7 @@ export const SUPPLY = 1_000_000_000n * WAD;
 export const POOL_TOKENS = (SUPPLY * 85n) / 100n;
 export const VESTED_TOKENS = SUPPLY - POOL_TOKENS; // 15%
 export const DAY = 86_400;
-export const START_MCAP_USD = Number(process.env.START_MCAP_USD ?? 10_000); // open decision O1
+export const INITIAL_MCAP_USD = Number(process.env.INITIAL_MCAP_USD ?? 2_500); // O1 closed — $2,500 initial FDV
 export const GAS_BUFFER_BPS = 11_000n; // estimate x 1.1 (Monad bills the gas limit)
 
 export function withBuffer(gas: bigint): bigint {

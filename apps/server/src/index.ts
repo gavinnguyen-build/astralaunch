@@ -35,6 +35,7 @@ import tokensRouter from './routes/tokens.js';
 import explorerRouter from './routes/explorer.js';
 import creatorRouter from './routes/creator.js';
 import gateway from './routes/gateway.js';
+import pricesRouter from './routes/prices.js';
 import { startProbeWorker } from './lib/probes.js';
 
 const app = new Hono();
@@ -46,6 +47,7 @@ app.route('/api/tokens',   tokensRouter);
 app.route('/api/services', servicesRouter);
 app.route('/api/explorer', explorerRouter);
 app.route('/api/creator',  creatorRouter);
+app.route('/api/prices',  pricesRouter);
 app.route('/s', gateway);
 
 startProbeWorker();

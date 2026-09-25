@@ -42,7 +42,7 @@ const MONAD_RPC = process.env.REAL_RPC_URL ?? 'https://rpc.monad.xyz';
 const USDC = '0x754704Bc059F8C67012fEd69BC8A327a5aafb603' as Address;
 const POOL_FEE = Number(process.env.POOL_FEE ?? 20_000);
 const TICK_SPACING = Number(process.env.TICK_SPACING ?? 200);
-const START_MCAP_USD = Number(process.env.START_MCAP_USD ?? 10_000);
+const INITIAL_MCAP_USD = Number(process.env.INITIAL_MCAP_USD ?? 2_500);
 const WAD = 10n ** 18n;
 const SUPPLY = 1_000_000_000n * WAD;
 const POOL_TOKENS = (SUPPLY * 85n) / 100n;
@@ -145,8 +145,8 @@ async function main() {
       tickSpacing: TICK_SPACING,
       beneficiaries,
       curves: [
-        { marketCap: { start: START_MCAP_USD, end: START_MCAP_USD * 20 }, numPositions: 10, shares: 400_000_000_000_000_000n },
-        { marketCap: { start: START_MCAP_USD * 20, end: 'max' },          numPositions: 10, shares: 600_000_000_000_000_000n },
+        { marketCap: { start: INITIAL_MCAP_USD, end: INITIAL_MCAP_USD * 20 }, numPositions: 10, shares: 400_000_000_000_000_000n },
+        { marketCap: { start: INITIAL_MCAP_USD * 20, end: 'max' },          numPositions: 10, shares: 600_000_000_000_000_000n },
       ],
     })
     .withSchedule({ startTime })
