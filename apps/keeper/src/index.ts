@@ -90,10 +90,15 @@ async function runOnce(pairs: Array<{ asset: Address; router: Address }>) {
     throw e;
   }
 
-  // Monitor treasury proposals, admin transfers, and initializer proposals after all per-asset jobs
-  await monitorTreasuryProposal(PLATFORM_FEE_RECEIVER, publicClient);
-  await monitorAdminTransfers(PLATFORM_FEE_RECEIVER, REGISTRY, publicClient);
-  await monitorInitializerProposal();
+  // Monitor treasury proposals, admin transfers, and initializer proposals after all per-asset jobs.
+  // Alerting must never affect jobs or stop the keeper: swallow anything that escapes.
+  try {
+    await monitorTreasuryProposal(PLATFORM_FEE_RECEIVER, publicClient);
+    await monitorAdminTransfers(PLATFORM_FEE_RECEIVER, REGISTRY, publicClient);
+    await monitorInitializerProposal();
+  } catch (e) {
+    console.error(`[keeper] monitor/alert error (ignored): ${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
 async function main() {

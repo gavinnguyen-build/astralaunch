@@ -12,7 +12,7 @@ import {
   MIN_MON_BALANCE_WEI,
   SINGLE_TX_ALERT_WEI,
 } from '@astralaunch/shared';
-import { sendTelegramAlert } from './telegram.js';
+import { html, sendTelegramAlert } from './telegram.js';
 
 // ── Config (overridable via env) ──────────────────────────────────────────────
 
@@ -102,7 +102,7 @@ export async function assertCanSpend(estimatedMon: bigint, walletBalance: bigint
   if (!result.ok) {
     if (!lastBlockedAlert) {
       lastBlockedAlert = true;
-      await sendTelegramAlert(`⚠️ *Keeper Spend Guard Blocked*\n${result.reason}`);
+      await sendTelegramAlert(html`⚠️ <b>Keeper Spend Guard Blocked</b>\n${result.reason}`);
     }
     throw new SpendGuardError(result.reason!);
   }
@@ -113,7 +113,7 @@ export async function assertCanSpend(estimatedMon: bigint, walletBalance: bigint
 export async function alertIfExpensive(monCost: bigint, label: string): Promise<void> {
   if (monCost > SINGLE_TX_ALERT) {
     await sendTelegramAlert(
-      `⚠️ *Expensive Keeper TX*\n${label}: ${formatEther(monCost)} MON (threshold: ${formatEther(SINGLE_TX_ALERT)})`,
+      html`⚠️ <b>Expensive Keeper TX</b>\n${label}: ${formatEther(monCost)} MON (threshold: ${formatEther(SINGLE_TX_ALERT)})`,
     );
   }
 }

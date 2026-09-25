@@ -5,6 +5,7 @@ import { canSpend, recordSpend, _resetForTest, _spendLogSize, SpendGuardError, a
 // Mock telegram to avoid side effects
 vi.mock('../telegram.js', () => ({
   sendTelegramAlert: vi.fn().mockResolvedValue(undefined),
+  html: (s: TemplateStringsArray, ...v: unknown[]) => ({ text: String.raw({ raw: s }, ...v) }),
 }));
 
 // Override env-based spend limits for deterministic tests
@@ -92,7 +93,7 @@ describe('spend guard', () => {
       const { sendTelegramAlert } = await import('../telegram.js');
       await alertIfExpensive(parseEther('0.06'), 'test@0x1234');
       expect(sendTelegramAlert).toHaveBeenCalledWith(
-        expect.stringContaining('Expensive Keeper TX'),
+        expect.objectContaining({ text: expect.stringContaining('Expensive Keeper TX') }),
       );
     });
 

@@ -12,33 +12,73 @@ import type { Address, PublicClient } from 'viem';
 import { pfrAbi, registryAdminAbi } from './jobs.js';
 import { getPendingInitializerProposal, REGISTRY } from './chain.js';
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const CHAT_ID   = process.env.TELEGRAM_CHAT_ID;
-
 // Dedupe: track the last alerted key for each monitor
 let lastTreasuryKey = '';
 let lastPfrAdminKey = '';
 let lastRegistryAdminKey = '';
 let lastInitializerKey = '';
 
-/** Send a Telegram message. No-op with console log if no credentials. */
-export async function sendTelegramAlert(message: string): Promise<void> {
-  if (!BOT_TOKEN || !CHAT_ID) {
-    console.log(`[telegram] (no credentials) ${message}`);
-    return;
-  }
+// ── Formatting ──────────────────────────────────────────────────────────────
+// Messages use Telegram HTML parse mode. Only &, < and > need escaping there, so every
+// dynamic value is escaped by the `html` tag; formatting lives only in the literal parts.
+// (Markdown mode broke on values containing _ * ` [ such as MAX_MON_PER_DAY.)
+
+/** An HTML-formatted Telegram message whose dynamic parts are already escaped. */
+export class TelegramHtml {
+  constructor(readonly text: string) {}
+}
+
+export function escapeHtml(value: unknown): string {
+  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** Tagged template: literal parts are trusted HTML, every `${value}` is escaped. */
+export function html(strings: TemplateStringsArray, ...values: unknown[]): TelegramHtml {
+  return new TelegramHtml(strings.reduce((out, s, i) => out + s + (i < values.length ? escapeHtml(values[i]) : ''), ''));
+}
+
+/** Plain-text rendering of an HTML message (fallback if Telegram rejects the entities). */
+export function htmlToPlain(msg: TelegramHtml): string {
+  return msg.text.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+}
+
+const SEND_TIMEOUT_MS = 5_000;
+
+/**
+ * Send a Telegram alert. Never throws and never blocks longer than the timeout
+ * (per attempt): alert failures must not affect keeper jobs. A plain string is sent
+ * as plain text (no parse mode). A TelegramHtml message is sent in HTML mode, and
+ * resent once as plain text if Telegram rejects it (e.g. "can't parse entities").
+ * No-op with a console log if TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID are not set.
+ */
+export async function sendTelegramAlert(message: string | TelegramHtml, timeoutMs = SEND_TIMEOUT_MS): Promise<void> {
   try {
-    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-    const res = await fetch(url, {
+    const plain = typeof message === 'string' ? message : htmlToPlain(message);
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
+    if (!botToken || !chatId) {
+      console.log(`[telegram] (no credentials) ${plain}`);
+      return;
+    }
+    const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+    const post = (body: Record<string, unknown>) => fetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ chat_id: CHAT_ID, text: message, parse_mode: 'Markdown' }),
+      body: JSON.stringify({ chat_id: chatId, disable_web_page_preview: true, ...body }),
+      signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) {
-      console.error(`[telegram] API error: ${res.status} ${await res.text()}`);
+
+    let res = typeof message === 'string'
+      ? await post({ text: message })
+      : await post({ text: message.text, parse_mode: 'HTML' });
+    if (!res.ok && res.status === 400 && typeof message !== 'string') {
+      console.error(`[telegram] HTML rejected (${(await res.text()).slice(0, 200)}); resending as plain text`);
+      res = await post({ text: plain });
     }
+    if (!res.ok) console.error(`[telegram] API error: ${res.status} ${(await res.text()).slice(0, 200)}`);
   } catch (e) {
-    console.error(`[telegram] send failed: ${e}`);
+    // Never propagate: network errors, timeouts, bad JSON, anything.
+    console.error(`[telegram] send failed: ${e instanceof Error ? e.message : String(e)}`);
   }
 }
 
@@ -60,21 +100,17 @@ export async function monitorTreasuryProposal(
       // Active proposal
       if (key !== lastTreasuryKey) {
         const execDate = new Date(Number(executableAt) * 1000).toISOString();
-        await sendTelegramAlert(
-          `🔔 *Treasury Proposal Detected*\n` +
-          `Proposed: \`${proposed}\`\n` +
-          `Executable at: ${execDate}\n` +
-          `PFR: \`${pfrAddress}\``
-        );
+        await sendTelegramAlert(html`🔔 <b>Treasury Proposal Detected</b>
+Proposed: <code>${proposed}</code>
+Executable at: ${execDate}
+PFR: <code>${pfrAddress}</code>`);
         lastTreasuryKey = key;
       }
     } else {
       // No active proposal
       if (lastTreasuryKey && lastTreasuryKey !== key) {
-        await sendTelegramAlert(
-          `✅ *Treasury Proposal Resolved*\n` +
-          `PFR: \`${pfrAddress}\``
-        );
+        await sendTelegramAlert(html`✅ <b>Treasury Proposal Resolved</b>
+PFR: <code>${pfrAddress}</code>`);
         lastTreasuryKey = key;
       }
     }
@@ -102,19 +138,15 @@ async function monitorAdminOnContract(
 
     if (pending !== ZERO) {
       if (pending !== lastKey) {
-        await sendTelegramAlert(
-          `🔔 *Admin Transfer Started — ${label}*\n` +
-          `Pending admin: \`${pending}\`\n` +
-          `Contract: \`${contractAddress}\``
-        );
+        await sendTelegramAlert(html`🔔 <b>Admin Transfer Started — ${label}</b>
+Pending admin: <code>${pending}</code>
+Contract: <code>${contractAddress}</code>`);
         return pending;
       }
     } else {
       if (lastKey && lastKey !== ZERO) {
-        await sendTelegramAlert(
-          `✅ *Admin Transfer Resolved — ${label}*\n` +
-          `Contract: \`${contractAddress}\``
-        );
+        await sendTelegramAlert(html`✅ <b>Admin Transfer Resolved — ${label}</b>
+Contract: <code>${contractAddress}</code>`);
         return ZERO;
       }
     }
@@ -150,23 +182,19 @@ export async function monitorInitializerProposal(): Promise<void> {
       const key = `${proposal.initializer}-${proposal.adapter}-${proposal.executableAt}`;
       if (key !== lastInitializerKey) {
         const execDate = new Date(Number(proposal.executableAt) * 1000).toISOString();
-        await sendTelegramAlert(
-          `🔔 *Initializer Proposal Detected*\n` +
-          `Initializer: \`${proposal.initializer}\`\n` +
-          `Adapter: \`${proposal.adapter}\`\n` +
-          `Executable at: ${execDate}\n` +
-          `Registry: \`${REGISTRY}\``
-        );
+        await sendTelegramAlert(html`🔔 <b>Initializer Proposal Detected</b>
+Initializer: <code>${proposal.initializer}</code>
+Adapter: <code>${proposal.adapter}</code>
+Executable at: ${execDate}
+Registry: <code>${REGISTRY}</code>`);
         lastInitializerKey = key;
       }
     } else {
       // No active proposal
       if (lastInitializerKey) {
-        await sendTelegramAlert(
-          `✅ *Initializer Proposal Resolved*\n` +
-          `Previous proposal accepted or cancelled.\n` +
-          `Registry: \`${REGISTRY}\``
-        );
+        await sendTelegramAlert(html`✅ <b>Initializer Proposal Resolved</b>
+Previous proposal accepted or cancelled.
+Registry: <code>${REGISTRY}</code>`);
         lastInitializerKey = '';
       }
     }
