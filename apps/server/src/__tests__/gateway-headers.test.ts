@@ -21,12 +21,15 @@ vi.mock('@x402/core/http', async (orig) => ({
   HTTPFacilitatorClient: class { verify = h.verify; settle = h.settle; },
 }));
 
-const { services } = await import('../db/schema.js');
+const { services, gatewayRequests } = await import('../db/schema.js');
+const { desc } = await import('drizzle-orm');
 const { x402HTTPClient, x402Client } = await import('@x402/core/client');
 const { encodePaymentSignatureHeader } = await import('@x402/core/http');
 const gateway = (await import('../routes/gateway.js')).default;
 
 const ROUTER = '0x' + '5'.repeat(40);
+const AGENT  = '0xAbCdEf0000000000000000000000000000000009';
+const latest = async () => (await (h.db as TestDb).select().from(gatewayRequests).orderBy(desc(gatewayRequests.createdAt)).limit(1))[0]!;
 const app = new Hono();
 app.route('/s', gateway);
 const sdk = new x402HTTPClient(new x402Client());
@@ -51,7 +54,7 @@ describe('gateway x402 headers', () => {
   const payload = () => ({
     x402Version: 2, resource: { url: 'http://x/s/svc/json' },
     accepted: { scheme: 'exact', network: 'eip155:143' },
-    payload: { signature: '0x00', authorization: {} },
+    payload: { signature: '0x00', authorization: { from: AGENT, to: ROUTER, value: '10000' } },
   }) as any;
 
   it('402 is readable by the SDK client (PAYMENT-REQUIRED) and keeps the legacy header', async () => {
@@ -84,5 +87,18 @@ describe('gateway x402 headers', () => {
     expect(res.status).toBe(502);
     expect(h.settle).not.toHaveBeenCalled();
     expect(res.headers.get('PAYMENT-RESPONSE')).toBeNull();
+  });
+
+  it('records the payer the facilitator verified (v2 payload)', async () => {
+    h.verify.mockResolvedValueOnce({ isValid: true, payer: AGENT } as any);
+    const res = await app.request('/s/svc/json', { headers: sdk.encodePaymentSignatureHeader(payload()) });
+    expect(res.status).toBe(200);
+    expect(await latest()).toMatchObject({ payer: AGENT.toLowerCase(), settled: true, amountUsdc: '10000' });
+  });
+
+  it('falls back to the verified authorization.from when the facilitator omits payer', async () => {
+    h.verify.mockResolvedValueOnce({ isValid: true } as any);
+    await app.request('/s/svc/json', { headers: sdk.encodePaymentSignatureHeader(payload()) });
+    expect((await latest()).payer).toBe(AGENT.toLowerCase());
   });
 });

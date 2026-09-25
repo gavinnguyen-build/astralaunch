@@ -97,14 +97,14 @@ app.all('/:slug/*', async (c) => {
     return c.json({ error: 'Malformed payment header' }, 400);
   }
 
-  // Determine payer — field name may differ by scheme version; fall back gracefully
-  const payer: string = (payload as any).payer ?? (payload as any).from ?? 'unknown';
-
   const verifyResult = await facilitator.verify(payload, requirements);
   if (!verifyResult.isValid) {
-    await logRequest(svc, payer, false, false, null, 'verify_failed', startMs, c);
+    // Unverified: the claimed signer is only informative here.
+    await logRequest(svc, payerFromPayload(payload) ?? 'unknown', false, false, null, 'verify_failed', startMs, c);
     return c.json({ error: 'Payment verification failed', reason: verifyResult.invalidReason }, 402);
   }
+  // Payer = the address the facilitator verified, else the verified authorization's `from` (D-GW2).
+  const payer = verifyResult.payer ?? payerFromPayload(payload) ?? 'unknown';
 
   // ── 3. Forward to upstream ──────────────────────────────────────────────────
   const upstreamPath = c.req.path.replace(`/s/${slug}`, '') || '/';
@@ -169,6 +169,12 @@ app.all('/:slug/*', async (c) => {
     },
   });
 });
+
+/** EIP-3009 `authorization.from` of an exact-scheme payload (v2: payload.payload.authorization). */
+function payerFromPayload(payload: ReturnType<typeof decodePaymentSignatureHeader>): string | undefined {
+  const from = (payload.payload as { authorization?: { from?: unknown } } | undefined)?.authorization?.from;
+  return typeof from === 'string' && /^0x[0-9a-fA-F]{40}$/.test(from) ? from : undefined;
+}
 
 async function logRequest(
   svc:           Service,
