@@ -66,6 +66,8 @@ services:
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}   # secret, optional: unset = admin API disabled
       # demo-services is on the private compose network; allow exactly its origin past the SSRF block.
       UPSTREAM_ALLOWLIST: ${UPSTREAM_ALLOWLIST:-http://demo-services:4001}
+      # LaunchHelper (one-tx launch). Empty = multi-tx flow. Server refuses to start if it does not match this deployment.
+      LAUNCH_HELPER_ADDRESS: ${LAUNCH_HELPER_ADDRESS:-}
       # Not read by the server yet (see docs/DEPLOY-COOLIFY.md, "Code changes needed").
       CORS_ORIGINS: ${CORS_ORIGINS:-https://astralaunch.xyz,https://www.astralaunch.xyz}
     entrypoint: ['/bin/sh', '-c', ': "$${POSTGRES_PASSWORD:?FATAL: POSTGRES_PASSWORD is not set}" "$${GATEWAY_HMAC_MASTER_KEY:?FATAL: GATEWAY_HMAC_MASTER_KEY is not set}"; exec "$$@"', 'require-secrets']

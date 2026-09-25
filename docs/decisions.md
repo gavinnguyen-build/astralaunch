@@ -355,3 +355,41 @@ At create/update, an `upstreamUrl` with a query, fragment or credentials is reje
 `<upstreamUrl>/health`, so demo-services also serves `/sight/health` and `/feed/health`. The register script
 keeps the current price on an update when `PRICE_USDC` is unset.
 
+
+## One-transaction launch: LaunchHelper (2026-09-26)
+
+**D-LH1. Periphery, not a core change.** `packages/contracts/src/LaunchHelper.sol`, in one call:
+`Airlock.create(params)` → `AstralaunchRegistry.register(asset, creator)` → forward the fee to the treasury →
+emit `LaunchFeePaid(launcher, asset, amount)`. The deployed v2 core is unchanged, and a direct launch still works.
+The helper has no admin and holds no funds. Its airlock, registry, treasury and fee are immutable, and it is
+`nonReentrant`. All-or-nothing: if create or register reverts (any config mismatch), no fee is taken.
+
+**D-LH2. The SDK builds the params (CLAUDE.md rule 11).** The web encodes `CreateParams` with the Doppler SDK
+(`encodeCreateMulticurveParams`, same builder as mainnet-launch.ts) and passes them through. The helper never
+builds or inspects the multicurve encoding; the registry's on-chain checks are the gate. The SDK's salt is
+random per encode, so the web encodes once, then simulates and sends that same value. Fork-verified: the
+Airlock does not depend on `msg.sender`, so a token created through the helper registers like a direct launch.
+
+**D-LH3. `msg.value` is exactly the fee or 0.** 0 = the launcher already holds an unused receipt (e.g. a paid fee
+whose launch failed), so the one-tx flow never charges twice. Without a receipt, a 0-value launch is simply
+unlisted, like any direct launch. Any other value reverts. *Conservative reading:* the spec asks for the fee
+to be forwarded; the 0 path adds no way around listing, which stays off-chain (D-LF1).
+
+**D-LH4. Launcher = tx sender.** `POST /api/launch-fee/verify` accepts a tx to the configured LaunchHelper.
+The fee is the amount in the helper's own `LaunchFeePaid` log (logs from any other address are ignored).
+The receipt's launcher is `tx.from`, matching the indexer's register-sender rule (D-LF3). The late match
+prefers the event's asset. A helper tx that paid nothing → `no_fee_paid` (422). Direct transfers are unchanged.
+
+**D-LH5. Config and startup check.** `LAUNCH_HELPER_ADDRESS` (server) is exposed as `launchHelper` in
+`/api/config`. Unset = the web uses the multi-transaction flow. When set, the server refuses to start unless
+the address has code and its airlock, registry, treasury and fee match AIRLOCK, the registry,
+LAUNCH_FEE_TREASURY and LAUNCH_FEE_WEI. Per CLAUDE.md rule 8, the mainnet address goes into
+`packages/shared/src/addresses.ts` (with the deploy tx) once deployed; until then it is config only.
+
+**D-LH6. One signature: `launchDetailsMessage`.** New header `Astralaunch: launch details` + canonical JSON of the
+metadata fields and a nested canonical `service`, then `issuedAt`. `POST /api/tokens/launch-details`
+applies the same rules as the two single-purpose endpoints (on-chain creator, fresh issuedAt, replay record
+`launch_details`, listed token + safe upstream for a service, monotonic metadata) and commits both in one
+transaction. The old messages and endpoints are unchanged. The web signs right after the launch tx confirms
+(the token address is only final then) and posts once the token is listed (the listing wait of ≤ 300 s fits
+the 600 s signature window).

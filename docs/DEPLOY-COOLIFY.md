@@ -102,6 +102,7 @@ copied `monad-mainnet.json`.
 | `GATEWAY_HMAC_MASTER_KEY` | **secret**, required at runtime | `openssl rand -hex 32`. Rotating it invalidates existing gateway credentials. |
 | `ADMIN_API_KEY` | **secret**, optional | Bearer token for `/api/admin/*`. Unset = admin API disabled. |
 | `UPSTREAM_ALLOWLIST` | public | default `http://demo-services:4001`: the one private origin allowed past the SSRF block |
+| `LAUNCH_HELPER_ADDRESS` | public, optional | LaunchHelper for the one-transaction launch (docs/decisions.md D-LH1..D-LH6). Empty = the web uses the multi-transaction flow. When set, the server refuses to start unless the contract has code and its airlock, registry, treasury and fee match this deployment. Set it after deploying with `script/DeployLaunchHelper.s.sol` (value: `launchHelper` in `packages/contracts/deployments/monad-mainnet-launch-helper.json`). |
 | `CORS_ORIGINS` | public | default `https://astralaunch.xyz,https://www.astralaunch.xyz`. Read by the server (`apps/server/src/lib/cors.ts`); bare origins only, a wildcard or path refuses to start. |
 | `X402_FACILITATOR_URL` | public | default `https://x402-facilitator.molandak.org` |
 | `PAYMENT_TIMEOUT_SECONDS` | public | default `60`. The server refuses > 300 on a non-local RPC. |
