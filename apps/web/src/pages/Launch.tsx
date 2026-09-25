@@ -1,8 +1,10 @@
 /**
- * /launch — docs/design/Launch.dc.html. Flow in lib/launch.ts (same params as mainnet-launch.ts):
- * launch fee (unless an unused receipt exists) → verify → createMulticurve → register →
- * listing by the indexer → signed metadata → signed service. Every tx is simulated first; the
- * confirmation shows every parameter and gas. The fixed initial market cap is not shown.
+ * /launch — docs/design/Launch.dc.html. Flow in lib/launch.ts (same params as mainnet-launch.ts).
+ * With a LaunchHelper configured (/api/config): ONE transaction (create + register + fee) → verify →
+ * ONE signature (token details + service) → listing → save. Otherwise: launch fee (unless an unused
+ * receipt exists) → verify → createMulticurve → register → listing → signed metadata → signed service.
+ * Every tx is simulated first; the confirmation shows the transaction and signature counts and gas.
+ * The fixed initial market cap is not shown.
  */
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -17,10 +19,16 @@ import { A } from '../components/A.js';
 import { shortAddr } from '../lib/format.js';
 
 type Pair = 'usdc' | 'mon';
-const STEPS: [StepKey, string][] = [
-  ['fee', 'Pay launch fee (10 MON)'], ['verify', 'Verify fee'], ['launch', 'Create token and pool'], ['register', 'Register with Astralaunch'],
-  ['listing', 'Wait for listing'], ['metadata', 'Sign token details'], ['service', 'Sign service registration'],
-];
+const STEPS: Record<LaunchPlan['mode'], [StepKey, string][]> = {
+  classic: [
+    ['fee', 'Pay launch fee (10 MON)'], ['verify', 'Verify fee'], ['launch', 'Create token and pool'], ['register', 'Register with Astralaunch'],
+    ['listing', 'Wait for listing'], ['metadata', 'Sign token details'], ['service', 'Sign service registration'],
+  ],
+  helper: [
+    ['launch', 'Launch: create, register and pay the fee (one transaction)'], ['verify', 'Verify fee'],
+    ['sign', 'Sign token details and service (one signature)'], ['listing', 'Wait for listing'], ['details', 'Save token details and service'],
+  ],
+};
 
 function useField(init = '') {
   const [value, set] = useState(init);
@@ -134,7 +142,7 @@ export default function Launch() {
         {(phase === 'running' || phase === 'done' || (phase === 'error' && Object.keys(steps).length > 0)) && (
           <div>
             <h2 style={{ margin: '0 0 14px', fontSize: '20px' }}>{phase === 'done' ? 'Launched' : phase === 'error' ? 'Launch stopped' : 'Launching…'}</h2>
-            {STEPS.map(([k, label]) => {
+            {STEPS[plan?.mode ?? 'classic'].map(([k, label]) => {
               const s = steps[k];
               const color = !s ? '#5F5A78' : s.state === 'done' ? '#34D399' : s.state === 'error' ? '#F87171' : s.state === 'skipped' ? '#8C87A3' : '#C4B5FD';
               return (
@@ -200,6 +208,13 @@ function Confirm({ plan, input, onCancel, onConfirm }: { plan: LaunchPlan; input
       <R k="Supply">1,000,000,000 · 85% pool · 15% vested</R>
       <R k="Vesting">15% to the fee recipient · 30-day cliff · 1 year</R>
       <R k="Launch fee">{plan.feeTx.needed ? fmtMon(plan.feeTx.valueWei) : `${fmtMon(plan.feeTx.valueWei)} · already paid`}</R>
+      <R k="Wallet steps">
+        {plan.txCount} transaction{plan.txCount === 1 ? '' : 's'}
+        {plan.mode === 'helper' ? ' (create, register and fee together)' : ''}
+        {' · '}{plan.signatureCount} signature{plan.signatureCount === 1 ? '' : 's'}
+        {plan.mode === 'helper' && plan.signatureCount ? ' (token details and service together)' : ''}
+      </R>
+      <R k="Gas (est.)">{fmtMon(plan.estimatedMonCost - (plan.feeTx.needed ? plan.feeTx.valueWei : 0n))}{plan.mode === 'classic' ? ' · register estimated' : ''}</R>
       <R k="Estimated total">{fmtMon(plan.estimatedMonCost)} (fee + gas)</R>
       <div style={{ display: 'flex', gap: 10, marginTop: 18, justifyContent: 'flex-end' }}>
         <button type="button" style={btn(false)} onClick={onCancel}>Cancel</button>
