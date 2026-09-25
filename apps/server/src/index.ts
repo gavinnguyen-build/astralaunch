@@ -14,11 +14,14 @@
  *   GET  /api/creator/:wallet                 — creator dashboard (claims, vesting, services)
  *   GET  /api/tokens/:asset/candles|trades|holders — market data
  *   ALL  /s/:slug/*                           — x402 gateway
+ *
+ * CORS: /api/* and /s/* allow only the origins in CORS_ORIGINS (lib/cors.ts).
  */
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
-import { PORT, RPC_URL, PAYMENT_TIMEOUT_S, verifyContracts } from './env.js';
+import { PORT, RPC_URL, PAYMENT_TIMEOUT_S, CORS_ORIGINS, verifyContracts } from './env.js';
+import { corsFor } from './lib/cors.js';
 
 // Refuse to start with a dangerously wide payment window on a non-local RPC.
 // PAYMENT_TIMEOUT_SECONDS > 300 is only safe on a local Anvil fork where block
@@ -52,6 +55,10 @@ import { startProbeWorker } from './lib/probes.js';
 const app = new Hono();
 
 app.use('*', logger());
+// Before the routes: preflights for /api/* and the /s/* gateway are answered here (lib/cors.ts).
+const corsMw = corsFor(CORS_ORIGINS);
+app.use('/api/*', corsMw);
+app.use('/s/*', corsMw);
 
 app.route('/', health);
 app.route('/api/tokens',   tokensRouter);

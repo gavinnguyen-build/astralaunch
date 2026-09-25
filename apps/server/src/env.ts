@@ -2,6 +2,7 @@ import { config } from 'dotenv';
 import { existsSync, readFileSync } from 'node:fs';
 import { createPublicClient, defineChain, getAddress, http } from 'viem';
 import { USDC, X402_FACILITATOR_URL_DEFAULT } from '@astralaunch/shared';
+import { parseCorsOrigins } from './lib/cors.js';
 
 config({ path: '../../.env' });
 // also allow local override
@@ -31,6 +32,8 @@ export const SUBMITTERS         = (process.env.FACILITATOR_SUBMITTER_ADDRESSES ?
   .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 /** Payment authorization window in seconds. Default 60; set higher on a test fork when
  *  block time may have been advanced past wall-clock time (e.g. after keeper cooldown warp). */
+/** Browser origins allowed to call /api/* and /s/* cross-origin (comma-separated). Empty = none. */
+export const CORS_ORIGINS       = parseCorsOrigins(process.env.CORS_ORIGINS);
 export const PAYMENT_TIMEOUT_S  = Number(process.env.PAYMENT_TIMEOUT_SECONDS ?? 60);
 
 // ── Startup contract verification ──────────────────────────────────────────

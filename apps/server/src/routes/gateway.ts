@@ -31,13 +31,8 @@ import type { Service } from '../db/schema.js';
 import { signRequest } from '../lib/hmac.js';
 import { FACILITATOR_URL, USDC_ADDR, CHAIN_ID, PAYMENT_TIMEOUT_S } from '../env.js';
 import { MONAD_NETWORK } from '@astralaunch/shared';
+import { PAYMENT_HEADERS, PAYMENT_REQUIRED_HEADERS, PAYMENT_RESPONSE_HEADER } from '../lib/x402Headers.js';
 
-// Header names as used by the x402 SDK's own HTTP client (x402HTTPClient in @x402/core/client,
-// which exports no constants): v2 = PAYMENT-SIGNATURE / PAYMENT-REQUIRED / PAYMENT-RESPONSE.
-// The legacy X-PAYMENT / X-PAYMENT-REQUIRED names are kept for existing clients (D-GW1).
-const PAYMENT_HEADERS          = ['PAYMENT-SIGNATURE', 'X-PAYMENT'] as const;
-const PAYMENT_REQUIRED_HEADERS = ['PAYMENT-REQUIRED', 'X-PAYMENT-REQUIRED'] as const;
-const PAYMENT_RESPONSE_HEADER  = 'PAYMENT-RESPONSE';
 const MAX_BODY_BYTES          = 10 * 1024 * 1024; // 10 MB
 
 const facilitator = new HTTPFacilitatorClient({ url: FACILITATOR_URL });

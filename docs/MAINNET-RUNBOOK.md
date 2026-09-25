@@ -257,7 +257,35 @@ cd apps/server
 cp .env.mainnet.example .env.mainnet
 # Edit: DATABASE_URL (e.g. postgres://user:pass@localhost:5432/astralaunch),
 #       GATEWAY_HMAC_MASTER_KEY (openssl rand -hex 32),
-#       PRIVY_APP_ID, PRIVY_APP_SECRET, LITELLM_BASE_URL, LITELLM_API_KEY
+#       PRIVY_APP_ID, PRIVY_APP_SECRET, LITELLM_BASE_URL, LITELLM_API_KEY,
+#       CORS_ORIGINS (see below)
+```
+
+**Web ↔ server (CORS).** The web app calls the server at `VITE_API_BASE` (build-time, `apps/web/src/env.ts`)
+for every `/api/*` request and for the `/s/*` gateway (Try API). When the web and the server are on different
+origins (production: `https://astralaunch.xyz` → `https://api.astralaunch.xyz`), the server must list the web
+origins in `CORS_ORIGINS`:
+
+```bash
+CORS_ORIGINS=https://astralaunch.xyz,https://www.astralaunch.xyz   # server
+VITE_API_BASE=https://api.astralaunch.xyz                          # web build
+```
+
+- Bare origins only (scheme + host [+ port]); a wildcard or a path makes the server refuse to start. Empty = no
+  cross-origin calls (same-origin and server-to-server calls still work).
+- `/api/*` and `/s/*` answer preflights for these origins (methods GET/HEAD/POST/PUT/PATCH/DELETE, request
+  headers `Content-Type`, `Accept`, `PAYMENT-SIGNATURE`, `X-PAYMENT`), expose `PAYMENT-RESPONSE`,
+  `X-PAYMENT-RESPONSE`, `PAYMENT-REQUIRED` and `X-PAYMENT-REQUIRED`, and send no credentials.
+- Local dev needs neither: leave `VITE_API_BASE` empty and the Vite proxy forwards `/api` and `/s/` to
+  `API_PROXY_TARGET` (default `http://localhost:3001`).
+
+Check after deploy:
+
+```bash
+curl -si -X OPTIONS https://api.astralaunch.xyz/api/stats -H 'Origin: https://astralaunch.xyz' \
+  -H 'Access-Control-Request-Method: GET' | grep -i '^access-control-allow-origin'   # → https://astralaunch.xyz
+curl -si -X OPTIONS https://api.astralaunch.xyz/api/stats -H 'Origin: https://evil.example' \
+  -H 'Access-Control-Request-Method: GET' | grep -ci '^access-control-allow-origin'  # → 0
 ```
 
 ### Run migrations
