@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Astralaunch — Discover</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;background:#0B0A12;font-family:Inter,system-ui,sans-serif;color:#ECEAF4}
+a{color:#C4B5FD}a:hover{color:#DDD6FE}
+@keyframes pxBreathe{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+@keyframes pxBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes pxSway{0%,100%{transform:rotate(-1.2deg)}50%{transform:rotate(1.2deg)}}
+@keyframes pxHop{0%,60%,100%{transform:translateY(0) rotate(0)}20%{transform:translateY(-8px) rotate(-3deg)}40%{transform:translateY(0) rotate(2deg)}}
+@keyframes pxFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+@keyframes pxGlow{0%,100%{opacity:0.35}50%{opacity:1}}
+@keyframes pxLed{0%,49%{opacity:1}50%,100%{opacity:0.15}}
+@keyframes pxRise{0%{opacity:0;transform:translateY(0)}20%{opacity:1}100%{opacity:0;transform:translateY(-36px)}}
+.px-breathe{animation:pxBreathe 4s ease-in-out infinite}.px-bob{animation:pxBob 2.6s ease-in-out infinite}
+.px-sway{animation:pxSway 3.4s ease-in-out infinite;transform-origin:50% 90%}.px-hop{animation:pxHop 1.8s ease-in-out infinite;transform-origin:50% 100%}
+.px-float{animation:pxFloat 4.5s ease-in-out infinite}.px-glow{animation:pxGlow 3s ease-in-out infinite}
+.px-led{animation:pxLed 1.2s steps(1) infinite}.px-l1{animation-duration:0.9s}.px-l2{animation-duration:1.6s}
+.px-spark{animation:pxRise 3s ease-out infinite;opacity:0}
+.px-d1{animation-delay:-1s}.px-d2{animation-delay:-2s}.px-d3{animation-delay:-0.9s}
+@keyframes twCursor{0%,49%{opacity:1}50%,100%{opacity:0}}
+.tw-cursor{animation:twCursor .8s steps(1) infinite}
+@keyframes pxHover{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-12px) rotate(2deg)}}
+@keyframes pxSteam{0%{opacity:0;transform:translateY(4px)}30%{opacity:1}100%{opacity:0;transform:translateY(-14px)}}
+.px-hover{animation:pxHover 3s ease-in-out infinite}.px-steam{animation:pxSteam 2.2s ease-out infinite}
+.px-f1{animation-duration:3.6s}.px-f2{animation-duration:5.4s}.px-fast{animation-duration:2.4s}
+@keyframes tw0{0%,1%{opacity:0;clip-path:inset(0 100% 0 0)}2%{opacity:.35}9%{opacity:1;clip-path:inset(0 0 0 0)}88%{opacity:1;clip-path:inset(0 0 0 0)}96%,100%{opacity:0;clip-path:inset(0 0 0 0)}}
+@keyframes tw1{0%,10%{opacity:0;clip-path:inset(0 100% 0 0)}11%{opacity:.35}18%{opacity:1;clip-path:inset(0 0 0 0)}88%{opacity:1;clip-path:inset(0 0 0 0)}96%,100%{opacity:0;clip-path:inset(0 0 0 0)}}
+@keyframes tw2{0%,20%{opacity:0;clip-path:inset(0 100% 0 0)}21%{opacity:.35}28%{opacity:1;clip-path:inset(0 0 0 0)}88%{opacity:1;clip-path:inset(0 0 0 0)}96%,100%{opacity:0;clip-path:inset(0 0 0 0)}}
+@keyframes tw3{0%,30%{opacity:0;clip-path:inset(0 100% 0 0)}31%{opacity:.35}38%{opacity:1;clip-path:inset(0 0 0 0)}88%{opacity:1;clip-path:inset(0 0 0 0)}96%,100%{opacity:0;clip-path:inset(0 0 0 0)}}
+@keyframes tw4{0%,40%{opacity:0;clip-path:inset(0 100% 0 0)}41%{opacity:.35}48%{opacity:1;clip-path:inset(0 0 0 0)}88%{opacity:1;clip-path:inset(0 0 0 0)}96%,100%{opacity:0;clip-path:inset(0 0 0 0)}}
+@keyframes tw5{0%,50%{opacity:0;clip-path:inset(0 100% 0 0)}51%{opacity:.35}58%{opacity:1;clip-path:inset(0 0 0 0)}88%{opacity:1;clip-path:inset(0 0 0 0)}96%,100%{opacity:0;clip-path:inset(0 0 0 0)}}
+.tw{opacity:0}.tw0{animation:tw0 11s steps(20,end) infinite}.tw1{animation:tw1 11s steps(20,end) infinite}.tw2{animation:tw2 11s steps(20,end) infinite}.tw3{animation:tw3 11s steps(20,end) infinite}.tw4{animation:tw4 11s steps(20,end) infinite}.tw5{animation:tw5 11s steps(20,end) infinite}
+@keyframes pxWire{to{stroke-dashoffset:-120}}
+.px-wire{stroke-dasharray:18 42;animation:pxWire 1.1s linear infinite;opacity:.95}.px-w2{animation-duration:.9s}.px-w3{animation-duration:.7s}.px-w4{animation-duration:.8s;animation-delay:-.3s}
+@media (prefers-reduced-motion: reduce){.px-stage *{animation:none!important}.px-stage .tw{opacity:1}}
+</style>
+</helmet>
+<div style="width: 1440px; height: 2160px; box-sizing: border-box; background: #0B0A12; color: #ECEAF4; font-family: Inter, system-ui, sans-serif; display: flex; flex-direction: column;">
+
+<header style="height: 64px; box-sizing: border-box; padding: 0 124px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #1E1B2E;">
+<div style="display: flex; align-items: center; gap: 24px;">
+<a href="#" style="display: flex; align-items: center; gap: 10px; color: #ECEAF4; text-decoration: none; font-weight: 700; font-size: 16px;">
+<img src="/_blob/99a75b3ad835989ddd438c67188e5265" alt="" width="32" height="32" style="width: 32px; height: 32px; display: block;">
+astralaunch</a>
+<nav aria-label="Primary" style="display: flex; gap: 4px; font-size: 14px;"><a href="Discover.dc.html" style="padding: 8px 14px; border-radius: 8px; background: rgb(28, 26, 41); color: rgb(236, 234, 244); text-decoration: none">Discover</a><a href="Leaderboard.dc.html" style="background-color: rgb(11, 10, 18); padding: 8px 14px; color: rgb(154, 149, 176); text-decoration: none; display: inline !important">Leaderboard</a><a href="Creator.dc.html" style="padding: 8px 14px; color: #9A95B0; text-decoration: none;">Creator</a><a href="#" style="padding: 8px 14px; color: rgb(154, 149, 176); text-decoration: none">Docs</a></nav>
+</div>
+<div style="display: flex; align-items: center; gap: 10px;">
+<button type="button" style="height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #2A2640; background: transparent; color: #ECEAF4; font-family: inherit; font-size: 14px; display: flex; align-items: center; gap: 8px; cursor: pointer;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ECEAF4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13.5 6l-3 12"></path></svg>For agents</button>
+<button type="button" style="height: 40px; padding: 0 20px; border-radius: 999px; border: 0; background: #8B5CF6; color: #FFFFFF; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;">Connect</button>
+</div>
+</header>
+
+<main style="padding: 26px 124px 0; display: flex; flex-direction: column; gap: 20px">
+
+<section style="border: 1px solid #2A2640; border-radius: 24px; overflow: hidden; background: radial-gradient(900px 420px at 80% 70%, rgba(168,85,247,0.28), transparent 60%), radial-gradient(700px 380px at 95% 10%, rgba(99,102,241,0.18), transparent 60%), #110F1A;">
+<div style="height: 532px; box-sizing: border-box; padding: 70px 40px 0; display: grid; grid-template-columns: minmax(0, 1fr) 460px; gap: 40px;">
+<div style="display: flex; flex-direction: column; gap: 22px;">
+<span style="align-self: flex-start; display: flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; border: 1px solid #3A3456; border-radius: 999px; font-size: 13px; color: #D4D0E4;"><span style="padding: 2px 8px; border-radius: 999px; background: #6D4AE0; color: #FFFFFF; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600;">LIVE</span>Now on Monad mainnet</span>
+<h1 style="margin: 0; font-size: 52px; line-height: 1.08; letter-spacing: -0.02em; font-weight: 800;">Every paid API call<br><span style="background: linear-gradient(90deg,#A78BFA,#E879F9); -webkit-background-clip: text; background-clip: text; color: transparent;">buys back</span> the token<br>behind it.</h1>
+<p style="margin: 0; max-width: 470px; font-size: 16px; line-height: 1.6; color: #A7A2BD;">Put the Astralaunch gateway in front of any API. Agents pay per call in USDC over x402. 30% of every payment buys back and burns the service's token.</p>
+<div style="display: flex; gap: 12px; margin-top: 8px;">
+<a href="Launch.dc.html" style="height: 48px; box-sizing: border-box; padding: 0 24px; border-radius: 999px; background: #8B5CF6; color: #FFFFFF; font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 10px; text-decoration: none;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 15c-1 1-1.5 3.5-1.5 5.5 2 0 4.5-.5 5.5-1.5M14 4c3 0 6 3 6 6l-7 7-6-6 7-7zM9 11l-3 1-2 3 3 1M13 15l-1 3-3 2-1-3"></path></svg>Launch a service</a>
+<button type="button" style="height: 48px; padding: 0 22px; border-radius: 999px; border: 1px solid #3A3456; background: transparent; color: #ECEAF4; font-family: inherit; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 10px; cursor: pointer;">Explore services <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ECEAF4" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></button>
+</div>
+</div>
+
+<div class="px-stage" role="img" aria-label="Pixel-art robots at desks, server racks and a wall screen showing a live x402 payment" style="position: relative; height: 462px;">
+<div style="position: absolute; left: -73px; top: -38px; width: 610px; height: 507px">
+<div class="px-piece px-breathe" style="position: absolute; left: 15.8px; top: 19.8px; width: 209.1px; height: 196.3px; z-index: 1; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -0.0px -0.0px;"></div>
+<div class="px-piece px-breathe px-d2" style="position: absolute; left: 287.6px; top: 27.9px; width: 163.6px; height: 194.4px; z-index: 1; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -209.8px -0.0px;"></div>
+<div class="px-piece px-bob" style="position: absolute; left: 171.7px; top: 207.6px; width: 129.9px; height: 141.2px; z-index: 3; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -0.0px -197.0px;"></div>
+<div class="px-piece px-bob px-d2" style="position: absolute; left: 308.5px; top: 246.5px; width: 125.1px; height: 138.3px; z-index: 3; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -130.6px -197.0px;"></div>
+<div class="px-piece px-bob px-d1" style="position: absolute; left: 36.7px; top: 223.8px; width: 117.8px; height: 133.2px; z-index: 3; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -256.4px -197.0px;"></div>
+<div class="px-piece px-breathe px-d1" style="position: absolute; left: 250.2px; top: 356.6px; width: 66.4px; height: 81.8px; z-index: 3; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -374.9px -197.0px;"></div>
+<div class="px-piece px-hover" style="position: absolute; left: 36.7px; top: 356.6px; width: 50.6px; height: 73.7px; z-index: 4; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -0.0px -338.9px;"></div>
+<div class="px-piece " style="position: absolute; left: 344.8px; top: 392.5px; width: 52.1px; height: 45.9px; z-index: 4; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -51.4px -338.9px;"></div>
+<div class="px-piece " style="position: absolute; left: 179.7px; top: 388.1px; width: 42.2px; height: 41.1px; z-index: 4; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -104.2px -338.9px;"></div>
+<div class="px-piece px-float" style="position: absolute; left: 248.0px; top: 40.4px; width: 33.0px; height: 44.8px; z-index: 2; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -147.1px -338.9px;"></div>
+<div class="px-piece px-float px-d2 px-f2" style="position: absolute; left: 248.0px; top: 85.5px; width: 30.8px; height: 45.1px; z-index: 2; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -180.8px -338.9px;"></div>
+<div class="px-piece px-float px-d2" style="position: absolute; left: 23.1px; top: 220.5px; width: 30.8px; height: 39.6px; z-index: 2; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -212.4px -338.9px;"></div>
+<div class="px-piece px-float px-d1" style="position: absolute; left: 399.5px; top: 374.9px; width: 33.4px; height: 36.3px; z-index: 2; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -243.9px -338.9px;"></div>
+<div class="px-piece px-float px-f1" style="position: absolute; left: 278.4px; top: 202.5px; width: 28.6px; height: 40.7px; z-index: 2; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -278.1px -338.9px;"></div>
+<div class="px-piece px-float px-d1 px-f1" style="position: absolute; left: 392.1px; top: 44.4px; width: 29.3px; height: 39.3px; z-index: 2; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -307.4px -338.9px;"></div>
+<div class="px-piece px-float px-d1 px-f2" style="position: absolute; left: 359.1px; top: 215.3px; width: 27.5px; height: 37.0px; z-index: 2; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -337.5px -338.9px;"></div>
+<div class="px-piece px-float px-d3 px-f1" style="position: absolute; left: 407.9px; top: 234.4px; width: 24.9px; height: 33.4px; z-index: 2; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -365.7px -338.9px;"></div>
+<div class="px-piece px-float px-d3" style="position: absolute; left: 250.9px; top: 183.0px; width: 23.8px; height: 34.8px; z-index: 2; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -391.4px -338.9px;"></div>
+<div class="px-piece px-float px-fast" style="position: absolute; left: 114.4px; top: 377.8px; width: 26.0px; height: 21.3px; z-index: 2; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -416.0px -338.9px;"></div>
+<div class="px-piece px-float px-fast px-d1" style="position: absolute; left: 126.2px; top: 400.9px; width: 23.1px; height: 19.8px; z-index: 2; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -0.0px -413.4px;"></div>
+<div class="px-piece px-float px-f2" style="position: absolute; left: 23.1px; top: 260.8px; width: 16.9px; height: 25.7px; z-index: 2; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -23.8px -413.4px;"></div>
+<div class="px-piece px-steam px-d1" style="position: absolute; left: 198.5px; top: 373.8px; width: 5.9px; height: 11.7px; z-index: 2; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -41.5px -413.4px;"></div>
+<div class="px-piece px-steam" style="position: absolute; left: 193.7px; top: 367.6px; width: 5.1px; height: 11.4px; z-index: 2; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -48.1px -413.4px;"></div>
+<div class="px-piece px-steam px-d2" style="position: absolute; left: 192.2px; top: 380.4px; width: 3.3px; height: 5.9px; z-index: 2; background-image: url(/_blob/6954211f7f79d2246a85e5d36e89fb3d); background-repeat: no-repeat; background-size: 460.0px 439.1px; background-position: -53.9px -413.4px;"></div>
+<div class="px-breathe" aria-hidden="true" style="position: absolute; left: 0; top: 0; width: 460px; height: 460px; z-index: 2; pointer-events: none;">
+<svg width="460" height="460" viewBox="0 0 1254 1254" style="position: absolute; left: 0; top: 0; overflow: visible;">
+<path class="px-wire" d="M290,310 L290,462 Q290,490 318,492 Q332,494 332,520 L332,540 Q334,556 352,553 L455,506" fill="none" stroke="#FFE27A" stroke-width="7" stroke-linecap="round"></path>
+<path class="px-wire px-w2" d="M287,500 Q300,505 305,525 L308,556 Q312,566 330,564 L400,540" fill="none" stroke="#9BF6FF" stroke-width="6" stroke-linecap="round"></path>
+<path class="px-wire px-w3" d="M535,438 Q548,445 560,470" fill="none" stroke="#9BF6FF" stroke-width="6" stroke-linecap="round"></path>
+<path class="px-wire px-w4" d="M548,430 Q566,444 574,466" fill="none" stroke="#9BF6FF" stroke-width="6" stroke-linecap="round"></path>
+</svg>
+</div>
+<span class="px-led px-l0" style="position: absolute; left: 129.9px; top: 156.3px; width: 2.2px; height: 4.0px; background: #5EF0FF; z-index: 2;"></span>
+<span class="px-led px-l1" style="position: absolute; left: 144.2px; top: 108.9px; width: 3.3px; height: 5.9px; background: #5EF0FF; z-index: 2;"></span>
+<span class="px-led px-l2" style="position: absolute; left: 203.6px; top: 77.8px; width: 2.0px; height: 2.0px; background: #5EF0FF; z-index: 2;"></span>
+<span class="px-led px-l0" style="position: absolute; left: 141.2px; top: 159.9px; width: 2.0px; height: 2.9px; background: #5EF0FF; z-index: 2;"></span>
+<span class="px-led px-l1" style="position: absolute; left: 154.8px; top: 172.0px; width: 2.0px; height: 2.6px; background: #FFD84D; z-index: 2;"></span>
+<span class="px-led px-l2" style="position: absolute; left: 159.9px; top: 151.5px; width: 2.0px; height: 2.9px; background: #5EF0FF; z-index: 2;"></span>
+<span class="px-led px-l0" style="position: absolute; left: 136.8px; top: 180.8px; width: 2.2px; height: 2.6px; background: #5EF0FF; z-index: 2;"></span>
+<span class="px-led px-l1" style="position: absolute; left: 83.3px; top: 156.3px; width: 2.9px; height: 3.7px; background: #FFD84D; z-index: 2;"></span>
+<span class="px-led px-l2" style="position: absolute; left: 92.8px; top: 158.1px; width: 2.0px; height: 2.0px; background: #FFD84D; z-index: 2;"></span>
+<span class="px-led px-l0" style="position: absolute; left: 205.8px; top: 128.0px; width: 2.0px; height: 2.0px; background: #5EF0FF; z-index: 2;"></span>
+<span class="px-led px-l1" style="position: absolute; left: 75.2px; top: 147.8px; width: 2.0px; height: 2.0px; background: #5EF0FF; z-index: 2;"></span>
+<span class="px-led px-l2" style="position: absolute; left: 154.1px; top: 173.9px; width: 2.0px; height: 2.0px; background: #5EF0FF; z-index: 2;"></span>
+<span class="px-led px-l0" style="position: absolute; left: 132.1px; top: 137.9px; width: 2.0px; height: 2.6px; background: #FFD84D; z-index: 2;"></span>
+<span class="px-led px-l1" style="position: absolute; left: 89.1px; top: 129.9px; width: 2.0px; height: 2.0px; background: #FFD84D; z-index: 2;"></span>
+<div class="px-breathe px-d2" style="position: absolute; left: 296.8px; top: 52.8px; width: 115.9px; height: 88.4px; z-index: 5; pointer-events: none;">
+<div aria-hidden="true" style="width: 100%; height: 100%; box-sizing: border-box; padding: 5px 7px; transform-origin: 0 0; transform: skewY(27.5deg); background: #0B1024; overflow: hidden; font-family: 'JetBrains Mono', monospace; font-size: 8px; line-height: 11px; color: #D6E4FF; display: flex; flex-direction: column;">
+<div class="tw tw0" style="white-space: nowrap; overflow: hidden; height: 11px;"><span style="color:#6EE7B7">●</span> live x402 call</div>
+<div class="tw tw1" style="white-space: nowrap; overflow: hidden; height: 11px;"><span style="color:#C4B5FD">→</span> GET /s/nullsight</div>
+<div class="tw tw2" style="white-space: nowrap; overflow: hidden; height: 11px;"><span style="color:#F0ABFC">← 402</span> · 0.02 USDC</div>
+<div class="tw tw3" style="white-space: nowrap; overflow: hidden; height: 11px;"><span style="color:#C4B5FD">→</span> sign EIP-3009</div>
+<div class="tw tw4" style="white-space: nowrap; overflow: hidden; height: 11px;"><span style="color:#6EE7B7">← 200 OK</span> · settled</div>
+<div class="tw tw5" style="white-space: nowrap; overflow: hidden; height: 11px;"><span style="color:#FDE68A">split</span> 60 / 30 / 10</div>
+<div class="tw-cursor" style="width: 5px; height: 7px; background: #6EE7B7;"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); border-top: 1px solid #25213A;">
+<div style="padding: 22px 40px; border-right: 1px solid #25213A;"><div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: #8C87A3;">SERVICES LIVE</div><div style="margin-top: 10px; font-size: 26px; font-weight: 700;">128</div></div>
+<div style="padding: 22px 40px; border-right: 1px solid #25213A;"><div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: #8C87A3;">PAID CALLS</div><div style="margin-top: 10px; font-size: 26px; font-weight: 700;">214,380</div></div>
+<div style="padding: 22px 40px;"><div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: #8C87A3;">PAID TO PROVIDERS</div><div style="margin-top: 10px; font-size: 26px; font-weight: 700;">5,343 <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #A78BFA;">USDC</span></div></div>
+</div>
+</section>
+
+<section style="display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 20px; margin-top: 18px;">
+<div style="display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; justify-content: space-between; align-items: flex-end;">
+<div><h2 style="margin: 0; font-size: 20px; font-weight: 700;">Services on Astralaunch</h2><p style="margin: 6px 0 0; font-size: 13px; color: #8C87A3;">Ranked by clean revenue, last 30 days.</p></div>
+
+</div>
+<div style="display: flex; gap: 8px;">
+<sc-for list="{{filters}}" as="f" hint-placeholder-count="6">
+<button type="button" aria-pressed="{{f.pressed}}" onClick="{{f.pick}}" style="height: 34px; padding: 0 14px; border-radius: 999px; border: {{f.border}}; background: {{f.bg}}; color: {{f.fg}}; font-family: inherit; font-size: 13px; cursor: pointer;">{{f.label}}</button>
+</sc-for>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 13px; width: 1199px">
+<sc-for list="{{cards}}" as="c" hint-placeholder-count="6">
+<article style="border: 1px solid #25213A; border-radius: 14px; background: #13111C; overflow: hidden; display: flex; flex-direction: column;">
+<div style="padding: 16px 16px 14px; display: flex; flex-direction: column; gap: 10px; min-height: 104px; box-sizing: border-box;">
+<div style="display: flex; align-items: center; gap: 10px;">
+<span style="width: 26px; height: 26px; border-radius: 50%; background: {{c.avatar}}; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #FFFFFF;">{{c.initial}}</span>
+<div style="flex-grow: 1; min-width: 0;"><div style="font-size: 13px; font-weight: 700;">{{c.name}}</div><div style="font-size: 11px; color: #8C87A3;">{{c.handle}}</div></div>
+<sc-if value="{{c.verified}}" hint-placeholder-val="{{true}}"><span style="font-size: 10px; color: #34D399; border: 1px solid rgba(52,211,153,0.4); border-radius: 999px; padding: 2px 7px;">Verified</span></sc-if>
+</div>
+<p style="margin: 0; font-size: 13px; line-height: 1.5; color: #C9C5DA;">{{c.desc}}</p>
+</div>
+<div style="padding: 14px 16px; border-top: 1px solid #25213A; background: #100E18; display: flex; flex-direction: column; gap: 12px; flex-grow: 1;">
+<div style="display: flex; justify-content: space-between;">
+<div><div style="font-size: 16px; font-weight: 800;">{{c.symbol}}</div><div style="margin-top: 4px; font-size: 12px; color: #8C87A3;">{{c.price}} / call</div></div>
+<div style="text-align: right; font-family: 'JetBrains Mono', monospace;"><div style="font-size: 12px;">{{c.rev}} <span style="color: #A78BFA;">USDC</span></div><div style="margin-top: 4px; font-size: 11px; color: {{c.chgColor}};">{{c.chg}}</div></div>
+</div>
+<div style="height: 5px; border-radius: 3px; background: #25213A; position: relative;"><div style="height: 5px; border-radius: 3px; width: {{c.ucrW}}; background: {{c.ucrBar}};"></div><div style="position: absolute; left: 50%; top: -3px; width: 2px; height: 11px; background: #8C87A3;"></div></div>
+<div style="display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #8C87A3;"><span style="color: {{c.ucrColor}};">UCR {{c.ucr}}</span><span>{{c.calls}} calls</span></div>
+<div style="margin-top: auto; padding-top: 12px; border-top: 1px solid #25213A; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+<span style="font-size: 11px; color: #8C87A3;">by <span style="color: #C9C5DA;">{{c.by}}</span> · {{c.age}}</span>
+<div style="display: flex; gap: 6px;">
+<button type="button" style="height: 32px; padding: 0 10px; border-radius: 999px; border: 1px solid #3A3456; background: transparent; color: #ECEAF4; font-family: inherit; font-size: 12px; cursor: pointer;">Try API</button>
+<a href="Token.dc.html" style="height: 32px; box-sizing: border-box; padding: 0 12px; border-radius: 999px; background: #2A2640; color: #ECEAF4; font-size: 12px; font-weight: 700; display: flex; align-items: center; text-decoration: none;">Trade</a>
+</div>
+</div>
+</div>
+</article>
+</sc-for>
+</div>
+</div>
+
+<label style="display: flex; align-items: center; gap: 10px; width: 284px; height: 40px; box-sizing: border-box; padding: 0 14px; border: 1px solid #2A2640; border-radius: 999px">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8C87A3" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<input type="search" placeholder="Ticker, service or creator" aria-label="Search services" style="border: 0; outline: none; background: transparent; color: #ECEAF4; font-family: inherit; font-size: 13px; width: 100%;">
+</label>
+</section>
+
+<section style="margin-top: 20px; border: 1px solid #3B2A63; border-radius: 24px; padding: 44px 40px; background: radial-gradient(800px 360px at 90% 100%, rgba(168,85,247,0.30), transparent 60%), linear-gradient(180deg,#221442,#170F2C);">
+<div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: #B9A8E8;">HOW IT WORKS</div>
+<h2 style="margin: 12px 0 0; max-width: 560px; font-size: 32px; line-height: 1.2; font-weight: 800;">From API to token before the first call settles.</h2>
+<div style="margin-top: 34px; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px;">
+<sc-for list="{{steps}}" as="s" hint-placeholder-count="3">
+<div style="border: 1px solid #3B2A63; border-radius: 16px; background: rgba(11,10,18,0.35); padding: 22px; min-height: 184px; box-sizing: border-box;">
+<div style="display: flex; justify-content: space-between; align-items: center;"><span style="width: 36px; height: 36px; border-radius: 9px; background: #2E2152; display: flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #C4B5FD;">{{s.icon}}</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 20px; color: #4A3A77;">{{s.n}}</span></div>
+<div style="margin-top: 18px; font-size: 16px; font-weight: 700;">{{s.title}}</div>
+<p style="margin: 10px 0 0; font-size: 14px; line-height: 1.55; color: #B3AECB;">{{s.body}}</p>
+</div>
+</sc-for>
+</div>
+</section>
+</main>
+
+<footer style="margin-top: auto; padding: 22px 124px; border-top: 1px solid #1E1B2E; display: flex; align-items: center; justify-content: center; gap: 16px;">
+<span style="display: flex; align-items: center; gap: 10px; font-size: 13px; color: #8C87A3;"><img src="/_blob/99a75b3ad835989ddd438c67188e5265" alt="" width="22" height="22" style="width: 22px; height: 22px; display: block;">astralaunch — usage-backed tokens for x402 services.</span>
+
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2160}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { filter: 'With revenue' };
+  }
+  renderVals() {
+    var self = this;
+    var green = '#34D399', red = '#F87171', muted = '#8C87A3';
+    function card(c) {
+      var over = c.u >= 1;
+      return Object.assign(c, {
+        ucr: c.u.toFixed(2),
+        ucrW: Math.max(3, Math.min(100, Math.round(c.u / 2 * 100))) + '%',
+        ucrBar: over ? 'linear-gradient(90deg,#34D399,#6EE7B7)' : 'linear-gradient(90deg,#8B5CF6,#C4B5FD)',
+        ucrColor: over ? green : muted,
+        chgColor: c.chg.charAt(0) === '-' ? red : green
+      });
+    }
+    var labels = ['With revenue', 'Verified', 'New', 'High UCR', 'No service yet'];
+    return {
+      filters: labels.map(function (l) {
+        var on = l === self.state.filter;
+        return {
+          label: l, pressed: on ? 'true' : 'false',
+          bg: on ? '#8B5CF6' : 'transparent', fg: on ? '#FFFFFF' : '#C9C5DA',
+          border: on ? '0' : '1px solid #2A2640',
+          pick: function () { self.setState({ filter: l }); }
+        };
+      }),
+      cards: [
+        card({ initial: 'N', avatar: 'linear-gradient(135deg,#8B5CF6,#C084FC)', name: 'nullsight', handle: '@nullshift', verified: true, desc: 'Ranked signals from any X account: token mentions, sentiment shifts, wallet references.', symbol: '$SIGHT', price: '0.02 USDC', rev: '3,012', chg: '+18.3% 7d', u: 1.21, calls: '150.6K', by: '@nullshift', age: '38d' }),
+        card({ initial: 'F', avatar: 'linear-gradient(135deg,#6366F1,#A78BFA)', name: 'nullfeed', handle: '@nullshift', verified: true, desc: 'Daily arXiv digest for any topic, scored and summarised for research agents.', symbol: '$FEED', price: '0.01 USDC', rev: '1,406', chg: '+7.1% 7d', u: 1.63, calls: '140.6K', by: '@nullshift', age: '21d' }),
+        card({ initial: 'W', avatar: 'linear-gradient(135deg,#DB2777,#F472B6)', name: 'Whitepaper risk', handle: '@ana_builds', verified: false, desc: 'Scores a token whitepaper for red flags and returns a structured risk report.', symbol: '$WPRISK', price: '0.05 USDC', rev: '622', chg: '+42.8% 7d', u: 0.05, calls: '12.4K', by: '@ana_builds', age: '6d' }),
+        card({ initial: 'D', avatar: 'linear-gradient(135deg,#0EA5E9,#818CF8)', name: 'Pool depth', handle: '@degendad_', verified: false, desc: 'Real liquidity depth for any Monad pool at 1%, 2% and 5% price impact.', symbol: '$DEPTH', price: '0.01 USDC', rev: '208', chg: '-9.6% 7d', u: 0.06, calls: '20.8K', by: '@degendad_', age: '9d' }),
+        card({ initial: 'T', avatar: 'linear-gradient(135deg,#8B5CF6,#EC4899)', name: 'Tx lens', handle: '@kai_onchain', verified: false, desc: 'Explains any Monad transaction in plain language, with decoded calls and transfers.', symbol: '$TXLENS', price: '0.02 USDC', rev: '96', chg: '+126.4% 7d', u: 0.41, calls: '4.8K', by: '@kai_onchain', age: '2d' }),
+        card({ initial: 'V', avatar: 'linear-gradient(135deg,#A855F7,#F0ABFC)', name: 'VN docs', handle: '@fern_draws', verified: false, desc: 'Translates technical docs into Vietnamese, keeping code blocks and terms intact.', symbol: '$VNDOCS', price: '0.03 USDC', rev: '27', chg: '+23.9% 7d', u: 0.12, calls: '900', by: '@fern_draws', age: '1d' })
+      ],
+      steps: [
+        { icon: '01', n: '01', title: 'Bring an API', body: 'Paste your endpoint and set a price per call. The gateway handles x402 payment and only charges when your API answers.' },
+        { icon: '02', n: '02', title: 'Launch the token', body: 'One transaction creates the token and its pool on Monad. Real users get a fair first 12 minutes.' },
+        { icon: '03', n: '03', title: 'Usage pays holders', body: 'Every paid call splits 60 / 30 / 10. The 30% buys back and burns the token, onchain and verifiable.' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

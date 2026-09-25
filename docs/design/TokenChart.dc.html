@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Astralaunch — SIGHT/USDC</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;background:#0B0A12;font-family:Inter,system-ui,sans-serif;color:#ECEAF4}
+a{color:#C4B5FD}a:hover{color:#DDD6FE}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1500px; box-sizing: border-box; background: #0B0A12; color: #ECEAF4; font-family: Inter, system-ui, sans-serif; font-variant-numeric: tabular-nums; display: flex; flex-direction: column;">
+<header style="height: 64px; box-sizing: border-box; padding: 0 124px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #1E1B2E;">
+<div style="display: flex; align-items: center; gap: 24px;">
+<a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; color: #ECEAF4; text-decoration: none; font-weight: 700; font-size: 16px;"><img src="/_blob/99a75b3ad835989ddd438c67188e5265" alt="" width="32" height="32" style="width: 32px; height: 32px; display: block;">astralaunch</a>
+<nav aria-label="Primary" style="display: flex; gap: 4px; font-size: 14px;">
+<a href="Discover.dc.html" style="padding: 8px 14px; border-radius: 8px; color: #9A95B0; text-decoration: none;">Discover</a>
+<a href="Leaderboard.dc.html" style="padding: 8px 14px; color: #9A95B0; text-decoration: none;">Leaderboard</a>
+<a href="Creator.dc.html" style="padding: 8px 14px; color: #9A95B0; text-decoration: none;">Creator</a>
+<a href="#" style="padding: 8px 14px; color: #9A95B0; text-decoration: none;">Docs</a>
+</nav>
+</div>
+<div style="display: flex; align-items: center; gap: 10px;">
+<button type="button" style="height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #2A2640; background: transparent; color: #ECEAF4; font-family: inherit; font-size: 14px; display: flex; align-items: center; gap: 8px; cursor: pointer;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ECEAF4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13.5 6l-3 12"></path></svg>For agents</button>
+<a href="Creator.dc.html" style="height: 40px; box-sizing: border-box; padding: 0 16px; border-radius: 999px; border: 1px solid #3A3456; background: #16132A; color: #ECEAF4; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; text-decoration: none;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #34D399;"></span>0x11e2…cbc6</a>
+</div>
+</header>
+<div style="padding: 16px 13px 0; display: flex; align-items: center; gap: 16px;">
+<a href="Discover.dc.html" style="font-size: 13px; color: #8C87A3; text-decoration: none;">← All tokens</a>
+<nav aria-label="Token sections" style="display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: #1C1A29;">
+<a href="Token.dc.html" style="height: 32px; box-sizing: border-box; padding: 0 16px; border-radius: 999px; color: #8C87A3; font-size: 13px; font-weight: 600; display: flex; align-items: center; text-decoration: none;">Info</a>
+<a href="TokenChart.dc.html" aria-current="page" style="height: 32px; box-sizing: border-box; padding: 0 16px; border-radius: 999px; background: #2A2640; color: #ECEAF4; font-size: 13px; font-weight: 600; display: flex; align-items: center; text-decoration: none;">$SIGHT</a>
+</nav>
+</div>
+<div style="background:#0B0A12;color:#ECEAF4;font-family:Inter,system-ui,sans-serif;padding:13px;box-sizing:border-box;display:flex;flex-wrap:wrap;gap:13px;align-items:flex-start">
+
+  
+  <main style="flex:999 1 520px;min-width:0;display:flex;flex-direction:column;gap:13px">
+    <section style="background:#14121E;border:1px solid #2E2A45;border-radius:32px;overflow:hidden;display:flex;flex-direction:column">
+      
+      <div style="display:flex;align-items:center;gap:13px;padding:13px 18px;flex-wrap:wrap">
+        <div style="display:flex;gap:2px;background:#1C1A29;border-radius:999px;padding:4px">
+          <sc-for list="{{ timeframes }}" as="tf" hint-placeholder-count="8">
+            <button onClick="{{ tf.select }}" style="border:0;cursor:pointer;height:30px;min-width:38px;padding:0 10px;border-radius:999px;font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:13px;white-space:nowrap;background:{{ tf.bg }};color:{{ tf.fg }}">{{ tf.label }}</button>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:2px;background:#1C1A29;border-radius:999px;padding:4px">
+          <sc-for list="{{ styles }}" as="st" hint-placeholder-count="2">
+            <button onClick="{{ st.select }}" title="{{ st.label }}" style="border:0;cursor:pointer;height:30px;padding:0 12px;border-radius:999px;font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:13px;white-space:nowrap;background:{{ st.bg }};color:{{ st.fg }}">{{ st.label }}</button>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:2px;background:#1C1A29;border-radius:999px;padding:4px">
+          <sc-for list="{{ units }}" as="u" hint-placeholder-count="2">
+            <button onClick="{{ u.select }}" style="border:0;cursor:pointer;height:30px;padding:0 12px;border-radius:999px;font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:13px;white-space:nowrap;background:{{ u.bg }};color:{{ u.fg }}">{{ u.label }}</button>
+          </sc-for>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:4px">
+          <button title="Undo" style="width:36px;height:36px;border-radius:50%;border:0;background:transparent;color:#C9C5DA;cursor:pointer;display:grid;place-items:center" style-hover="background:#1C1A29"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"></path><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"></path></svg></button>
+          <button title="Settings" style="width:36px;height:36px;border-radius:50%;border:0;background:transparent;color:#C9C5DA;cursor:pointer;display:grid;place-items:center" style-hover="background:#1C1A29"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"></path></svg></button>
+          <button title="Fullscreen" style="width:36px;height:36px;border-radius:50%;border:0;background:transparent;color:#C9C5DA;cursor:pointer;display:grid;place-items:center" style-hover="background:#1C1A29"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"></path></svg></button>
+        </div>
+      </div>
+
+      <div style="display:flex;min-width:0">
+        
+        <div style="flex:none;display:flex;flex-direction:column;gap:6px;padding:9px 9px 13px 13px">
+          <sc-for list="{{ tools }}" as="t" hint-placeholder-count="7">
+            <button onClick="{{ t.select }}" title="{{ t.name }}" style="width:40px;height:40px;border-radius:50%;border:0;cursor:pointer;display:grid;place-items:center;background:{{ t.bg }};color:{{ t.fg }}" style-hover="background:#2A2640">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="{{ t.d }}"></path></svg>
+            </button>
+          </sc-for>
+        </div>
+
+        
+        <div style="flex:1;min-width:0;padding:0 18px 0 9px;display:flex;flex-direction:column;gap:9px">
+          <div style="display:flex;flex-direction:column;gap:2px;font-size:13px;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums">
+            <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+              <span style="font-family:Inter,system-ui,sans-serif;font-weight:700;letter-spacing:-0.01em;font-size:17px">SIGHT/USDC ({{ unitName }}) on Uniswap v4 · {{ tfLabel }}</span>
+              <span style="width:10px;height:10px;border-radius:50%;background:#34D399"></span>
+            </div>
+            <div style="display:flex;gap:13px;flex-wrap:wrap;color:#8C87A3">
+              <span>O <b style="color:#6EE7B7">{{ ohlc.o }}</b></span>
+              <span>H <b style="color:#6EE7B7">{{ ohlc.h }}</b></span>
+              <span>L <b style="color:#6EE7B7">{{ ohlc.l }}</b></span>
+              <span>C <b style="color:#6EE7B7">{{ ohlc.c }}</b></span>
+              <span style="color:#6EE7B7;font-weight:700">+23.75K (+7.49%)</span>
+              <span>Volume <b style="color:#6EE7B7">12.51K</b></span>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 72px;border:1px solid #25213A;border-radius:20px;overflow:hidden;background:#0E0D16">
+            <div ref="{{ plotRef }}" onMouseMove="{{ onHover }}" onMouseLeave="{{ onLeave }}" style="position:relative;height:440px;overflow:hidden;cursor:crosshair">
+              <sc-for list="{{ gridLines }}" as="g" hint-placeholder-count="6">
+                <div style="position:absolute;left:0;right:0;top:{{ g.top }};border-top:1px solid #1C1A29"></div>
+              </sc-for>
+              <sc-for list="{{ timeTicks }}" as="t" hint-placeholder-count="6">
+                <div style="position:absolute;top:0;bottom:0;left:{{ t.left }};border-left:1px solid #1C1A29"></div>
+              </sc-for>
+              <sc-if value="{{ showVolume }}" hint-placeholder-val="{{ true }}">
+                <sc-for list="{{ candles }}" as="c" hint-placeholder-count="0">
+                  <div style="position:absolute;bottom:0;left:{{ c.volLeft }};width:{{ c.volW }};height:{{ c.volH }};background:{{ c.volColor }}"></div>
+                </sc-for>
+              </sc-if>
+              <sc-if value="{{ isCandle }}" hint-placeholder-val="{{ true }}">
+                <sc-for list="{{ candles }}" as="c" hint-placeholder-count="0">
+                  <div style="position:absolute;left:{{ c.wickLeft }};width:1px;top:{{ c.wickTop }};height:{{ c.wickH }};background:{{ c.color }}"></div>
+                  <div style="position:absolute;left:{{ c.left }};width:{{ c.w }};top:{{ c.bodyTop }};height:{{ c.bodyH }};min-height:2px;background:{{ c.color }};border-radius:2px"></div>
+                </sc-for>
+              </sc-if>
+              <sc-if value="{{ isLine }}" hint-placeholder-val="{{ false }}">
+                <svg viewBox="0 0 1000 1000" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">
+                  <path d="{{ areaPath }}" fill="#0F2A22" opacity="0.8"></path>
+                  <path d="{{ linePath }}" fill="none" stroke="#34D399" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"></path>
+                </svg>
+              </sc-if>
+              <div style="position:absolute;left:0;right:0;top:{{ lastTop }};border-top:1px dotted #34D399"></div>
+              <sc-if value="{{ hasHover }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;top:0;bottom:0;left:{{ hover.x }};border-left:1px dashed #6B6585;pointer-events:none"></div>
+                <div style="position:absolute;left:0;right:0;top:{{ hover.y }};border-top:1px dashed #6B6585;pointer-events:none"></div>
+              </sc-if>
+              <div style="position:absolute;left:14px;bottom:12px;font-size:11px;color:#6B6585;font-family:'JetBrains Mono',monospace;pointer-events:none">{{ zoomHint }}</div>
+            </div>
+            <div style="position:relative;height:440px;border-left:1px solid #25213A;font-size:11px;color:#8C87A3;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums">
+              <sc-for list="{{ gridLines }}" as="g" hint-placeholder-count="6">
+                <span style="position:absolute;left:8px;top:{{ g.top }};transform:translateY(-50%);white-space:nowrap">{{ g.label }}</span>
+              </sc-for>
+              <span style="position:absolute;left:0;right:0;top:{{ lastTop }};transform:translateY(-50%);background:#34D399;color:#062A1D;font-weight:600;padding:3px 8px;white-space:nowrap">{{ lastLabel }}</span>
+              <sc-if value="{{ hasHover }}" hint-placeholder-val="{{ false }}">
+                <span style="position:absolute;left:0;right:0;top:{{ hover.y }};transform:translateY(-50%);background:#2A2640;color:#ECEAF4;padding:3px 8px;white-space:nowrap">{{ hover.price }}</span>
+              </sc-if>
+            </div>
+            <div style="position:relative;height:28px;border-top:1px solid #25213A;font-size:11px;color:#8C87A3;font-family:'JetBrains Mono',monospace">
+              <sc-for list="{{ timeTicks }}" as="t" hint-placeholder-count="6">
+                <span style="position:absolute;top:7px;left:{{ t.left }};transform:translateX(-50%);white-space:nowrap">{{ t.label }}</span>
+              </sc-for>
+              <sc-if value="{{ hasHover }}" hint-placeholder-val="{{ false }}">
+                <span style="position:absolute;top:4px;left:{{ hover.x }};transform:translateX(-50%);background:#2A2640;color:#ECEAF4;padding:2px 8px;border-radius:6px;white-space:nowrap">{{ hover.time }}</span>
+              </sc-if>
+            </div>
+            <div style="border-top:1px solid #25213A;border-left:1px solid #25213A"></div>
+          </div>
+
+          
+          <div style="display:flex;align-items:center;gap:13px;padding:9px 0 18px;flex-wrap:wrap">
+            <div style="display:flex;gap:2px">
+              <sc-for list="{{ ranges }}" as="r" hint-placeholder-count="7">
+                
+              </sc-for>
+            </div>
+            <span style="margin-left:auto;font-size:13px;color:#8C87A3;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums">15:28:04 (UTC)</span>
+            <div style="display:flex;gap:2px;font-size:13px;font-weight:600">
+              <span style="padding:4px 10px;border-radius:999px;color:#C9C5DA">%</span>
+              <span style="padding:4px 10px;border-radius:999px;color:#C9C5DA">log</span>
+              <span style="padding:4px 10px;border-radius:999px;background:#1C1A29">auto</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    
+    <section style="background:#14121E;border:1px solid #2E2A45;border-radius:32px;padding:13px 18px 18px;display:flex;flex-direction:column;gap:13px;min-width:0">
+      <div style="display:flex;align-items:center;gap:13px;flex-wrap:wrap">
+        <div style="display:flex;gap:2px;background:#1C1A29;border-radius:999px;padding:4px;flex-wrap:wrap">
+          <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="5">
+            <button onClick="{{ t.select }}" style="border:0;cursor:pointer;height:34px;padding:0 16px;border-radius:999px;font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:14px;white-space:nowrap;background:{{ t.bg }};color:{{ t.fg }}">{{ t.label }}</button>
+          </sc-for>
+        </div>
+        <span style="margin-left:auto;font-size:13px;color:#8C87A3">Live</span>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:14px;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;min-width:720px">
+          <thead>
+            <tr>
+              <sc-for list="{{ cols }}" as="h" hint-placeholder-count="7">
+                <th style="text-align:{{ h.align }};font-size:11px;letter-spacing:0.12em;text-transform:uppercase;font-family:'JetBrains Mono',monospace;color:#8C87A3;font-weight:600;padding:10px 12px;border-bottom:1px solid #2A2640;white-space:nowrap">{{ h.label }}</th>
+              </sc-for>
+            </tr>
+          </thead>
+          <tbody>
+            <sc-for list="{{ rows }}" as="r" hint-placeholder-count="8">
+              <tr style-hover="background:#1C1A29">
+                <sc-for list="{{ r.cells }}" as="cell" hint-placeholder-count="7">
+                  <td style="padding:12px;text-align:{{ cell.align }};color:{{ cell.fg }};font-weight:{{ cell.weight }};border-bottom:1px solid #25213A;white-space:nowrap">
+                    <sc-if value="{{ cell.pill }}" hint-placeholder-val="{{ false }}">
+                      <span style="display:inline-flex;font-size:12px;font-weight:700;padding:3px 12px;border-radius:999px;background:{{ cell.pillBg }};color:{{ cell.pillFg }}">{{ cell.text }}</span>
+                    </sc-if>
+                    <sc-if value="{{ cell.plain }}" hint-placeholder-val="{{ true }}">{{ cell.text }}</sc-if>
+                  </td>
+                </sc-for>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  
+  <aside style="flex:1 1 320px;max-width:100%;display:flex;flex-direction:column;gap:9px">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:9px 0">
+      <div style="display:flex;align-items:baseline;gap:9px">
+        <span style="font-family:Inter,system-ui,sans-serif;font-weight:700;letter-spacing:-0.01em;font-size:26px;color:#A78BFA">SIGHT</span>
+        <span style="font-family:Inter,system-ui,sans-serif;font-weight:700;letter-spacing:-0.01em;font-size:26px">/ USDC</span>
+        <span style="background:#2E2152;color:#C4B5FD;font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px">#1</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:#8C87A3">
+        <span>Monad</span><span>›</span><span>Uniswap v4</span>
+        <span style="background:#1C1A29;font-size:11px;padding:2px 8px;border-radius:999px">2% fee</span>
+      </div>
+    </div>
+
+    <div style="height:150px;border-radius:28px;background:repeating-linear-gradient(135deg,#14121E 0 10px,#1C1A29 10px 20px);border:1px solid #2A2640;display:grid;place-items:center">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8C87A3;background:#0B0A12;padding:4px 12px;border-radius:999px;white-space:nowrap">nullsight · ranked X signals for agents</span>
+    </div>
+
+    
+
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px">
+      <div style="background:#14121E;border:1px solid #2E2A45;border-radius:24px;padding:13px;display:flex;flex-direction:column;align-items:center;gap:2px">
+        <span style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;font-family:'JetBrains Mono',monospace;color:#8C87A3">Price USD</span>
+        <span style="font-family:Inter,system-ui,sans-serif;font-weight:700;letter-spacing:-0.01em;font-size:21px">$0.0000103</span>
+      </div>
+      <div style="background:#14121E;border:1px solid #2E2A45;border-radius:24px;padding:13px;display:flex;flex-direction:column;align-items:center;gap:2px">
+        <span style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;font-family:'JetBrains Mono',monospace;color:#8C87A3">Price</span>
+        <span style="font-family:Inter,system-ui,sans-serif;font-weight:700;letter-spacing:-0.01em;font-size:17px;white-space:nowrap">0.0000103 USDC</span>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px">
+      <sc-for list="{{ keyStats }}" as="s" hint-placeholder-count="3">
+        <div style="background:#14121E;border:1px solid #2E2A45;border-radius:24px;padding:13px;display:flex;flex-direction:column;align-items:center;gap:2px">
+          <span style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;font-family:'JetBrains Mono',monospace;color:#8C87A3">{{ s.label }}</span>
+          <span style="font-family:Inter,system-ui,sans-serif;font-weight:700;letter-spacing:-0.01em;font-size:21px">{{ s.value }}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="background:#14121E;border:1px solid #2E2A45;border-radius:32px;padding:13px;display:flex;flex-direction:column;gap:18px">
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;background:#1C1A29;border-radius:999px;padding:4px">
+        <sc-for list="{{ windows }}" as="w" hint-placeholder-count="4">
+          <button onClick="{{ w.select }}" style="border:0;cursor:pointer;border-radius:999px;padding:6px 0;display:flex;flex-direction:column;align-items:center;gap:1px;background:{{ w.bg }};font-family:Inter,system-ui,sans-serif">
+            <span style="font-size:11px;color:#8C87A3;font-weight:600">{{ w.label }}</span>
+            <span style="font-size:14px;font-weight:700;white-space:nowrap;color:{{ w.fg }}">{{ w.change }}</span>
+          </button>
+        </sc-for>
+      </div>
+      <sc-for list="{{ flows }}" as="f" hint-placeholder-count="3">
+        <div style="display:grid;grid-template-columns:84px minmax(0,1fr);gap:13px;align-items:end;padding:0 9px">
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <span style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;font-family:'JetBrains Mono',monospace;color:#8C87A3">{{ f.label }}</span>
+            <span style="font-family:Inter,system-ui,sans-serif;font-weight:700;letter-spacing:-0.01em;font-size:20px;line-height:1.1">{{ f.total }}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;justify-content:space-between;gap:9px;font-size:12px;white-space:nowrap">
+              <span style="color:#8C87A3;text-transform:uppercase;letter-spacing:0.06em">{{ f.aLabel }}</span>
+              <span style="color:#8C87A3;text-transform:uppercase;letter-spacing:0.06em">{{ f.bLabel }}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;gap:9px;font-size:15px;font-weight:700;white-space:nowrap;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums">
+              <span style="color:#6EE7B7">{{ f.aVal }}</span>
+              <span style="color:#FCA5A5">{{ f.bVal }}</span>
+            </div>
+            <div style="display:flex;gap:4px;height:8px">
+              <div style="flex:{{ f.a }};background:#34D399;border-radius:999px"></div>
+              <div style="flex:{{ f.b }};background:#F87171;border-radius:999px"></div>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px">
+      
+      
+    </div>
+    <button style="display:inline-flex;align-items:center;justify-content:center;gap:8px;height:52px;border-radius:999px;border:0;background:#8B5CF6;font-family:Inter,system-ui,sans-serif;font-weight:700;letter-spacing:-0.01em;font-size:16px;color:#FFFFFF;cursor:pointer" style-hover="background:#7C3AED" style-active="background:#6D28D9">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4"></path><path d="M20 7H4"></path><path d="m8 21-4-4 4-4"></path><path d="M4 17h16"></path></svg>
+      Trade SIGHT
+    </button>
+  </aside>
+</div>
+<footer style="margin-top: auto; padding: 22px 124px; border-top: 1px solid #1E1B2E; display: flex; align-items: center; justify-content: center; gap: 16px;">
+<span style="display: flex; align-items: center; gap: 10px; font-size: 13px; color: #8C87A3;"><img src="/_blob/99a75b3ad835989ddd438c67188e5265" alt="" width="22" height="22" style="width: 22px; height: 22px; display: block;">astralaunch — usage-backed tokens for x402 services.</span>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"showVolume": {"editor": "boolean", "default": true, "tsType": "boolean"}, "$preview": {"width": 1440, "height": 1500}}'>
+class Component extends DCLogic {
+  state = { tf: '4h', unit: 'Mcap', style: 'Candles', range: '1m', win: '24H', tab: 'Transactions', tool: 'Cursor', watch: false, zoom: 14, hover: null };
+  plotRef = React.createRef();
+  onWheel = e => { e.preventDefault(); this.setState(s => ({ zoom: Math.max(6, Math.min(56, s.zoom + (e.deltaY > 0 ? 2 : -2))) })); };
+  bindWheel() { const el = this.plotRef.current; if (el && el !== this._wheelEl) { if (this._wheelEl) this._wheelEl.removeEventListener('wheel', this.onWheel); el.addEventListener('wheel', this.onWheel, { passive: false }); this._wheelEl = el; } }
+  componentDidMount() { this.bindWheel(); }
+  componentDidUpdate() { this.bindWheel(); }
+  componentWillUnmount() { if (this._wheelEl) this._wheelEl.removeEventListener('wheel', this.onWheel); }
+
+  rng(seed) { let s = seed; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
+
+  series(tf) {
+    const seeds = { '1s': 7, '1m': 11, '5m': 17, '15m': 23, '1h': 37, '4h': 53, 'D': 71, 'W': 89 };
+    const r = this.rng(seeds[tf] || 5); const n = 56; const out = []; let p = 60;
+    for (let i = 0; i < n; i++) {
+      const t = i / n;
+      const drift = t < 0.45 ? 0.2 : t < 0.72 ? 9 : -5;
+      const o = p; const c = Math.max(20, o + drift + (r() - 0.45) * 26);
+      const h = Math.max(o, c) + r() * 14, l = Math.min(o, c) - r() * 14;
+      const v = (t < 0.45 ? 0.08 : 0.35) + r() * 0.6 * (t > 0.45 ? 1 : 0.3);
+      out.push({ o, h, l, c, v }); p = c;
+    }
+    const k = 341.08 / out[n - 1].c;
+    return out.map(d => ({ o: d.o * k, h: d.h * k, l: d.l * k, c: d.c * k, v: d.v }));
+  }
+
+  fmt(v) {
+    if (this.state.unit === 'Mcap') return v === 0 ? '0' : v >= 1000 ? (v / 1000).toFixed(2) + 'M' : v.toFixed(1) + 'K';
+    return v === 0 ? '0' : '$' + (v / 1e6).toFixed(7);
+  }
+
+  seg(list, key, on = '#8B5CF6', onFg = '#FFFFFF') {
+    return list.map(v => { const a = this.state[key] === v; return { label: v, select: () => this.setState({ [key]: v }), bg: a ? on : 'transparent', fg: a ? onFg : '#ECEAF4' }; });
+  }
+
+  renderVals() {
+    const nf = x => x.toLocaleString('en-US');
+    const all = this.series(this.state.tf);
+    const zoom = Math.min(all.length, this.state.zoom);
+    const data = all.slice(all.length - zoom), n = data.length, off = all.length - zoom;
+    let lo = Math.min(...data.map(d => d.l)), hi = Math.max(...data.map(d => d.h));
+    const padv = (hi - lo) * 0.08; lo -= padv; hi += padv;
+    const T = 6, B = 72;
+    const y = v => T + (hi - v) / (hi - lo) * (B - T);
+    const yInv = p => hi - (p - T) / (B - T) * (hi - lo);
+    const vmax = Math.max(...data.map(d => d.v));
+    const slot = 100 / n;
+    const candles = data.map((d, i) => {
+      const up = d.c >= d.o;
+      return {
+        left: (i * slot + slot * 0.15) + '%', w: (slot * 0.7) + '%', wickLeft: (i * slot + slot / 2) + '%',
+        wickTop: y(d.h) + '%', wickH: (y(d.l) - y(d.h)) + '%',
+        bodyTop: y(Math.max(d.o, d.c)) + '%', bodyH: Math.abs(y(d.o) - y(d.c)) + '%',
+        color: up ? '#22C55E' : '#F04438',
+        volLeft: (i * slot + slot * 0.01) + '%', volW: (slot * 0.98) + '%',
+        volColor: up ? 'rgba(34,197,94,0.28)' : 'rgba(240,68,56,0.30)',
+        volH: (d.v / vmax * 22) + '%'
+      };
+    });
+    const pts = data.map((d, i) => `${((i + 0.5) / n * 1000).toFixed(1)},${(y(d.c) * 10).toFixed(1)}`);
+    const linePath = 'M' + pts.join(' L');
+    const areaPath = linePath + ` L${((n - 0.5) / n * 1000).toFixed(1)},${B * 10} L${(0.5 / n * 1000).toFixed(1)},${B * 10} Z`;
+    const raw = (hi - lo) / 5, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw);
+    const gridLines = [];
+    for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) gridLines.push({ top: y(v) + '%', label: this.fmt(v) });
+    const tfMin = { '1s': 1 / 60, '1m': 1, '5m': 5, '15m': 15, '1h': 60, '4h': 240, 'D': 1440, 'W': 10080 }[this.state.tf];
+    const end = new Date(Date.UTC(2026, 8, 24, 17, 8));
+    const tLabel = (i, full) => { const d = new Date(end - (all.length - 1 - (off + i)) * tfMin * 60000); const p = x => String(x).padStart(2, '0');
+      const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
+      if (tfMin >= 1440) return mon + ' ' + d.getUTCDate();
+      const hm = p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()) + (tfMin < 1 ? ':' + p(d.getUTCSeconds()) : '');
+      return full ? d.getUTCDate() + ' ' + mon + ' · ' + hm : hm; };
+    const every = Math.max(1, Math.ceil(n / 7));
+    const timeTicks = [];
+    for (let i = n - 1; i >= 0; i -= every) timeTicks.unshift({ left: ((i + 0.5) * slot) + '%', label: tLabel(i) });
+    const hv = this.state.hover;
+    const hIdx = hv ? Math.max(0, Math.min(n - 1, Math.floor(hv.fx * n))) : -1;
+    const hover = hv ? { x: ((hIdx + 0.5) * slot) + '%', y: (hv.fy * 100) + '%', price: hv.fy * 100 < B ? this.fmt(Math.max(0, yInv(hv.fy * 100))) : '', time: tLabel(hIdx, true) } : { x: '0%', y: '0%', price: '', time: '' };
+    const last = hv ? data[hIdx] : data[n - 1];
+    const latest = data[n - 1];
+
+    const winData = { '5M': 0.84, '1H': 3.23, '6H': -0.5, '24H': -21.26 };
+    const fw = { '5M': [[12, 7], [0.9, 0.6], [9, 5]], '1H': [[96, 51], [7.4, 5.1], [61, 34]], '6H': [[402, 233], [31, 34], [188, 120]], '24H': [[808, 410], [62, 66], [345, 231]] }[this.state.win];
+    const flows = [
+      { label: 'Txns', a: fw[0][0], b: fw[0][1], aLabel: 'Buys', bLabel: 'Sells', aVal: nf(fw[0][0]), bVal: nf(fw[0][1]), total: nf(fw[0][0] + fw[0][1]) },
+      { label: 'Volume', a: fw[1][0], b: fw[1][1], aLabel: 'Buy vol', bLabel: 'Sell vol', aVal: '$' + fw[1][0] + 'K', bVal: '$' + fw[1][1] + 'K', total: '$' + +(fw[1][0] + fw[1][1]).toFixed(1) + 'K' },
+      { label: 'Traders', a: fw[2][0], b: fw[2][1], aLabel: 'Buyers', bLabel: 'Sellers', aVal: nf(fw[2][0]), bVal: nf(fw[2][1]), total: nf(fw[2][0] + fw[2][1]) }
+    ];
+    const windows = Object.keys(winData).map(k => { const a = this.state.win === k, v = winData[k]; return { label: k, change: (v > 0 ? '+' : '') + v.toFixed(2) + '%', select: () => this.setState({ win: k }), bg: a ? '#2A2640' : 'transparent', fg: v >= 0 ? '#34D399' : '#F87171' }; });
+
+    const toolDefs = [
+      ['Cursor', 'M12 3v6M12 15v6M3 12h6M15 12h6'],
+      ['Trend line', 'M4 20 20 4M4 20h.01M20 4h.01'],
+      ['Levels', 'M3 6h18M3 12h18M3 18h18'],
+      ['Brush', 'M3 21c3 0 7-1 9-3l8-8-4-4-8 8c-2 2-3 6-3 9'],
+      ['Text', 'M5 5h14M12 5v14'],
+      ['Measure', 'M4 16 16 4l4 4L8 20zM8 12l2 2M11 9l2 2M14 6l2 2'],
+      ['Zoom', 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-4.3-4.3M11 8v6M8 11h6'],
+      ['Magnet', 'M6 15a6 6 0 0 0 12 0V4h-4v11a2 2 0 0 1-4 0V4H6z'],
+      ['Lock', 'M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4']
+    ];
+    const tools = toolDefs.map(([name, d]) => { const a = this.state.tool === name; return { name, d, select: () => this.setState({ tool: name }), bg: a ? '#2E2152' : 'transparent', fg: a ? '#C4B5FD' : '#C9C5DA' }; });
+
+    const tab = this.state.tab;
+    const L = 'left', R = 'right';
+    const C = (text, align = R, extra = {}) => ({ text, align, fg: '#ECEAF4', weight: 400, plain: true, pill: false, ...extra });
+    let cols, rows;
+    if (tab === 'Transactions') {
+      cols = [['Date', L], ['Type', L], ['USD', R], ['SIGHT', R], ['USDC', R], ['Price', R], ['Trader', R]];
+      const tr = [['1m', 0, 0.2, 604.33, 0.204, '0.0003410', 'f44248'], ['1m', 1, 15, 43555, 15, '0.0003410', 'c959fe'], ['4m', 1, 0.25, 742.4, 0.2555, '0.0003407', '5125b7'], ['4m', 1, 4, 11621, 4, '0.0003407', 'efed6c'], ['6m', 1, 51.37, 149494, 51.37, '0.0003407', 'd6f51a'], ['9m', 0, 22.1, 65012, 22.1, '0.0003399', '8a023e'], ['12m', 1, 8.5, 24980, 8.5, '0.0003402', '31bc90'], ['15m', 0, 140, 412755, 140, '0.0003391', '77d4c2']];
+      rows = tr.map(t => { const fg = t[1] ? '#6EE7B7' : '#FCA5A5'; return { cells: [
+        C(t[0] + ' ago', L, { fg: '#8C87A3' }),
+        C(t[1] ? 'Buy' : 'Sell', L, { pill: true, plain: false, pillBg: t[1] ? '#0F2A22' : '#3A1623', pillFg: fg }),
+        C(t[2].toFixed(2), R, { fg, weight: 600 }), C(nf(t[3]), R, { fg }), C(t[4].toFixed(t[4] < 1 ? 4 : 2), R, { fg }), C('$' + t[5], R, { fg, weight: 600 }), C(t[6], R, { fg: '#8C87A3' })] }; });
+    } else if (tab === 'Top Traders') {
+      cols = [['Rank', L], ['Trader', L], ['Bought', R], ['Sold', R], ['PnL', R], ['Trades', R]];
+      const t = [['9f1e04', 4200, 9800, 12], ['02ab77', 1900, 5100, 8], ['a4c13b', 3100, 4400, 21], ['c3d01f', 800, 2600, 5], ['61e2d9', 2200, 1500, 14], ['b8106d', 950, 400, 6]];
+      rows = t.map((x, i) => { const pnl = x[2] - x[1]; return { cells: [C('#' + (i + 1), L, { fg: '#8C87A3' }), C(x[0], L, { weight: 600 }), C('$' + nf(x[1])), C('$' + nf(x[2])), C((pnl >= 0 ? '+$' : '−$') + nf(Math.abs(pnl)), R, { weight: 700, fg: pnl >= 0 ? '#6EE7B7' : '#FCA5A5' }), C(String(x[3]))] }; });
+    } else if (tab === 'Holders (1,120)') {
+      cols = [['Rank', L], ['Address', L], ['Share', R], ['SIGHT', R], ['Value', R]];
+      const h = [['Pool', 21.4], ['9f1e04', 8.2], ['02ab77', 5.9], ['c3d01f', 4.1], ['7e55a2', 3.3], ['b8106d', 2.7], ['4a9ce0', 2.2]];
+      rows = h.map((x, i) => ({ cells: [C('#' + (i + 1), L, { fg: '#8C87A3' }), C(x[0], L, i === 0 ? { pill: true, plain: false, pillBg: '#1C1A29', pillFg: '#C9C5DA' } : { weight: 600 }), C(x[1].toFixed(1) + '%'), C(nf(Math.round(x[1] * 9.38e6))), C('$' + nf(Math.round(x[1] * 3200)))] }));
+    } else {
+      cols = [['Provider', L], ['Share', R], ['USDC', R], ['SIGHT', R], ['Added', R]];
+      const lp = [['Deployer 3e10a4', 88.2, 30010, 88.1e6, 'Sep 2'], ['5c7f22', 7.4, 2518, 7.39e6, 'Sep 17'], ['e04b19', 4.4, 1497, 4.39e6, 'Sep 21']];
+      rows = lp.map(x => ({ cells: [C(x[0], L, { weight: 600 }), C(x[1] + '%'), C('$' + nf(x[2])), C(nf(x[3])), C(x[4], R, { fg: '#8C87A3' })] }));
+    }
+
+    const style = this.state.style;
+    return {
+      timeframes: this.seg(['1s', '1m', '5m', '15m', '1h', '4h', 'D', 'W'], 'tf'),
+      styles: this.seg(['Candles', 'Line'], 'style', '#2A2640', '#ECEAF4'),
+      units: this.seg(['Price', 'Mcap'], 'unit', '#2A2640', '#ECEAF4'),
+      ranges: this.seg(['5y', '1y', '6m', '3m', '1m', '5d', '1d'], 'range', '#2A2640', '#ECEAF4'),
+      tabs: this.seg(['Transactions', 'Top Traders', 'Holders (1,120)', ''], 'tab'),
+      tools,
+      unitName: this.state.unit === 'Mcap' ? 'Market Cap' : 'Price', tfLabel: this.state.tf,
+      ohlc: { o: this.fmt(last.o), h: this.fmt(last.h), l: this.fmt(last.l), c: this.fmt(last.c) },
+      candles, linePath, areaPath, gridLines,
+      isCandle: style === 'Candles', isLine: style === 'Line',
+      showVolume: this.props.showVolume ?? true,
+      lastTop: y(latest.c) + '%', lastLabel: this.fmt(latest.c), timeTicks, hover, hasHover: !!hv, plotRef: this.plotRef,
+      zoomHint: zoom + ' candles · scroll to zoom',
+      onHover: e => { const r = e.currentTarget.getBoundingClientRect(); this.setState({ hover: { fx: (e.clientX - r.left) / r.width, fy: (e.clientY - r.top) / r.height } }); },
+      onLeave: () => this.setState({ hover: null }),
+      keyStats: [{ label: 'Liquidity', value: '$68K' }, { label: 'FDV', value: '$320K' }, { label: 'Mkt cap', value: '$320K' }],
+      windows, flows,
+      links: ['Website', 'X', 'Telegram'],
+      cols: cols.map(c => ({ label: c[0], align: c[1] })), rows,
+      toggleWatch: () => this.setState(s => ({ watch: !s.watch })),
+      watchLabel: this.state.watch ? 'Watching' : 'Watchlist',
+      watchFill: this.state.watch ? 'currentColor' : 'none',
+      watchBg: this.state.watch ? '#2E2152' : 'transparent'
+    };
+  }
+}
+</script>
+</body>
+</html>

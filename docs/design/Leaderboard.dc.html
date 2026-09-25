@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Astralaunch — Leaderboard</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;background:#0B0A12;font-family:Inter,system-ui,sans-serif;color:#ECEAF4}
+a{color:#C4B5FD}a:hover{color:#DDD6FE}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1120px; box-sizing: border-box; background: #0B0A12; color: #ECEAF4; font-family: Inter, system-ui, sans-serif; font-variant-numeric: tabular-nums; display: flex; flex-direction: column;">
+<header style="height: 64px; box-sizing: border-box; padding: 0 124px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #1E1B2E;">
+<div style="display: flex; align-items: center; gap: 24px;">
+<a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; color: #ECEAF4; text-decoration: none; font-weight: 700; font-size: 16px;"><img src="/_blob/99a75b3ad835989ddd438c67188e5265" alt="" width="32" height="32" style="width: 32px; height: 32px; display: block;">astralaunch</a>
+<nav aria-label="Primary" style="display: flex; gap: 4px; font-size: 14px;">
+<a href="Discover.dc.html" style="padding: 8px 14px; border-radius: 8px; color: #9A95B0; text-decoration: none;">Discover</a>
+<a href="Leaderboard.dc.html" aria-current="page" style="padding: 8px 14px; border-radius: 8px; background: #1C1A29; color: #ECEAF4; text-decoration: none;">Leaderboard</a>
+<a href="Creator.dc.html" style="padding: 8px 14px; color: #9A95B0; text-decoration: none;">Creator</a>
+<a href="#" style="padding: 8px 14px; color: #9A95B0; text-decoration: none;">Docs</a>
+</nav>
+</div>
+<div style="display: flex; align-items: center; gap: 10px;">
+<button type="button" style="height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #2A2640; background: transparent; color: #ECEAF4; font-family: inherit; font-size: 14px; display: flex; align-items: center; gap: 8px; cursor: pointer;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ECEAF4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13.5 6l-3 12"></path></svg>For agents</button>
+<a href="Creator.dc.html" style="height: 40px; box-sizing: border-box; padding: 0 16px; border-radius: 999px; border: 1px solid #3A3456; background: #16132A; color: #ECEAF4; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; text-decoration: none;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #34D399;"></span>0x11e2…cbc6</a>
+</div>
+</header>
+<main style="padding: 32px 124px 44px; display: flex; flex-direction: column; gap: 22px;">
+<div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 20px;">
+<div><h1 style="margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.02em;">Leaderboard</h1><p style="margin: 8px 0 0; font-size: 15px; color: #A7A2BD;">{{subtitle}}</p></div>
+<div role="group" aria-label="Period" style="display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: #13111C; border: 1px solid #25213A;">
+<sc-for list="{{periods}}" as="p" hint-placeholder-count="3"><button type="button" aria-pressed="{{p.on}}" onClick="{{p.pick}}" style="height: 34px; padding: 0 16px; border-radius: 999px; border: 0; background: {{p.bg}}; color: {{p.fg}}; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; cursor: pointer;">{{p.label}}</button></sc-for>
+</div>
+</div>
+
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 16px;">
+<div role="tablist" aria-label="Leaderboard group" style="display: flex; gap: 4px; padding: 4px; border-radius: 14px; background: #13111C; border: 1px solid #25213A;">
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="2"><button type="button" role="tab" aria-selected="{{g.on}}" onClick="{{g.pick}}" style="height: 44px; padding: 0 22px; border-radius: 10px; border: 0; background: {{g.bg}}; color: {{g.fg}}; font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 10px;">{{g.label}}<span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 2px 8px; border-radius: 999px; background: {{g.countBg}}; color: {{g.countFg}};">{{g.count}}</span></button></sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 8px;"><span style="font-size: 13px; color: #8C87A3;">Rank by</span>
+<sc-for list="{{sorts}}" as="s" hint-placeholder-count="3"><button type="button" aria-pressed="{{s.on}}" onClick="{{s.pick}}" style="height: 34px; padding: 0 14px; border-radius: 999px; border: {{s.border}}; background: {{s.bg}}; color: {{s.fg}}; font-family: inherit; font-size: 13px; cursor: pointer;">{{s.label}}</button></sc-for>
+</div>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px;">
+<sc-for list="{{podium}}" as="p" hint-placeholder-count="3">
+<a href="{{p.href}}" style="border: {{p.border}}; border-radius: 20px; background: {{p.bg}}; padding: 22px; display: flex; flex-direction: column; gap: 16px; color: #ECEAF4; text-decoration: none;">
+<div style="display: flex; justify-content: space-between; align-items: center;">
+<div style="display: flex; align-items: center; gap: 12px;"><span style="width: 44px; height: 44px; border-radius: 12px; background: {{p.avatar}}; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; color: #FFFFFF;">{{p.initial}}</span><span><span style="display: block; font-size: 16px; font-weight: 700;">{{p.name}}</span><span style="display: block; font-size: 12px; color: #A7A2BD;">{{p.sub}}</span></span></div>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; padding: 6px 10px; border-radius: 999px; background: {{p.rankBg}}; color: {{p.rankFg}};">#{{p.rank}}</span>
+</div>
+<div><div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; color: #8C87A3;"><br></div><div style="margin-top: 6px; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; color: {{p.metricColor}};">{{p.metric}}</div></div>
+<dl style="margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; padding-top: 14px; border-top: 1px solid #25213A;">
+<sc-for list="{{p.facts}}" as="f" hint-placeholder-count="3"><div><dt style="font-size: 11px; color: #8C87A3;">{{f.k}}</dt><dd style="margin: 4px 0 0; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600;">{{f.v}}</dd></div></sc-for>
+</dl>
+</a>
+</sc-for>
+</div>
+
+<section aria-label="Rankings" style="border: 1px solid #25213A; border-radius: 16px; background: #13111C; padding: 8px 20px 12px;">
+<div style="display: grid; grid-template-columns: {{cols}}; gap: 12px; padding: 12px 8px; border-bottom: 1px solid #25213A; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: #8C87A3;">
+<sc-for list="{{heads}}" as="h" hint-placeholder-count="8"><span style="text-align: {{h.align}};">{{h.label}}</span></sc-for>
+</div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="10">
+<a href="{{r.href}}" style="display: grid; grid-template-columns: {{cols}}; gap: 12px; align-items: center; padding: 11px 8px; border-bottom: 1px solid #1E1B2E; color: #ECEAF4; text-decoration: none; font-size: 13px; background: {{r.bg}};">
+<span style="font-family: 'JetBrains Mono', monospace; color: #8C87A3;">{{r.rank}}</span>
+<span style="display: flex; align-items: center; gap: 10px; min-width: 0;"><span style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 8px; background: {{r.avatar}}; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: #FFFFFF;">{{r.initial}}</span><span style="min-width: 0;"><span style="display: block; font-weight: 700;">{{r.name}}</span><span style="display: block; font-size: 12px; color: #8C87A3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{r.sub}}</span></span></span>
+<sc-for list="{{r.cells}}" as="c" hint-placeholder-count="6"><span style="text-align: right; font-family: 'JetBrains Mono', monospace; color: {{c.color}};">{{c.v}}</span></sc-for>
+</a>
+</sc-for>
+<div style="display: grid; grid-template-columns: {{cols}}; gap: 12px; align-items: center; margin-top: 10px; padding: 12px 8px; border-radius: 12px; border: 1px solid #8B5CF6; background: #1B1530; font-size: 13px;">
+<span style="font-family: 'JetBrains Mono', monospace; color: #C4B5FD;">{{me.rank}}</span>
+<span style="display: flex; align-items: center; gap: 10px;"><span style="width: 30px; height: 30px; border-radius: 8px; background: #2A2640; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800;">You</span><span><span style="display: block; font-weight: 700;">0x11e2…cbc6</span><span style="display: block; font-size: 12px; color: #A7A2BD;">{{me.sub}}</span></span></span>
+<sc-for list="{{me.cells}}" as="c" hint-placeholder-count="6"><span style="text-align: right; font-family: 'JetBrains Mono', monospace; color: {{c.color}};">{{c.v}}</span></sc-for>
+</div>
+
+</section>
+</main>
+<footer style="margin-top: auto; padding: 22px 124px; border-top: 1px solid #1E1B2E; display: flex; align-items: center; justify-content: center; gap: 16px;">
+<span style="display: flex; align-items: center; gap: 10px; font-size: 13px; color: #8C87A3;"><img src="/_blob/99a75b3ad835989ddd438c67188e5265" alt="" width="22" height="22" style="width: 22px; height: 22px; display: block;">astralaunch — usage-backed tokens for x402 services.</span>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1120}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { group: 'creators', period: '30D', sortC: 'rev', sortT: 'pnl' }; }
+  renderVals() {
+    var self = this, st = this.state, green = '#34D399', red = '#F87171', ink = '#ECEAF4', muted = '#8C87A3';
+    var mult = { '7D': 0.28, '30D': 1, 'All': 2.6 }[st.period];
+    function money(v) { return v >= 1000 ? (v / 1000).toFixed(1) + 'K' : String(Math.round(v)); }
+    function usd(v) { var s = v < 0 ? '−$' : '+$'; var a = Math.abs(v); return s + (a >= 1000 ? (a / 1000).toFixed(1) + 'K' : Math.round(a)); }
+    var G = ['linear-gradient(135deg,#8B5CF6,#C084FC)', 'linear-gradient(135deg,#6366F1,#A78BFA)', 'linear-gradient(135deg,#DB2777,#F472B6)', 'linear-gradient(135deg,#0891B2,#67E8F9)', 'linear-gradient(135deg,#0EA5E9,#818CF8)', 'linear-gradient(135deg,#65A30D,#BEF264)', 'linear-gradient(135deg,#8B5CF6,#EC4899)', 'linear-gradient(135deg,#A855F7,#F0ABFC)', 'linear-gradient(135deg,#F59E0B,#FDE68A)', 'linear-gradient(135deg,#14B8A6,#5EEAD4)'];
+    var creators = [
+      { name: '@nullshift', sub: '$SIGHT, $FEED', tokens: 2, rev: 4418, calls: 291.2, ucr: 1.38, holders: 736 },
+      { name: '@ana_builds', sub: '$WPRISK', tokens: 1, rev: 622, calls: 12.4, ucr: 0.05, holders: 280 },
+      { name: '@arbwizard', sub: '$ARBSCAN', tokens: 1, rev: 310, calls: 15.5, ucr: 0.88, holders: 190 },
+      { name: '@degendad_', sub: '$DEPTH', tokens: 1, rev: 208, calls: 20.8, ucr: 0.06, holders: 155 },
+      { name: '@gasmonk', sub: '$GASWATCH', tokens: 1, rev: 140, calls: 14.0, ucr: 0.52, holders: 121 },
+      { name: '@kai_onchain', sub: '$TXLENS', tokens: 1, rev: 96, calls: 4.8, ucr: 0.41, holders: 640 },
+      { name: '@fern_draws', sub: '$VNDOCS', tokens: 1, rev: 27, calls: 0.9, ucr: 0.12, holders: 88 },
+      { name: '@lilac_ape', sub: '$QUILL', tokens: 1, rev: 19, calls: 1.3, ucr: 0.31, holders: 64 } ];
+    var traders = [
+      { name: '0x91c…4e02', sub: '', vol: 18400, pnl: 3120, win: 71, trades: 212, best: '+418%' },
+      { name: '0x3bf…a771', sub: '', vol: 12900, pnl: 1840, win: 64, trades: 158, best: '+212%' },
+      { name: '0xe24…0c5d', sub: '', vol: 22100, pnl: 1210, win: 55, trades: 340, best: '+96%' },
+      { name: '0x5d0…19b3', sub: '', vol: 6400, pnl: 980, win: 60, trades: 74, best: '+126%' },
+      { name: '0x7a1…c3e0', sub: '', vol: 9800, pnl: 640, win: 52, trades: 131, best: '+74%' },
+      { name: '0x0b8…77f1', sub: '', vol: 15200, pnl: -420, win: 41, trades: 288, best: '+31%' },
+      { name: '0xa44…2b9d', sub: '', vol: 3100, pnl: 310, win: 58, trades: 40, best: '+44%' },
+      { name: '0xc02…d18e', sub: '', vol: 2700, pnl: -95, win: 47, trades: 36, best: '+19%' } ];
+    var isC = st.group === 'creators';
+    var list, heads, cols, podium, me, rule, sorts, cells;
+    if (isC) {
+      var key = { rev: 'rev', ucr: 'ucr', calls: 'calls' }[st.sortC];
+      list = creators.slice().sort(function (a, b) { return b[key] - a[key]; });
+      cols = '56px 240px repeat(5, minmax(0,1fr))';
+      heads = [['#', 'left'], ['CREATOR', 'left'], ['TOKENS', 'right'], ['CLEAN REVENUE', 'right'], ['PAID CALLS', 'right'], ['BEST UCR', 'right'], ['HOLDERS', 'right']];
+      cells = function (c) { return [ { v: String(c.tokens), color: ink }, { v: money(c.rev * mult) + ' USDC', color: ink }, { v: money(c.calls * 1000 * mult), color: ink }, { v: c.ucr.toFixed(2), color: c.ucr >= 1 ? green : muted }, { v: String(c.holders), color: ink } ]; };
+      podium = list.slice(0, 3).map(function (c, i) {
+        var metric = { rev: money(c.rev * mult) + ' USDC', ucr: c.ucr.toFixed(2) + '×', calls: money(c.calls * 1000 * mult) }[st.sortC];
+        return { rank: i + 1, name: c.name, sub: c.sub, initial: c.name.charAt(1).toUpperCase(), avatar: G[creators.indexOf(c)], href: 'Token.dc.html',
+          metricLabel: { rev: 'CLEAN REVENUE', ucr: 'BEST UCR', calls: 'PAID CALLS' }[st.sortC], metric: metric, metricColor: i === 0 ? '#34D399' : ink,
+          facts: [ { k: 'Tokens', v: String(c.tokens) }, { k: 'Holders', v: String(c.holders) }, { k: 'UCR', v: c.ucr.toFixed(2) } ] };
+      });
+      me = { rank: '#14', sub: 'nullsight · 1 token', cells: [ { v: '1', color: ink }, { v: '0 USDC', color: ink }, { v: '1', color: ink }, { v: '0.00', color: muted }, { v: '1', color: ink } ] };
+      rule = 'Ranked by clean revenue: payments settled by the x402 facilitator from wallets that are not the creator, the fee recipient or wallets they funded.';
+      sorts = [['rev', 'Clean revenue'], ['ucr', 'Usage coverage'], ['calls', 'Paid calls']].map(function (s) { var on = s[0] === st.sortC; return { label: s[1], on: on ? 'true' : 'false', bg: on ? '#2A2640' : 'transparent', fg: on ? ink : '#C9C5DA', border: on ? '1px solid #3A3456' : '1px solid #25213A', pick: function () { self.setState({ sortC: s[0] }); } }; });
+    } else {
+      var tk = { pnl: 'pnl', vol: 'vol', win: 'win' }[st.sortT];
+      list = traders.slice().sort(function (a, b) { return b[tk] - a[tk]; });
+      cols = '56px 240px repeat(5, minmax(0,1fr))';
+      heads = [['#', 'left'], ['TRADER', 'left'], ['VOLUME', 'right'], ['REALIZED PNL', 'right'], ['WIN RATE', 'right'], ['TRADES', 'right'], ['BEST TRADE', 'right']];
+      cells = function (t) { return [ { v: '$' + money(t.vol * mult), color: ink }, { v: usd(t.pnl * mult), color: t.pnl >= 0 ? green : red }, { v: t.win + '%', color: ink }, { v: String(Math.round(t.trades * mult)), color: ink }, { v: t.best, color: green } ]; };
+      podium = list.slice(0, 3).map(function (t, i) {
+        var metric = { pnl: usd(t.pnl * mult), vol: '$' + money(t.vol * mult), win: t.win + '%' }[st.sortT];
+        return { rank: i + 1, name: t.name, sub: t.sub, initial: t.name.charAt(2).toUpperCase(), avatar: G[traders.indexOf(t) + 2], href: 'TokenChart.dc.html',
+          metricLabel: { pnl: 'REALIZED PNL', vol: 'VOLUME', win: 'WIN RATE' }[st.sortT], metric: metric, metricColor: (st.sortT === 'pnl' && t.pnl < 0) ? red : (i === 0 ? '#34D399' : ink),
+          facts: [ { k: 'Volume', v: '$' + money(t.vol * mult) }, { k: 'Win rate', v: t.win + '%' }, { k: 'Trades', v: String(Math.round(t.trades * mult)) } ] };
+      });
+      me = { rank: '#212', sub: '', cells: [ { v: '$100', color: ink }, { v: '−$2', color: red }, { v: '0%', color: ink }, { v: '1', color: ink }, { v: '—', color: muted } ] };
+      rule = 'Ranked by realized PnL on Astralaunch pools. Creator wallets, fee recipients, platform contracts and buyback swaps are excluded.';
+      sorts = [['pnl', 'Realized PnL'], ['vol', 'Volume'], ['win', 'Win rate']].map(function (s) { var on = s[0] === st.sortT; return { label: s[1], on: on ? 'true' : 'false', bg: on ? '#2A2640' : 'transparent', fg: on ? ink : '#C9C5DA', border: on ? '1px solid #3A3456' : '1px solid #25213A', pick: function () { self.setState({ sortT: s[0] }); } }; });
+    }
+    var tint = ['#FDE68A', '#E5E7EB', '#F4B183'];
+    return {
+      subtitle: isC ? 'Creators ranked by what agents actually pay for.' : 'Traders ranked by results on Astralaunch pools.',
+      periods: ['7D', '30D', 'All'].map(function (p) { var on = p === st.period; return { label: p, on: on ? 'true' : 'false', bg: on ? '#2A2640' : 'transparent', fg: on ? ink : muted, pick: function () { self.setState({ period: p }); } }; }),
+      groups: [['creators', 'Creators', '128'], ['traders', 'Traders', '4,812']].map(function (g) { var on = g[0] === st.group; return { label: g[1], count: g[2], on: on ? 'true' : 'false', bg: on ? '#8B5CF6' : 'transparent', fg: on ? '#FFFFFF' : '#C9C5DA', countBg: on ? 'rgba(255,255,255,0.18)' : '#221F33', countFg: on ? '#FFFFFF' : muted, pick: function () { self.setState({ group: g[0] }); } }; }),
+      sorts: sorts,
+      podium: podium.map(function (p, i) { return Object.assign(p, { border: i === 0 ? '1px solid #8B5CF6' : '1px solid #25213A', bg: i === 0 ? '#1B1530' : '#13111C', rankBg: tint[i], rankFg: '#1A1530' }); }),
+      cols: cols,
+      heads: heads.map(function (h) { return { label: h[0], align: h[1] }; }),
+      rows: list.slice(3).map(function (x, i) { var idx = (isC ? creators : traders).indexOf(x); return { rank: String(i + 4), name: x.name, sub: x.sub, initial: isC ? x.name.charAt(1).toUpperCase() : x.name.charAt(2).toUpperCase(), avatar: G[(idx + (isC ? 0 : 2)) % G.length], href: isC ? 'Token.dc.html' : 'TokenChart.dc.html', bg: 'transparent', cells: cells(x) }; }),
+      me: me, rule: rule
+    };
+  }
+}
+</script>
+</body>
+</html>

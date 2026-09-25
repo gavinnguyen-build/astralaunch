@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Astralaunch — Launch your token</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;background:#0B0A12;font-family:Inter,system-ui,sans-serif;color:#ECEAF4}
+a{color:#C4B5FD}a:hover{color:#DDD6FE}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1960px; box-sizing: border-box; background: #0B0A12; color: #ECEAF4; font-family: Inter, system-ui, sans-serif; font-variant-numeric: tabular-nums; display: flex; flex-direction: column;">
+<header style="height: 64px; box-sizing: border-box; padding: 0 124px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #1E1B2E;">
+<div style="display: flex; align-items: center; gap: 24px;">
+<a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; color: #ECEAF4; text-decoration: none; font-weight: 700; font-size: 16px;"><img src="/_blob/99a75b3ad835989ddd438c67188e5265" alt="" width="32" height="32" style="width: 32px; height: 32px; display: block;">astralaunch</a>
+<nav aria-label="Primary" style="display: flex; gap: 4px; font-size: 14px;">
+<a href="Discover.dc.html" style="padding: 8px 14px; border-radius: 8px; color: #9A95B0; text-decoration: none;">Discover</a>
+<a href="Leaderboard.dc.html" style="padding: 8px 14px; color: #9A95B0; text-decoration: none;">Leaderboard</a>
+<a href="Creator.dc.html" style="padding: 8px 14px; color: #9A95B0; text-decoration: none;">Creator</a>
+<a href="#" style="padding: 8px 14px; color: #9A95B0; text-decoration: none;">Docs</a>
+</nav>
+</div>
+<div style="display: flex; align-items: center; gap: 10px;">
+<button type="button" style="height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #2A2640; background: transparent; color: #ECEAF4; font-family: inherit; font-size: 14px; display: flex; align-items: center; gap: 8px; cursor: pointer;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ECEAF4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13.5 6l-3 12"></path></svg>For agents</button>
+<a href="Creator.dc.html" style="height: 40px; box-sizing: border-box; padding: 0 16px; border-radius: 999px; border: 1px solid #3A3456; background: #16132A; color: #ECEAF4; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; text-decoration: none;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #34D399;"></span>0x11e2…cbc6</a>
+</div>
+</header>
+<main style="padding: 36px 124px 44px; display: flex; justify-content: center;">
+<form style="width: 760px; display: flex; flex-direction: column; gap: 20px;">
+<div>
+<h1 style="margin: 0; font-size: 40px; font-weight: 800; letter-spacing: -0.02em;">Launch your token</h1>
+<p style="margin: 10px 0 0; max-width: 600px; font-size: 16px; line-height: 1.6; color: #A7A2BD;">One transaction creates the token and its pool on Monad. Attach an API now or later: every paid call buys back your token.</p>
+</div>
+
+<section style="border: 1px solid #25213A; border-radius: 16px; background: #13111C; padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+<h2 style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.16em; font-weight: 500; color: #B9A8E8;">TOKEN</h2>
+<label style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; font-weight: 600;">Token name<input type="text" placeholder="Enter token name…" style="height: 48px; box-sizing: border-box; padding: 0 14px; border: 1px solid #2A2640; border-radius: 10px; background: #0E0D16; color: #ECEAF4; font-family: inherit; font-size: 15px; width: 100%; border-color: #8B5CF6;"></label>
+<div style="display: flex; flex-direction: column; gap: 8px;"><label style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; font-weight: 600;"><span data-om-label="Ticket Symbol">Ticker symbol</span><input type="text" placeholder="e.g. SIGHT" style="height: 48px; box-sizing: border-box; padding: 0 14px; border: 1px solid #2A2640; border-radius: 10px; background: #0E0D16; color: #ECEAF4; font-family: inherit; font-size: 15px; width: 100%; font-family: 'JetBrains Mono', monospace;"></label></div>
+<div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; font-weight: 600;"><label for="img">Token image (optional)</label><div style="display: grid; grid-template-columns: minmax(0,1fr) 48px; gap: 10px;"><input id="img" type="url" placeholder="Paste image URL or upload…" style="height: 48px; box-sizing: border-box; padding: 0 14px; border: 1px solid #2A2640; border-radius: 10px; background: #0E0D16; color: #ECEAF4; font-family: inherit; font-size: 15px; width: 100%;"><button type="button" aria-label="Upload image" style="height: 48px; border-radius: 10px; border: 1px solid #2A2640; background: #0E0D16; cursor: pointer; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C9C5DA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.5l-8.5 8.5a5 5 0 0 1-7-7l9-9a3.3 3.3 0 0 1 4.7 4.7l-9 9a1.7 1.7 0 0 1-2.4-2.4l8.3-8.3"></path></svg></button></div></div>
+<div style="display: flex; flex-direction: column; gap: 8px;"><label style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; font-weight: 600;">Your X account (optional)<input type="text" placeholder="@handle" style="height: 48px; box-sizing: border-box; padding: 0 14px; border: 1px solid #2A2640; border-radius: 10px; background: #0E0D16; color: #ECEAF4; font-family: inherit; font-size: 15px; width: 100%;"></label><p style="margin: 0; font-size: 13px; color: #8C87A3;">Shown on the token page so holders know who runs the service.</p></div>
+<label style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; font-weight: 600;">Website (optional)<input type="url" placeholder="https://yourproject.com" style="height: 48px; box-sizing: border-box; padding: 0 14px; border: 1px solid #2A2640; border-radius: 10px; background: #0E0D16; color: #ECEAF4; font-family: inherit; font-size: 15px; width: 100%;"></label>
+</section>
+
+<section style="border: 1px solid #25213A; border-radius: 16px; background: #13111C; padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+<h2 style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.16em; font-weight: 500; color: #B9A8E8;">FEES</h2>
+<div style="display: flex; flex-direction: column; gap: 10px;">
+<span style="font-size: 14px; font-weight: 600;">Fee recipient wallet (optional)</span>
+<label style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);" for="recv">Fee recipient address</label>
+<input id="recv" type="text" placeholder="Your wallet · 0x11e2…cbc6" style="height: 48px; box-sizing: border-box; padding: 0 14px; border: 1px solid #2A2640; border-radius: 10px; background: #0E0D16; color: #ECEAF4; font-family: inherit; font-size: 15px; width: 100%; font-family: 'JetBrains Mono', monospace;">
+<p style="margin: 0; font-size: 13px; color: #8C87A3;">Defaults to your connected wallet. Enter another address or ENS to send fees elsewhere. The recipient gets the 0.70% trading fee, the usage escrow and the 15% vesting.</p>
+</div>
+</section>
+
+<section style="border: 1px solid #25213A; border-radius: 16px; background: #13111C; padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+<h2 style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.16em; font-weight: 500; color: #B9A8E8;">MARKET</h2>
+<div style="display: flex; flex-direction: column; gap: 10px;"><span style="font-size: 14px; font-weight: 600;">Pool pairing</span><div style="display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px;">
+<sc-for list="{{pairings}}" as="o" hint-placeholder-count="4">
+<button type="button" aria-pressed="{{o.on}}" onClick="{{o.pick}}" aria-disabled="{{o.ariaDis}}" style="height: 48px; border-radius: 10px; border: {{o.border}}; background: {{o.bg}}; color: {{o.fg}}; font-family: inherit; font-size: 14px; font-weight: 600; cursor: {{o.cursor}}; display: flex; align-items: center; justify-content: center; gap: 8px;">{{o.label}}<sc-if value="{{o.soon}}" hint-placeholder-val="{{false}}"><span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 2px 6px; border-radius: 999px; border: 1px solid #3A3456; color: #8C87A3;">SOON</span></sc-if></button>
+</sc-for>
+</div><p style="margin: 0; font-size: 13px; color: #8C87A3;">{{pairHint}}</p></div>
+
+<div style="display: flex; flex-direction: column; gap: 10px;"><span style="font-size: 14px; font-weight: 600;">Creator vesting</span><div style="display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px;">
+<sc-for list="{{vesting}}" as="o" hint-placeholder-count="2">
+<button type="button" aria-pressed="{{o.on}}" onClick="{{o.pick}}" aria-disabled="{{o.ariaDis}}" style="height: 48px; border-radius: 10px; border: {{o.border}}; background: {{o.bg}}; color: {{o.fg}}; font-family: inherit; font-size: 14px; font-weight: 600; cursor: {{o.cursor}}; display: flex; align-items: center; justify-content: center; gap: 8px;">{{o.label}}<sc-if value="{{o.soon}}" hint-placeholder-val="{{false}}"><span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 2px 6px; border-radius: 999px; border: 1px solid #3A3456; color: #8C87A3;">SOON</span></sc-if></button>
+</sc-for>
+</div><p style="margin: 0; font-size: 13px; color: #8C87A3;">15% of the supply vests to the fee recipient over 1 year with a 30-day cliff.</p></div>
+</section>
+
+<section style="border: 1px solid #25213A; border-radius: 16px; background: #13111C; padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+<h2 style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.16em; font-weight: 500; color: #B9A8E8;">SERVICE (OPTIONAL)</h2>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px;">
+<sc-for list="{{services}}" as="o" hint-placeholder-count="2">
+<button type="button" aria-pressed="{{o.on}}" onClick="{{o.pick}}" aria-disabled="{{o.ariaDis}}" style="height: 48px; border-radius: 10px; border: {{o.border}}; background: {{o.bg}}; color: {{o.fg}}; font-family: inherit; font-size: 14px; font-weight: 600; cursor: {{o.cursor}}; display: flex; align-items: center; justify-content: center; gap: 8px;">{{o.label}}<sc-if value="{{o.soon}}" hint-placeholder-val="{{false}}"><span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 2px 6px; border-radius: 999px; border: 1px solid #3A3456; color: #8C87A3;">SOON</span></sc-if></button>
+</sc-for>
+</div>
+<sc-if value="{{hasApi}}" hint-placeholder-val="{{true}}">
+<div style="display: grid; grid-template-columns: minmax(0,1fr) 180px; gap: 14px;">
+<label style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; font-weight: 600;">Upstream URL<input type="url" placeholder="https://your-api.example/v1/signals" style="height: 48px; box-sizing: border-box; padding: 0 14px; border: 1px solid #2A2640; border-radius: 10px; background: #0E0D16; color: #ECEAF4; font-family: inherit; font-size: 15px; width: 100%;"></label>
+<label style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; font-weight: 600;">Price per call (USDC)<input type="text" inputmode="decimal" value="0.02" style="height: 48px; box-sizing: border-box; padding: 0 14px; border: 1px solid #2A2640; border-radius: 10px; background: #0E0D16; color: #ECEAF4; font-family: inherit; font-size: 15px; width: 100%; font-family: 'JetBrains Mono', monospace;"></label>
+<label style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; font-weight: 600;">Health check path<input type="text" value="/health" style="height: 48px; box-sizing: border-box; padding: 0 14px; border: 1px solid #2A2640; border-radius: 10px; background: #0E0D16; color: #ECEAF4; font-family: inherit; font-size: 15px; width: 100%; font-family: 'JetBrains Mono', monospace;"></label>
+<label style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; font-weight: 600;">Method<select style="height: 48px; box-sizing: border-box; padding: 0 14px; border: 1px solid #2A2640; border-radius: 10px; background: #0E0D16; color: #ECEAF4; font-family: inherit; font-size: 15px; width: 100%;"><option>GET</option><option>POST</option></select></label>
+</div>
+<p style="margin: 0; font-size: 13px; color: #8C87A3;">The gateway signs every forwarded request. Reject unsigned calls so all paid traffic goes through Astralaunch.</p>
+</sc-if>
+<sc-if value="{{later}}" hint-placeholder-val="{{false}}"><p style="margin: 0; font-size: 13px; color: #8C87A3;">Your token trades right away. Escrowed fees wait for a service and go to buyback after 365 days if none earns.</p></sc-if>
+</section>
+
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 16px; border: 1px solid #25213A; border-radius: 12px; background: #0E0D16;"><div><div style="font-size: 14px; font-weight: 600;">Launch fee</div><div style="margin-top: 4px; font-size: 13px; color: #8C87A3;"><br></div></div><span style="font-family: 'JetBrains Mono', monospace; font-size: 15px; white-space: nowrap;">10 MON</span></div>
+<div style="position: sticky; bottom: 0; display: grid; grid-template-columns: 1fr 1.6fr; gap: 12px; padding: 16px 0; border-top: 1px solid #25213A; background: #0B0A12;">
+<a href="Main.dc.html" style="height: 52px; border-radius: 12px; background: #1C1A29; color: #ECEAF4; font-size: 15px; font-weight: 700; display: flex; align-items: center; justify-content: center; text-decoration: none;">Cancel</a>
+<button type="button" style="height: 52px; border-radius: 12px; border: 0; background: #8B5CF6; color: #FFFFFF; font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer;">Launch</button>
+</div>
+</form>
+
+</main>
+<footer style="margin-top: auto; padding: 22px 124px; border-top: 1px solid #1E1B2E; display: flex; align-items: center; justify-content: center; gap: 16px;">
+<span style="display: flex; align-items: center; gap: 10px; font-size: 13px; color: #8C87A3;"><img src="/_blob/99a75b3ad835989ddd438c67188e5265" alt="" width="22" height="22" style="width: 22px; height: 22px; display: block;">astralaunch — usage-backed tokens for x402 services.</span>
+
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1960}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { recipient: 'wallet', service: 'api', pair: 'usdc' }; }
+  renderVals() {
+    var self = this;
+    function group(key, opts, current) {
+      return opts.map(function (o) {
+        var on = o.id === current, soon = !!o.soon;
+        return { label: o.label, soon: soon, on: on ? 'true' : 'false', ariaDis: soon ? 'true' : 'false',
+          border: on ? '1px solid #8B5CF6' : '1px solid #25213A', bg: on ? '#1B1530' : '#0E0D16',
+          fg: soon ? '#6E6987' : '#ECEAF4', cursor: soon || !key ? 'default' : 'pointer',
+          pick: function () { if (key && !soon) { var s = {}; s[key] = o.id; self.setState(s); } } };
+      });
+    }
+    return {
+      pairings: group('pair', [ { id: 'usdc', label: 'USDC' }, { id: 'mon', label: 'MON' }, { id: 'fx', label: 'Forex', soon: true }, { id: 'st', label: 'Stocks', soon: true } ], this.state.pair),
+      pairHint: this.state.pair === 'mon' ? 'Trades settle in MON. Services are still paid in USDC, so each usage buyback swaps USDC to MON, then MON to your token.' : 'Services are paid in USDC, so the pool pairs with USDC and each usage buyback is a single swap.',
+      vesting: group(null, [ { id: 'v15', label: '15% vesting' }, { id: 'none', label: 'No vesting', soon: true } ], 'v15'),
+      services: group('service', [ { id: 'api', label: 'My API' }, { id: 'later', label: 'Attach later' } ], this.state.service),
+      hasApi: this.state.service === 'api', later: this.state.service === 'later'
+    };
+  }
+}
+</script>
+</body>
+</html>

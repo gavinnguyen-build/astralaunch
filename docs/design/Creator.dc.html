@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Astralaunch — Creator</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;background:#0B0A12;font-family:Inter,system-ui,sans-serif;color:#ECEAF4}
+a{color:#C4B5FD}a:hover{color:#DDD6FE}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1120px; box-sizing: border-box; background: #0B0A12; color: #ECEAF4; font-family: Inter, system-ui, sans-serif; font-variant-numeric: tabular-nums; display: flex; flex-direction: column;">
+<header style="height: 64px; box-sizing: border-box; padding: 0 124px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #1E1B2E;">
+<div style="display: flex; align-items: center; gap: 24px;">
+<a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; color: #ECEAF4; text-decoration: none; font-weight: 700; font-size: 16px;"><img src="/_blob/99a75b3ad835989ddd438c67188e5265" alt="" width="32" height="32" style="width: 32px; height: 32px; display: block;">astralaunch</a>
+<nav aria-label="Primary" style="display: flex; gap: 4px; font-size: 14px;">
+<a href="Discover.dc.html" style="padding: 8px 14px; border-radius: 8px; color: #9A95B0; text-decoration: none;">Discover</a>
+<a href="Leaderboard.dc.html" style="padding: 8px 14px; color: #9A95B0; text-decoration: none;">Leaderboard</a>
+<a href="Creator.dc.html" aria-current="page" style="padding: 8px 14px; border-radius: 8px; background: #1C1A29; color: #ECEAF4; text-decoration: none;">Creator</a>
+<a href="#" style="padding: 8px 14px; color: #9A95B0; text-decoration: none;">Docs</a>
+</nav>
+</div>
+<div style="display: flex; align-items: center; gap: 10px;">
+<button type="button" style="height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #2A2640; background: transparent; color: #ECEAF4; font-family: inherit; font-size: 14px; display: flex; align-items: center; gap: 8px; cursor: pointer;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ECEAF4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13.5 6l-3 12"></path></svg>For agents</button>
+<a href="Creator.dc.html" style="height: 40px; box-sizing: border-box; padding: 0 16px; border-radius: 999px; border: 1px solid #3A3456; background: #16132A; color: #ECEAF4; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; text-decoration: none;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #34D399;"></span>0x11e2…cbc6</a>
+</div>
+</header>
+<main style="padding: 36px 124px 44px; display: grid; grid-template-columns: 280px minmax(0,1fr); gap: 28px; align-items: start;">
+<nav aria-label="Your tokens" style="display: flex; flex-direction: column; gap: 10px;">
+<h1 style="margin: 0 0 6px; font-size: 30px; font-weight: 800; letter-spacing: -0.02em;">Creator</h1>
+<p style="margin: 0 0 10px; font-size: 13px; color: #8C87A3;">0x11e2dD9a…Dfcbc6</p>
+<a href="Token.dc.html" aria-current="page" style="display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 14px; border: 1px solid #8B5CF6; background: #1B1530; color: #ECEAF4; text-decoration: none;"><span style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg,#8B5CF6,#C084FC); display: flex; align-items: center; justify-content: center; font-weight: 800;">N</span><span><span style="display: block; font-weight: 700;">$SIGHT</span><span style="display: block; font-size: 12px; color: #A7A2BD;">nullsight · 3,012 USDC 30d</span></span></a>
+<a href="Token.dc.html" style="display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 14px; border: 1px solid #25213A; background: #13111C; color: #ECEAF4; text-decoration: none;"><span style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg,#6366F1,#A78BFA); display: flex; align-items: center; justify-content: center; font-weight: 800;">F</span><span><span style="display: block; font-weight: 700;">$FEED</span><span style="display: block; font-size: 12px; color: #A7A2BD;">nullfeed · 1,406 USDC 30d</span></span></a>
+<a href="Launch.dc.html" style="display: flex; align-items: center; justify-content: center; height: 48px; border-radius: 14px; border: 1px dashed #5B5475; color: #C9C5DA; text-decoration: none; font-size: 14px; font-weight: 600;">Launch another token</a>
+</nav>
+
+<div style="display: flex; flex-direction: column; gap: 22px;">
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px;">
+<sc-for list="{{claims}}" as="c" hint-placeholder-count="3">
+<section style="border: {{c.border}}; border-radius: 16px; background: {{c.bg}}; padding: 20px; display: flex; flex-direction: column; gap: 12px; min-height: 290px; box-sizing: border-box;">
+<div><h2 style="margin: 0; font-size: 15px; font-weight: 700;">{{c.title}}</h2><p style="margin: 6px 0 0; font-size: 12px; line-height: 1.5; color: #A7A2BD;">{{c.sub}}</p></div>
+<div style="font-size: 30px; font-weight: 800; letter-spacing: -0.02em; color: {{c.color}};">{{c.big}}</div>
+<dl style="margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px;">
+<sc-for list="{{c.lines}}" as="l" hint-placeholder-count="3">
+<div style="display: flex; justify-content: space-between;"><dt style="color: #8C87A3;">{{l.k}}</dt><dd style="margin: 0; font-family: 'JetBrains Mono', monospace;">{{l.v}}</dd></div>
+</sc-for>
+</dl>
+<button type="button" style="margin-top: auto; height: 46px; border-radius: 999px; border: {{c.btnBorder}}; background: {{c.btnBg}}; color: #FFFFFF; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;">{{c.cta}}</button>
+</section>
+</sc-for>
+</div>
+
+<section aria-labelledby="svc" style="border: 1px solid #25213A; border-radius: 16px; background: #13111C; padding: 24px; display: flex; flex-direction: column; gap: 18px;">
+<div style="display: flex; justify-content: space-between; align-items: center;"><h2 id="svc" style="margin: 0; font-size: 18px; font-weight: 700;">Service</h2><span style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #34D399;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #34D399;"></span>Live · 99.6% uptime, 7d</span></div>
+<div style="display: grid; grid-template-columns: minmax(0,1.5fr) 150px minmax(0,1fr); gap: 14px;">
+<label style="display: flex; flex-direction: column; gap: 8px; font-size: 13px; font-weight: 600;">Upstream URL<input type="url" placeholder="https://your-api.example/v1/signals" style="height: 46px; box-sizing: border-box; padding: 0 14px; border: 1px solid #2A2640; border-radius: 10px; background: #0E0D16; color: #ECEAF4; font-family: inherit; font-size: 14px;"></label>
+<label style="display: flex; flex-direction: column; gap: 8px; font-size: 13px; font-weight: 600;">Price (USDC)<input type="text" inputmode="decimal" value="0.02" style="height: 46px; box-sizing: border-box; padding: 0 14px; border: 1px solid #2A2640; border-radius: 10px; background: #0E0D16; color: #ECEAF4; font-family: 'JetBrains Mono', monospace; font-size: 14px;"></label>
+<label style="display: flex; flex-direction: column; gap: 8px; font-size: 13px; font-weight: 600;">Payout address<input type="text" value="0x11e2…cbc6" style="height: 46px; box-sizing: border-box; padding: 0 14px; border: 1px solid #2A2640; border-radius: 10px; background: #0E0D16; color: #ECEAF4; font-family: 'JetBrains Mono', monospace; font-size: 14px;"></label>
+</div>
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 16px;"><p style="margin: 0; font-size: 13px; color: #A7A2BD;">Changes are signed by your wallet and shown publicly on the token page.</p><button type="button" style="height: 44px; padding: 0 20px; border-radius: 999px; border: 1px solid #3A3456; background: transparent; color: #ECEAF4; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;">Sign and save</button></div>
+<div>
+<div style="display: grid; grid-template-columns: 110px 80px 110px 120px minmax(0,1fr); gap: 12px; padding: 10px 0; border-bottom: 1px solid #25213A; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: #8C87A3;"><span>TIME</span><span>STATUS</span><span style="text-align: right;">LATENCY</span><span>CHARGED</span><span>NOTE</span></div>
+<sc-for list="{{logs}}" as="l" hint-placeholder-count="6">
+<div style="display: grid; grid-template-columns: 110px 80px 110px 120px minmax(0,1fr); gap: 12px; padding: 11px 0; border-bottom: 1px solid #1E1B2E; font-size: 13px; align-items: center;"><span style="font-family: 'JetBrains Mono', monospace; color: #8C87A3;">{{l.t}}</span><span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; color: {{l.color}};">{{l.s}}</span><span style="text-align: right; font-family: 'JetBrains Mono', monospace;">{{l.lat}}</span><span style="font-family: 'JetBrains Mono', monospace;">{{l.ch}}</span><span style="color: #A7A2BD;">{{l.note}}</span></div>
+</sc-for>
+</div>
+</section>
+</div>
+</main>
+<footer style="margin-top: auto; padding: 22px 124px; border-top: 1px solid #1E1B2E; display: flex; align-items: center; justify-content: center; gap: 16px;">
+<span style="display: flex; align-items: center; gap: 10px; font-size: 13px; color: #8C87A3; text-align: center; justify-content: center"><img src="/_blob/99a75b3ad835989ddd438c67188e5265" alt="" width="22" height="22" style="width: 22px; height: 22px; display: block;"><span>astralaunch — usage-backed tokens for x402 services.</span></span>
+
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1120}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var ok = '#34D399', bad = '#F87171';
+    return {
+      claims: [
+        { title: 'Trading fees', sub: '', big: '412 USDC', color: '#ECEAF4',
+          lines: [ { k: 'Also in tokens', v: '1.9M SIGHT' }, { k: 'Last claimed', v: '3 days ago' } ],
+          cta: 'Claim trading fees', border: '1px solid #25213A', bg: '#13111C', btnBg: '#8B5CF6', btnBorder: '0' },
+        { title: 'Escrow', sub: '', big: '138 USDC', color: '#34D399',
+          lines: [ { k: 'Collected from trading', v: '1,488 USDC' }, { k: 'Unlocked by usage', v: '638 USDC' }, { k: 'Already claimed', v: '500 USDC' }, { k: 'Unclaimed goes to buyback', v: 'Aug 17, 2027' } ],
+          cta: 'Claim 138 USDC', border: '1px solid #1F6B52', bg: '#0F221D', btnBg: '#10825F', btnBorder: '0' },
+        { title: 'Allocation', sub: '15% of supply. 30-day cliff, linear to one year.', big: '4.3M SIGHT', color: '#C4B5FD',
+          lines: [ { k: 'Total', v: '150M' }, { k: 'Claimed', v: '11.3M' }, { k: 'Locked', v: '134.4M' } ],
+          cta: 'Release 4.3M SIGHT', border: '1px solid #25213A', bg: '#13111C', btnBg: 'transparent', btnBorder: '1px solid #8B5CF6' } ],
+      logs: [
+        { t: '14:02:11', s: '200', color: ok, lat: '612 ms', ch: '0.02 USDC', note: 'Settled by facilitator' },
+        { t: '14:01:48', s: '200', color: ok, lat: '704 ms', ch: '0.02 USDC', note: 'Settled by facilitator' },
+        { t: '14:00:05', s: '504', color: bad, lat: '20,000 ms', ch: 'No', note: 'Upstream timeout, not charged' },
+        { t: '13:59:30', s: '200', color: ok, lat: '588 ms', ch: '0.02 USDC', note: 'Settled by facilitator' },
+        { t: '13:58:40', s: '422', color: bad, lat: '41 ms', ch: 'No', note: 'Response failed schema check' },
+        { t: '13:57:44', s: '200', color: ok, lat: '655 ms', ch: '0.02 USDC', note: 'Settled by facilitator' } ]
+    };
+  }
+}
+</script>
+</body>
+</html>
