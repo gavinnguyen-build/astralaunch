@@ -236,3 +236,54 @@ disappears from every public endpoint:
 
 The `/s/*` gateway keeps serving existing services, and on-chain state is untouched.
 Script: `apps/server/src/scripts/hideToken.ts` (dry run unless `--yes`).
+
+## Phase D: web actions (2026-09-26)
+
+**D-PD1. Universal Router address.** The previous `UNIVERSAL_ROUTER` in `addresses.ts` (0xf70536…D6A7) has
+no code on Monad. It is replaced by 0x0D97Dc33264bfC1c226207428A79b26757fb9dc3 (Doppler SDK / Uniswap
+deployments). A read-only check on 2026-09-26 found 19,499 bytes of code, and `poolManager()` equals
+`POOL_MANAGER`. Also added `V4_QUOTER` 0xa222Dd…6891.
+
+**D-PD2. Swap encoding.** The Monad Universal Router accepts the UR 2.0 `V4_SWAP` encoding
+(`ExactInputSingleParams` without `maxHopSlippage`). `lib/trade.ts` defaults to 2.0 and keeps 2.1.1 behind
+a parameter. Routes:
+- USDC pair: `[PERMIT2_PERMIT] V4_SWAP[SWAP_EXACT_IN_SINGLE, SETTLE_ALL, TAKE_ALL]`.
+- MON pair buy: `WRAP_ETH(router, amountIn)` then `V4_SWAP[SWAP, SETTLE(WMON, OPEN_DELTA, payerIsUser=false), TAKE_ALL]`,
+  with `value = amountIn`. The MON is wrapped in the same tx.
+- MON pair sell: `[PERMIT2_PERMIT] V4_SWAP[SWAP, SETTLE_ALL, TAKE(WMON, router, OPEN_DELTA)]` then
+  `UNWRAP_WETH(sender, minOut)`. The user receives MON.
+
+**D-PD3. Trade safety.**
+- Slippage defaults to 1% and is capped at 0.1–5%.
+- `minOut = quote × (1 − slippage)` uses the on-chain v4 Quoter.
+- Deadline is now + 20 min.
+- USDC → Permit2 approval covers the exact amount only, never unlimited. Doppler tokens ship with a
+  Permit2 allowance, so selling needs only the signed PermitSingle (expiry 30 min, exact amount).
+- Every tx (approval, swap) is simulated with `eth_call`, then sent with gas = estimate × 1.1.
+- The review screen shows min received, the 2% pool fee, the route, and gas in MON.
+
+**D-PD4. Try API (x402 from the browser).**
+- Uses the `@x402/core` `x402HTTPClient` and the `@x402/evm` exact scheme, with no hand-written headers.
+- Before the user signs, the page checks:
+  - the requirement is exact / eip155:143 / USDC;
+  - `payTo == registry.routers(asset)` on-chain;
+  - the signed authorization's `to`, `value` and `from` match.
+- The confirmation shows the USDC balance. The user signs one EIP-3009 authorization and pays no gas.
+- The facilitator settles only after the upstream call succeeds, as SPEC requires.
+
+**D-PD5. Creator actions.**
+- Trading fees: `initializer.collectFees(poolId)`, which pays the caller its beneficiary share.
+- Escrow: `FeeEscrow.claim(asset)`.
+- Vesting: `DERC20.release(scheduleId)`, using the first schedule with an available amount. If none is
+  available, the button refuses with a cliff note.
+- Each action is simulated, confirmed in a modal (contract, call, gas × 1.1, MON cost), then sent.
+- Buttons are enabled only when the connected wallet is the page's wallet.
+
+**D-PD6. Service settings.** The Creator page signs the existing `serviceUpdateMessage` or
+`serviceCreateMessage` (formats unchanged). The price must be 0.000001–100 USDC, and the upstream must be
+an http(s) URL. The server keeps its SSRF and replay checks: a signed update must be newer than the last
+accepted one, at 1-second resolution.
+
+**D-PD7. Slug pre-check at launch.** `planLaunch` checks `GET /api/services/:slug/manifest` and throws
+`slug_taken` before any transaction. Before this change, a taken slug was found only after the token was
+already launched.
