@@ -6,7 +6,7 @@ import { Hono } from 'hono';
 import {
   LAUNCH_FEE_MON, LAUNCH_FEE_TREASURY, LAUNCH_FEE_WEI, LAUNCH_RATE_LIMIT, MON_USD_ORACLE, USDC, WMON,
 } from '@astralaunch/shared';
-import { CHAIN_ID, ESCROW_ADDR, REGISTRY_ADDR, VAULT_ADDR } from '../env.js';
+import { CHAIN_ID, ESCROW_ADDR, LAUNCH_HELPER_ADDR, REGISTRY_ADDR, VAULT_ADDR } from '../env.js';
 
 const app = new Hono();
 
@@ -19,6 +19,8 @@ app.get('/', (c) => {
     tokens: { usdc: USDC, wmon: WMON },
     monUsdOracle: MON_USD_ORACLE,
     launchFee: { mon: LAUNCH_FEE_MON, wei: LAUNCH_FEE_WEI.toString(), treasury: LAUNCH_FEE_TREASURY, maxPer24h: LAUNCH_RATE_LIMIT },
+    // One-transaction launch (LaunchHelper); null = not deployed/configured, the web uses the multi-tx flow.
+    launchHelper: LAUNCH_HELPER_ADDR,
   });
 });
 

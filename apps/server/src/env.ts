@@ -1,7 +1,7 @@
 import { config } from 'dotenv';
 import { existsSync, readFileSync } from 'node:fs';
 import { createPublicClient, defineChain, getAddress, http } from 'viem';
-import { USDC, X402_FACILITATOR_URL_DEFAULT } from '@astralaunch/shared';
+import { AIRLOCK, LAUNCH_FEE_TREASURY, LAUNCH_FEE_WEI, USDC, X402_FACILITATOR_URL_DEFAULT } from '@astralaunch/shared';
 import { parseCorsOrigins } from './lib/cors.js';
 
 config({ path: '../../.env' });
@@ -35,9 +35,22 @@ export const SUBMITTERS         = (process.env.FACILITATOR_SUBMITTER_ADDRESSES ?
 /** Browser origins allowed to call /api/* and /s/* cross-origin (comma-separated). Empty = none. */
 export const CORS_ORIGINS       = parseCorsOrigins(process.env.CORS_ORIGINS);
 export const PAYMENT_TIMEOUT_S  = Number(process.env.PAYMENT_TIMEOUT_SECONDS ?? 60);
+/** LaunchHelper (one-tx launch + fee). Unset/empty = feature off: web uses the multi-tx flow. Checked at startup. */
+export const LAUNCH_HELPER_ADDR = (() => {
+  const v = process.env.LAUNCH_HELPER_ADDRESS?.trim();
+  if (!v) return null;
+  if (!/^0x[0-9a-fA-F]{40}$/.test(v)) throw new Error(`LAUNCH_HELPER_ADDRESS is not an address: ${v}`);
+  return getAddress(v);
+})();
 
 // ── Startup contract verification ──────────────────────────────────────────
 const adminAbi = [{ type: 'function', name: 'admin', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] }] as const;
+const launchHelperAbi = [
+  { type: 'function', name: 'airlock',   stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
+  { type: 'function', name: 'registry',  stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
+  { type: 'function', name: 'treasury',  stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
+  { type: 'function', name: 'launchFee', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+] as const;
 
 /** Verify all contract addresses have code, admin wiring, and dryRun flag. */
 export async function verifyContracts(): Promise<void> {
@@ -88,6 +101,22 @@ export async function verifyContracts(): Promise<void> {
       }
     }
     console.log(`[server] Admin wiring verified: ${expected}`);
+  }
+
+  if (LAUNCH_HELPER_ADDR) {
+    const code = await client.getCode({ address: LAUNCH_HELPER_ADDR });
+    if (!code || code === '0x') throw new Error(`FATAL: LaunchHelper (${LAUNCH_HELPER_ADDR}) has no bytecode on chain ${CHAIN_ID}.`);
+    const read = <F extends 'airlock' | 'registry' | 'treasury' | 'launchFee'>(functionName: F) =>
+      client.readContract({ address: LAUNCH_HELPER_ADDR, abi: launchHelperAbi, functionName });
+    const [airlock, registry, treasury, fee] = await Promise.all([read('airlock'), read('registry'), read('treasury'), read('launchFee')]);
+    const wrong = [
+      getAddress(airlock as string) !== getAddress(AIRLOCK) && `airlock ${airlock} != ${AIRLOCK}`,
+      getAddress(registry as string) !== getAddress(REGISTRY_ADDR) && `registry ${registry} != ${REGISTRY_ADDR}`,
+      getAddress(treasury as string) !== getAddress(LAUNCH_FEE_TREASURY) && `treasury ${treasury} != ${LAUNCH_FEE_TREASURY}`,
+      (fee as bigint) !== LAUNCH_FEE_WEI && `launchFee ${fee} != ${LAUNCH_FEE_WEI}`,
+    ].filter(Boolean);
+    if (wrong.length) throw new Error(`FATAL: LaunchHelper ${LAUNCH_HELPER_ADDR} does not match this deployment: ${wrong.join('; ')}`);
+    console.log(`[server] LaunchHelper verified: ${LAUNCH_HELPER_ADDR}`);
   }
 
   console.log(`[server] Contract addresses verified on chain ${CHAIN_ID}`);

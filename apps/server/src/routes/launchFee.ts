@@ -1,7 +1,8 @@
 /**
  * Launch fee routes — /api/launch-fee (docs/decisions.md D-LF1..D-LF6)
  *
- * POST /api/launch-fee/verify   { txHash }  — verify a 10 MON fee tx on Monad, store an unused receipt
+ * POST /api/launch-fee/verify   { txHash }  — verify a 10 MON fee tx on Monad (direct transfer to the treasury,
+ *                                            or a LaunchHelper launch via its LaunchFeePaid event), store a receipt
  * GET  /api/launch-fee/status?wallet=0x…    — unused receipts, launches in last 24h, canLaunch
  */
 import { Hono } from 'hono';
@@ -10,7 +11,7 @@ import { z } from 'zod';
 import { createPublicClient, defineChain, http } from 'viem';
 import { addressSchema } from '@astralaunch/shared';
 import { db } from '../db/client.js';
-import { RPC_URL, CHAIN_ID } from '../env.js';
+import { RPC_URL, CHAIN_ID, LAUNCH_HELPER_ADDR } from '../env.js';
 import {
   LaunchFeeError, launchStatus, verifyLaunchFee, viemFeeChainReader,
 } from '../services/launchFee.js';
@@ -32,7 +33,7 @@ app.post('/verify', zValidator('json', z.object({
 })), async (c) => {
   const { txHash } = c.req.valid('json');
   try {
-    const { receipt, consumedAsset } = await verifyLaunchFee(db, chain, txHash, { chainId: CHAIN_ID, nowS: nowS() });
+    const { receipt, consumedAsset } = await verifyLaunchFee(db, chain, txHash, { chainId: CHAIN_ID, nowS: nowS(), launchHelper: LAUNCH_HELPER_ADDR });
     return c.json({
       txHash:      receipt.txHash,
       launcher:    receipt.launcher,

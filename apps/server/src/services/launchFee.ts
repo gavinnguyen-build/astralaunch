@@ -14,7 +14,7 @@
  */
 import { and, asc, eq, gt, gte, isNull, lte, sql, type SQL, type Column } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
-import type { Hex } from 'viem';
+import { keccak256, toHex, type Hex } from 'viem';
 import {
   LAUNCH_FEE_MON,
   LAUNCH_FEE_WEI,
@@ -38,7 +38,8 @@ export type LaunchFeeErrorCode =
   | 'tx_failed'
   | 'not_finalized'
   | 'already_used'
-  | 'rate_limited';
+  | 'rate_limited'
+  | 'no_fee_paid';
 
 const STATUS: Record<LaunchFeeErrorCode, 400 | 404 | 409 | 422 | 429> = {
   invalid_tx_hash: 400,
@@ -49,6 +50,7 @@ const STATUS: Record<LaunchFeeErrorCode, 400 | 404 | 409 | 422 | 429> = {
   not_finalized:   409,
   already_used:    409,
   rate_limited:    429,
+  no_fee_paid:     422,
 };
 
 export class LaunchFeeError extends Error {
@@ -65,11 +67,28 @@ export class LaunchFeeError extends Error {
 
 // ── Chain reader (thin, mockable) ────────────────────────────────────────────
 
+export interface ReceiptLog { address: string; topics: readonly string[]; data: string }
+
+/** topic0 of LaunchHelper.LaunchFeePaid(address indexed launcher, address indexed asset, uint256 amount). */
+export const LAUNCH_FEE_PAID_TOPIC = keccak256(toHex('LaunchFeePaid(address,address,uint256)'));
+
+/** The helper's own LaunchFeePaid log in a receipt (logs from any other address are ignored). */
+export function findLaunchFeePaid(logs: readonly ReceiptLog[], helper: string): { launcher: string; asset: string; amount: bigint } | null {
+  const h = helper.toLowerCase();
+  const log = logs.find(l => l.address.toLowerCase() === h && l.topics[0]?.toLowerCase() === LAUNCH_FEE_PAID_TOPIC && l.topics.length === 3);
+  if (!log) return null;
+  return {
+    launcher: `0x${log.topics[1]!.slice(26)}`.toLowerCase(),
+    asset:    `0x${log.topics[2]!.slice(26)}`.toLowerCase(),
+    amount:   BigInt(log.data),
+  };
+}
+
 export interface FeeChainReader {
   /** null if the tx is unknown to the node. blockNumber null = still pending. */
   getTx(hash: Hex): Promise<{ from: string; to: string | null; value: bigint; blockNumber: bigint | null } | null>;
-  /** null if no receipt yet. */
-  getReceipt(hash: Hex): Promise<{ status: 'success' | 'reverted'; blockNumber: bigint } | null>;
+  /** null if no receipt yet. `logs` is needed only for LaunchHelper transactions. */
+  getReceipt(hash: Hex): Promise<{ status: 'success' | 'reverted'; blockNumber: bigint; logs?: ReceiptLog[] } | null>;
   getFinalizedBlockNumber(): Promise<bigint>;
   getBlockTimestamp(blockNumber: bigint): Promise<bigint>;
 }
@@ -77,7 +96,7 @@ export interface FeeChainReader {
 /** Minimal structural subset of viem's PublicClient used by viemFeeChainReader. */
 interface ViemLike {
   getTransaction(a: { hash: Hex }): Promise<{ from: string; to: string | null; value: bigint; blockNumber: bigint | null }>;
-  getTransactionReceipt(a: { hash: Hex }): Promise<{ status: 'success' | 'reverted'; blockNumber: bigint }>;
+  getTransactionReceipt(a: { hash: Hex }): Promise<{ status: 'success' | 'reverted'; blockNumber: bigint; logs: readonly ReceiptLog[] }>;
   getBlock(a: { blockTag: 'finalized' }): Promise<{ number: bigint | null }>;
   getBlock(a: { blockNumber: bigint }): Promise<{ timestamp: bigint }>;
 }
@@ -94,7 +113,10 @@ export function viemFeeChainReader(client: ViemLike): FeeChainReader {
       catch (e) { if (isNotFound(e)) return null; throw e; }
     },
     async getReceipt(hash) {
-      try { return await client.getTransactionReceipt({ hash }); }
+      try {
+        const r = await client.getTransactionReceipt({ hash });
+        return { status: r.status, blockNumber: r.blockNumber, logs: r.logs.map(l => ({ address: l.address, topics: l.topics, data: l.data })) };
+      }
       catch (e) { if (isNotFound(e)) return null; throw e; }
     },
     async getFinalizedBlockNumber() {
@@ -143,6 +165,8 @@ export interface VerifyOptions {
   chainId: number;
   nowS: bigint;
   treasury?: string;
+  /** LaunchHelper address (one-tx launch). Its fee is read from its LaunchFeePaid event. Unset = direct transfers only. */
+  launchHelper?: string | null;
 }
 
 export interface VerifyResult {
@@ -174,10 +198,13 @@ export async function verifyLaunchFee(
   if (tx.blockNumber === null) {
     throw new LaunchFeeError('not_finalized', 'Transaction is still pending. Retry once it is finalized.', { retryable: true });
   }
-  if ((tx.to ?? '').toLowerCase() !== treasury) {
-    throw new LaunchFeeError('wrong_recipient', `Launch fee must be sent directly to the treasury ${LAUNCH_FEE_TREASURY}.`);
+  const helper = opts.launchHelper?.toLowerCase() ?? null;
+  const viaHelper = helper !== null && (tx.to ?? '').toLowerCase() === helper;
+  if (!viaHelper && (tx.to ?? '').toLowerCase() !== treasury) {
+    throw new LaunchFeeError('wrong_recipient',
+      `Launch fee must be sent directly to the treasury ${LAUNCH_FEE_TREASURY}${helper ? ` or paid through LaunchHelper ${opts.launchHelper}` : ''}.`);
   }
-  if (tx.value < LAUNCH_FEE_WEI) {
+  if (!viaHelper && tx.value < LAUNCH_FEE_WEI) {
     throw new LaunchFeeError('underpaid', `Launch fee is ${LAUNCH_FEE_MON} MON; this transaction sent less.`, {
       requiredWei: LAUNCH_FEE_WEI.toString(), paidWei: tx.value.toString(),
     });
@@ -195,6 +222,24 @@ export async function verifyLaunchFee(
     throw new LaunchFeeError('not_finalized', 'Transaction is not finalized yet. Retry in a few seconds.', {
       retryable: true, txBlock: receipt.blockNumber.toString(), finalizedBlock: finalized.toString(),
     });
+  }
+
+  // LaunchHelper: the fee is what its LaunchFeePaid event says was forwarded to the treasury in
+  // this (successful) transaction. The launcher stays tx.from, as for direct launches.
+  let amountWei = tx.value;
+  let helperAsset: string | null = null;
+  if (viaHelper) {
+    const paid = findLaunchFeePaid(receipt.logs ?? [], helper!);
+    if (!paid) {
+      throw new LaunchFeeError('no_fee_paid', 'This LaunchHelper transaction did not pay the launch fee (it launched using an existing receipt).');
+    }
+    if (paid.amount < LAUNCH_FEE_WEI) {
+      throw new LaunchFeeError('underpaid', `Launch fee is ${LAUNCH_FEE_MON} MON; this transaction paid less.`, {
+        requiredWei: LAUNCH_FEE_WEI.toString(), paidWei: paid.amount.toString(),
+      });
+    }
+    amountWei = paid.amount;
+    helperAsset = paid.asset;
   }
 
   const launcher = tx.from.toLowerCase();
@@ -216,7 +261,7 @@ export async function verifyLaunchFee(
       chainId:     opts.chainId,
       txHash:      hash,
       launcher,
-      amountWei:   tx.value.toString(),
+      amountWei:   amountWei.toString(),
       blockNumber: receipt.blockNumber,
       paidAt,
       source:      'fee',
@@ -238,7 +283,10 @@ export async function verifyLaunchFee(
         gte(idxRegistrations.blockNumber, receipt.blockNumber),
         isNull(feeReceipts.id),
       ))
-      .orderBy(asc(idxRegistrations.blockNumber), asc(idxRegistrations.logIndex))
+      // A LaunchHelper fee belongs to the token launched in the same transaction: match it first.
+      .orderBy(
+        ...(helperAsset ? [sql`CASE WHEN ${idxRegistrations.asset} = ${helperAsset} THEN 0 ELSE 1 END`] : []),
+        asc(idxRegistrations.blockNumber), asc(idxRegistrations.logIndex))
       .limit(1);
 
     let consumedAsset: string | null = null;
