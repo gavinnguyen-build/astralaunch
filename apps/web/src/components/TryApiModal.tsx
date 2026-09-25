@@ -6,6 +6,7 @@ import { errMsg, walletClients, type Clients, type PrivyWallet } from '../lib/wa
 import type { ChainConfig } from '../lib/launch.js';
 import { Actions, ErrorLine, Modal, Row, btnStyle, inputStyle } from './Modal.js';
 import { AddrLink, TxLink } from './Explorer.js';
+import { API_BASE } from '../env.js';
 
 export function TryApiModal({ asset, slug, wallet, config, onClose }: {
   asset: Address; slug: string; wallet: PrivyWallet; config: ChainConfig; onClose: () => void;
@@ -16,7 +17,7 @@ export function TryApiModal({ asset, slug, wallet, config, onClose }: {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [out, setOut] = useState<{ status: number; body: string; settleTx: string | null } | null>(null);
-  const url = `${window.location.origin}/s/${slug}${path.startsWith('/') ? path : `/${path}`}`;
+  const url = `${API_BASE || window.location.origin}/s/${slug}${path.startsWith('/') ? path : `/${path}`}`;
 
   async function prepare() {
     setErr(null); setBusy(true);

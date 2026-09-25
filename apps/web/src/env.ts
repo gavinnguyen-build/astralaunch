@@ -1,7 +1,9 @@
 /** Browser env vars — all must be prefixed VITE_ */
 import { MONAD_EXPLORER_URL } from '@astralaunch/shared';
 
-export const API_BASE      = import.meta.env.VITE_API_BASE      ?? '';
+/** Server origin for /api/* and the /s/* gateway, e.g. https://api.astralaunch.xyz (build-time). Empty = same
+ *  origin (dev: the Vite proxy forwards /api and /s/ to API_PROXY_TARGET, default http://localhost:3001). */
+export const API_BASE      = (import.meta.env.VITE_API_BASE      ?? '').replace(/\/$/, '');
 export const PRIVY_APP_ID  = import.meta.env.VITE_PRIVY_APP_ID  ?? '';
 export const CHAIN_ID      = Number(import.meta.env.VITE_CHAIN_ID ?? 143);
 export const RPC_URL       = import.meta.env.VITE_RPC_URL        ?? 'https://rpc.monad.xyz';
