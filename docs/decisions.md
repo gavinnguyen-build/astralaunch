@@ -67,3 +67,20 @@ services are not filtered.
 It does not change listing status (use `listLegacyTokens.ts` for that).
 Also fixed: `tokens.launched_at` is TIMESTAMPTZ in SQL but was declared without a time zone in the drizzle
 schema, which shifted reads by the host's UTC offset.
+
+## Creator-signed service create/update (2026-09-25)
+
+**D-SV1.** `POST /api/services` and `PATCH /api/services/:id` only accept a personal_sign by the token's
+**on-chain creator**, taken from the `tokens` row the indexer writes from the Registered event. The body's
+`creator` field is no longer accepted, and `router` also comes from the tokens row.
+- Message: `serviceCreateMessage` / `serviceUpdateMessage` (shared) = a fixed header plus canonical JSON
+  (fixed key order) of every provided field and `issuedAt`. Updates also bind the service id and asset.
+  JSON is used instead of `key: value` lines so multi-line values (e.g. JSON schemas) cannot forge fields.
+- Order of checks: token not registered → 404; not listed → 403; `issuedAt` more than 10 min from server
+  time → 400; an update with `issuedAt` ≤ the last accepted one → 409; signer ≠ on-chain creator → 403.
+- Replay: every accepted message's keccak256 is inserted into `signed_requests` in the same transaction
+  as the write; an exact replay → 409. Keyed on the message, not the signature, so ECDSA signature
+  malleability cannot bypass it. Updates are also monotonic on `services.auth_signed_at`.
+- The PATCH response no longer returns `upstreamSecret`.
+- Existing services created by the old, unsigned flow keep working (gateway unchanged). Their
+  `creator` column may hold a client-supplied value, but it is no longer used for authorization.

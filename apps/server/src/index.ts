@@ -4,8 +4,8 @@
  * Routes:
  *   GET  /health                              — liveness + DB check
  *   GET  /ready                               — readiness probe
- *   POST /api/services                        — register BYO service
- *   PATCH /api/services/:id                   — update price/upstream
+ *   POST /api/services                        — register BYO service (signed by on-chain creator)
+ *   PATCH /api/services/:id                   — update price/upstream (signed by on-chain creator)
  *   GET  /api/services/:slug/manifest         — machine-readable service manifest
  *   POST /api/launch-fee/verify               — verify 10 MON launch fee tx
  *   GET  /api/launch-fee/status               — launcher receipts + 24h limit

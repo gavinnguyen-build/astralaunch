@@ -45,6 +45,7 @@ export const services = pgTable('services', {
   responseSchema: text('response_schema'),
   description:    text('description'),
   active:         boolean('active').notNull().default(true),
+  authSignedAt:   bigint('auth_signed_at', { mode: 'bigint' }), // issuedAt of last accepted signed request (0007)
   createdAt:      timestamp('created_at').notNull().defaultNow(),
   updatedAt:      timestamp('updated_at').notNull().defaultNow(),
 });
@@ -278,3 +279,12 @@ export const feeReceipts = pgTable('fee_receipts', {
 
 export type FeeReceipt = typeof feeReceipts.$inferSelect;
 export type NewFeeReceipt = typeof feeReceipts.$inferInsert;
+
+// ── signed_requests (migration 0007) — replay protection for creator-signed requests ──
+export const signedRequests = pgTable('signed_requests', {
+  messageHash: text('message_hash').primaryKey(),   // keccak256 of the signed message
+  signer:      text('signer').notNull(),
+  purpose:     text('purpose').notNull(),           // 'service_create' | 'service_update'
+  issuedAt:    bigint('issued_at', { mode: 'bigint' }).notNull(),
+  usedAt:      timestamp('used_at', { withTimezone: true }).notNull().defaultNow(),
+});

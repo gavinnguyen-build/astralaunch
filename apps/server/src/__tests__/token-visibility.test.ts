@@ -20,7 +20,7 @@ vi.mock('../env.js', () => ({
 const { tokens, services, idxRegistrations } = await import('../db/schema.js');
 const { consumeForRegistration, verifyLaunchFee } = await import('../services/launchFee.js');
 const { upsertTokenFromRegistration } = await import('../services/tokenSync.js');
-const { LAUNCH_FEE_TREASURY, LAUNCH_FEE_WEI, tokenMetadataMessage, serviceRegistrationMessage } = await import('@astralaunch/shared');
+const { LAUNCH_FEE_TREASURY, LAUNCH_FEE_WEI, tokenMetadataMessage, serviceCreateMessage } = await import('@astralaunch/shared');
 const { privateKeyToAccount } = await import('viem/accounts');
 const { eq } = await import('drizzle-orm');
 const servicesRouter = (await import('../routes/services.js')).default;
@@ -147,10 +147,8 @@ describe('token visibility', () => {
   });
 
   it('POST /api/services is rejected for an unlisted token', async () => {
-    const svc = {
-      asset: UNPAID, creator: CREATOR, slug: 'unpaid-svc', name: 'x', upstreamUrl: 'https://example.com', priceUsdc: '1000',
-      signature: await creatorAcct.signMessage({ message: serviceRegistrationMessage('unpaid-svc', UNPAID) }),
-    };
+    const m = { asset: UNPAID, slug: 'unpaid-svc', name: 'x', upstreamUrl: 'https://example.com', priceUsdc: '1000', issuedAt: now() };
+    const svc = { ...m, signature: await creatorAcct.signMessage({ message: serviceCreateMessage(m) }) };
     const res = await post('/api/services', svc);
     expect(res.status).toBe(403);
     expect(((await res.json()) as { error: string }).error).toMatch(/not listed/);

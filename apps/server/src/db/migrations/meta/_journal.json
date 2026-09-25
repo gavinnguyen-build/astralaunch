@@ -43,6 +43,13 @@
       "when": 1727481600000,
       "tag": "0006_tokens_onchain",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1727568000000,
+      "tag": "0007_service_auth",
+      "breakpoints": true
     }
   ]
 }

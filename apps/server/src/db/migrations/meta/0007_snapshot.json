@@ -1,0 +1,15 @@
+{
+  "id": "0007_service_auth",
+  "prevId": "0006_tokens_onchain",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {},
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

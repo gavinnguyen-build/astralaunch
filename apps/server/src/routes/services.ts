@@ -1,126 +1,105 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull, lt, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { services } from '../db/schema.js';
-import { createServiceSchema, updateServiceSchema, serviceRegistrationMessage } from '@astralaunch/shared';
+import { createServiceSchema, updateServiceSchema, serviceCreateMessage, serviceUpdateMessage } from '@astralaunch/shared';
 import { MONAD_NETWORK, USDC } from '@astralaunch/shared';
 import { assertSafeUpstream, SsrfError } from '../lib/ssrf.js';
 import { generateSecret } from '../lib/hmac.js';
-import { isAssetListed } from '../services/launchFee.js';
-import { REGISTRY_ADDR, RPC_URL, CHAIN_ID, USDC_ADDR, PAYMENT_TIMEOUT_S } from '../env.js';
-import { createPublicClient, http, verifyMessage, getAddress, type Address } from 'viem';
-import { defineChain } from 'viem';
-
-const monad = defineChain({
-  id: CHAIN_ID,
-  name: 'Monad',
-  nativeCurrency: { name: 'MON', symbol: 'MON', decimals: 18 },
-  rpcUrls: { default: { http: [RPC_URL] } },
-});
-const publicClient = createPublicClient({ chain: monad, transport: http(RPC_URL) });
-
-/** Minimal ABI to read router address from registry. */
-const registryAbi = [
-  { type: 'function', name: 'routers', stateMutability: 'view',
-    inputs: [{ name: '', type: 'address' }], outputs: [{ name: '', type: 'address' }] },
-  { type: 'function', name: 'isRegistered', stateMutability: 'view',
-    inputs: [{ name: '', type: 'address' }], outputs: [{ name: '', type: 'bool' }] },
-] as const;
+import { authorizeTokenCreator, consumeSignedMessage, ServiceAuthError } from '../services/serviceAuth.js';
+import { USDC_ADDR, PAYMENT_TIMEOUT_S } from '../env.js';
 
 const app = new Hono();
 
-// POST /api/services — register a BYO service
+const nowS = () => Math.floor(Date.now() / 1000);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function authError(c: Context, e: unknown) {
+  if (e instanceof ServiceAuthError) return c.json({ error: e.message }, e.status);
+  if (e instanceof SsrfError) return c.json({ error: e.message }, 422);
+  throw e;
+}
+
+// POST /api/services — register a BYO service. Signed by the token's on-chain creator (D-SV1).
 app.post('/', zValidator('json', createServiceSchema), async (c) => {
   const body = c.req.valid('json');
+  const { signature, ...signed } = body;
+  const message = serviceCreateMessage(signed);
 
-  // 0. Only listed tokens (launch fee paid + consumed, D-LF4) can get new services.
-  //    Existing services keep working: the /s/* gateway is not filtered.
-  if (!(await isAssetListed(db, body.asset))) {
-    return c.json({ error: 'Token is not listed: its launch fee has not been paid and consumed. Services can only be registered for listed tokens.' }, 403);
-  }
-
-  // 1. SSRF check on upstream URL
   try {
+    const token = await authorizeTokenCreator(db, {
+      asset: body.asset, message, signature, issuedAt: body.issuedAt, nowS: nowS(),
+    });
     await assertSafeUpstream(body.upstreamUrl);
+
+    const svc = await db.transaction(async (tx) => {
+      await consumeSignedMessage(tx, message, token.creator, 'service_create', body.issuedAt);
+      const existing = await tx.query.services.findFirst({ where: eq(services.slug, body.slug) });
+      if (existing) throw new ServiceAuthError(409, 'Slug already taken');
+      const [row] = await tx.insert(services).values({
+        slug:           body.slug,
+        name:           body.name,
+        asset:          token.asset,
+        router:         token.router,       // from chain (Registered event), not the client
+        creator:        token.creator,      // on-chain creator, not the client
+        upstreamUrl:    body.upstreamUrl,
+        priceUsdc:      body.priceUsdc,
+        upstreamSecret: generateSecret(),
+        timeoutSeconds: body.timeoutSeconds ?? 20,
+        requestSchema:  body.requestSchema,
+        responseSchema: body.responseSchema,
+        description:    body.description,
+        authSignedAt:   BigInt(body.issuedAt),
+      }).returning();
+      return row!;
+    });
+    return c.json({ id: svc.id, slug: svc.slug, router: svc.router }, 201);
   } catch (e) {
-    if (e instanceof SsrfError) return c.json({ error: e.message }, 422);
-    throw e;
+    return authError(c, e);
   }
-
-  // 2. Verify creator signature (personal_sign)
-  const message = serviceRegistrationMessage(body.slug, body.asset);
-  let sigValid: boolean;
-  try {
-    sigValid = await verifyMessage({
-      address: getAddress(body.creator) as Address,
-      message,
-      signature: body.signature as `0x${string}`,
-    });
-  } catch {
-    sigValid = false;
-  }
-  if (!sigValid) {
-    return c.json({ error: 'Invalid creator signature' }, 401);
-  }
-
-  // 3. Verify token is registered in AstralaunchRegistry on-chain
-  let router: Address;
-  try {
-    router = await publicClient.readContract({
-      address: REGISTRY_ADDR,
-      abi: registryAbi,
-      functionName: 'routers',
-      args: [body.asset as Address],
-    });
-    if (router === '0x0000000000000000000000000000000000000000') {
-      return c.json({ error: 'Token not registered in AstralaunchRegistry' }, 400);
-    }
-  } catch {
-    return c.json({ error: 'Failed to read AstralaunchRegistry' }, 502);
-  }
-
-  // 4. Check slug uniqueness
-  const existing = await db.query.services.findFirst({ where: eq(services.slug, body.slug) });
-  if (existing) return c.json({ error: 'Slug already taken' }, 409);
-
-  // 5. Persist
-  const secret = generateSecret();
-  const [svc] = await db.insert(services).values({
-    slug:           body.slug,
-    name:           body.name,
-    asset:          body.asset.toLowerCase(),
-    router:         router.toLowerCase(),
-    creator:        body.creator.toLowerCase(),
-    upstreamUrl:    body.upstreamUrl,
-    priceUsdc:      body.priceUsdc,
-    upstreamSecret: secret,
-    timeoutSeconds: body.timeoutSeconds ?? 20,
-    requestSchema:  body.requestSchema,
-    responseSchema: body.responseSchema,
-    description:    body.description,
-  }).returning();
-
-  return c.json({ id: svc.id, slug: svc.slug, router: svc.router }, 201);
 });
 
-// PATCH /api/services/:id — update price/upstream (creator auth skipped for hackathon)
+// PATCH /api/services/:id — update price/upstream/timeout/description. Signed by the token's on-chain creator (D-SV1).
 app.patch('/:id', zValidator('json', updateServiceSchema), async (c) => {
   const id = c.req.param('id');
   const body = c.req.valid('json');
+  if (!UUID_RE.test(id)) return c.json({ error: 'Not found' }, 404);
 
-  if (body.upstreamUrl) {
-    try { await assertSafeUpstream(body.upstreamUrl); }
-    catch (e) { if (e instanceof SsrfError) return c.json({ error: e.message }, 422); throw e; }
+  const svc = await db.query.services.findFirst({ where: eq(services.id, id) });
+  if (!svc) return c.json({ error: 'Not found' }, 404);
+
+  const { signature, ...signed } = body;
+  const message = serviceUpdateMessage(svc.id, svc.asset, signed);
+
+  try {
+    const token = await authorizeTokenCreator(db, {
+      asset: svc.asset, message, signature, issuedAt: body.issuedAt, nowS: nowS(), lastIssuedAt: svc.authSignedAt,
+    });
+    if (body.upstreamUrl) await assertSafeUpstream(body.upstreamUrl);
+
+    const updated = await db.transaction(async (tx) => {
+      await consumeSignedMessage(tx, message, token.creator, 'service_update', body.issuedAt);
+      const [row] = await tx.update(services).set({
+        ...(body.priceUsdc      !== undefined && { priceUsdc:      body.priceUsdc }),
+        ...(body.upstreamUrl    !== undefined && { upstreamUrl:    body.upstreamUrl }),
+        ...(body.timeoutSeconds !== undefined && { timeoutSeconds: body.timeoutSeconds }),
+        ...(body.description    !== undefined && { description:    body.description }),
+        authSignedAt: BigInt(body.issuedAt),
+        updatedAt:    new Date(),
+      })
+        // Monotonic guard against a concurrent, older signed update.
+        .where(and(eq(services.id, id), or(isNull(services.authSignedAt), lt(services.authSignedAt, BigInt(body.issuedAt)))))
+        .returning();
+      if (!row) throw new ServiceAuthError(409, 'A newer signed request for this service was already accepted');
+      return row;
+    });
+
+    const { upstreamSecret: _secret, authSignedAt, ...publicFields } = updated;
+    return c.json({ ...publicFields, authSignedAt: authSignedAt?.toString() ?? null });
+  } catch (e) {
+    return authError(c, e);
   }
-
-  const [updated] = await db.update(services)
-    .set({ ...body, updatedAt: new Date() })
-    .where(eq(services.id, id))
-    .returning();
-
-  if (!updated) return c.json({ error: 'Not found' }, 404);
-  return c.json(updated);
 });
 
 // GET /api/services/:slug/manifest — machine-readable service description for agents
