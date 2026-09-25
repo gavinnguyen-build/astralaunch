@@ -257,8 +257,24 @@ a parameter. Routes:
 - Slippage defaults to 1% and is capped at 0.1–5%.
 - `minOut = quote × (1 − slippage)` uses the on-chain v4 Quoter.
 - Deadline is now + 20 min.
-- USDC → Permit2 approval covers the exact amount only, never unlimited. Doppler tokens ship with a
-  Permit2 allowance, so selling needs only the signed PermitSingle (expiry 30 min, exact amount).
+- Approvals (revised 2026-09-26, per Tun; replaces "exact amount only"). The default is the Uniswap-standard flow,
+  so repeat trades need one confirmation:
+  - The ERC-20 → Permit2 approval is **unlimited** (`maxUint256`), sent once per token. Doppler tokens already
+    ship with this allowance, so a sell never needs it.
+  - The Permit2 `PermitSingle` for the Universal Router has amount `maxUint160` (Permit2 does not decrement it)
+    and expires after **30 days**. The signature deadline stays 30 min. The router only pulls from the wallet
+    that calls it, so the permit is usable only in swaps the user sends.
+  - The review screen says so plainly before the user signs: "This grants a long-lived permission". It names
+    the unlimited approval and the permit's end date, and points to the setting below.
+  - Setting **"Exact approvals only"** (off by default, remembered per browser) keeps the earlier behaviour:
+    approval and permit for exactly the trade amount, permit valid 30 min, extra confirmations on every
+    token trade. Permits that already exist stay valid until they expire.
+  - Code: `lib/trade.ts` `approvalAmount` / `permitTerms` (`ApprovalMode` 'standard' | 'exact').
+  - Verified on a local fork with the swap harness and the on-chain allowances:
+    - standard mode: the first USDC buy needs 3 prompts (approve, sign, swap); USDC → Permit2 allowance =
+      `maxUint256` and Permit2 USDC → UR = `maxUint160` for 30.00 days. The second buy needs 1 prompt.
+    - a sell needs 2 prompts the first time (sign, swap), then 1.
+    - exact mode: every FEED sell needs 2 prompts; the permit is used up (amount 0) and expires in 30 min.
 - Every tx (approval, swap) is simulated with `eth_call`, then sent with gas = estimate × 1.1.
 - The review screen shows min received, the 2% pool fee, the route, and gas in MON.
 
@@ -300,7 +316,7 @@ It keeps the interaction patterns of a DEX swap in Astralaunch's own visual desi
 - Min received and the 2% pool fee are always visible under the quote.
 - The single primary button's label follows the state: Connect wallet, Enter an amount, Not enough X,
   Getting the price…, then Review swap.
-- The review dialog takes one wallet action per click: Approve (exact amount) → Sign permit → Buy/Sell,
+- The review dialog takes one wallet action per click: Approve → Sign permit → Buy/Sell (amounts per D-PD3),
   with a stepper. The gas for each tx (simulated estimate × 1.1, shown in MON) is visible before the click that
   sends it. The swap gas can only be simulated after the permit is signed, so it appears then.
 - The minimum received the user reviewed is the on-chain floor. If a refreshed quote is more than 0.1% worse,

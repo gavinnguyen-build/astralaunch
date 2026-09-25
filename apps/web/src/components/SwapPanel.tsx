@@ -2,7 +2,11 @@
  * Inline swap panel for the chart page (exact-in, Universal Router + Permit2, lib/trade.ts).
  *
  * Quotes live as you type (no wallet needed) and refresh every 12 s. One primary button whose label
- * follows the state. Review dialog → one wallet action per click (approve → sign permit → swap); every
+ * follows the state. Approvals (D-PD3): by default an unlimited ERC-20 approval to Permit2 once and a
+ * 30-day max-amount permit for the Universal Router, so repeat trades need one confirmation; the
+ * "Exact approvals only" setting keeps per-trade exact amounts. The review says plainly when a
+ * long-lived permission is being granted.
+ * Review dialog → one wallet action per click (approve → sign permit → swap); every
  * transaction is simulated and its gas (estimate × 1.1) is shown before the click that sends it. The
  * minimum received the user reviewed is the floor sent on-chain.
  */
@@ -11,8 +15,8 @@ import { useQuery } from '@tanstack/react-query';
 import { formatUnits, parseUnits, toFunctionSelector, type Address, type Hex } from 'viem';
 import { PERMIT2, UNIVERSAL_ROUTER, V4_QUOTER, withBuffer } from '@astralaunch/shared';
 import {
-  accountState, buildTradeTx, getPoolKey, quoteTrade, sendTrade, simulateTrade, approvePermit2,
-  type TradeAddrs, type TradePlan, type TradeQuote,
+  accountState, buildTradeTx, getPoolKey, quoteTrade, sendTrade, simulateTrade, approvePermit2, approvalAmount, LONG_PERMIT_S,
+  type ApprovalMode, type TradeAddrs, type TradePlan, type TradeQuote,
 } from '../lib/trade.js';
 import { readClient, walletClients, type Clients, type PrivyWallet } from '../lib/wallet.js';
 import type { ChainConfig } from '../lib/launch.js';
@@ -27,6 +31,10 @@ const QUOTE_REFRESH_MS = 12_000;
 const erc20 = [{ type: 'function', name: 'balanceOf', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] }] as const;
 const approveAbi = [{ type: 'function', name: 'approve', stateMutability: 'nonpayable', inputs: [{ type: 'address' }, { type: 'uint256' }], outputs: [{ type: 'bool' }] }] as const;
 const SLIPPAGE_ERRORS = ['V4TooLittleReceived(uint256,uint256)', 'InsufficientETH()', 'InsufficientToken()'].map((e) => toFunctionSelector(`function ${e}`));
+
+const EXACT_KEY = 'astralaunch.swap.exactApprovals';
+const readExact = () => { try { return localStorage.getItem(EXACT_KEY) === '1'; } catch { return false; } };
+const writeExact = (v: boolean) => { try { localStorage.setItem(EXACT_KEY, v ? '1' : '0'); } catch { /* per-browser convenience only */ } };
 
 /** Amount for display: grouped when large, 4 significant digits when small. */
 export function fmtTok(v: bigint, dec: number): string {
@@ -74,6 +82,7 @@ export function SwapPanel(p: SwapPanelProps) {
   const [amount, setAmount] = useState('');
   const [slipAuto, setSlipAuto] = useState(true);
   const [slipText, setSlipText] = useState('1');
+  const [exactApprovals, setExactApprovals] = useState(readExact);
   const [showSettings, setShowSettings] = useState(false);
   const [invertRate, setInvertRate] = useState(false);
   const [reviewing, setReviewing] = useState<TradeQuote | null>(null);
@@ -199,6 +208,17 @@ export function SwapPanel(p: SwapPanelProps) {
           <span style={{ fontSize: '12px', color: slipValid ? C.dim : C.bad }}>
             {slipValid ? 'The swap reverts if the price moves against you by more than this. Auto uses 1%.' : 'Enter a value from 0.1% to 5%.'}
           </span>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', paddingTop: '8px', borderTop: `1px solid ${C.line}`, cursor: 'pointer' }}>
+            <input type="checkbox" checked={exactApprovals} onChange={(e) => { setExactApprovals(e.target.checked); writeExact(e.target.checked); }} style={{ marginTop: '3px' }} />
+            <span style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <span style={{ fontSize: '13px', fontWeight: 600 }}>Exact approvals only</span>
+              <span style={{ fontSize: '12px', color: C.dim }}>
+                {exactApprovals
+                  ? 'Each trade approves and permits only its own amount, for 30 minutes. Every token trade asks for extra confirmations.'
+                  : 'Off: the first trade of a token grants Permit2 an unlimited approval and the router a 30-day permit, so later trades need one confirmation.'}
+              </span>
+            </span>
+          </label>
         </div>
       )}
 
@@ -251,7 +271,7 @@ export function SwapPanel(p: SwapPanelProps) {
       </button>
 
       {reviewing && account && cfg && A && pc && p.wallet && (
-        <ReviewSwap initial={reviewing} A={A} config={cfg} wallet={p.wallet} symbol={p.symbol} numSym={p.numSym} inDec={inDec} outDec={outDec}
+        <ReviewSwap initial={reviewing} mode={exactApprovals ? 'exact' : 'standard'} A={A} config={cfg} wallet={p.wallet} symbol={p.symbol} numSym={p.numSym} inDec={inDec} outDec={outDec}
           usdIn={usdIn} usdOut={usdOut}
           onClose={(swapped) => { setReviewing(null); if (swapped) { setAmount(''); balances.refetch(); p.onSwapped?.(); } }} />
       )}
@@ -296,8 +316,8 @@ type StepKey = 'approve' | 'permit' | 'swap';
 type StepState = 'todo' | 'active' | 'done';
 
 /** Review → approve (if needed) → sign permit (if needed) → swap. One wallet action per click. */
-function ReviewSwap({ initial, A, config, wallet, symbol, numSym, inDec, outDec, usdIn, usdOut, onClose }: {
-  initial: TradeQuote; A: TradeAddrs; config: ChainConfig; wallet: PrivyWallet; symbol: string; numSym: 'USDC' | 'MON';
+function ReviewSwap({ initial, mode, A, config, wallet, symbol, numSym, inDec, outDec, usdIn, usdOut, onClose }: {
+  initial: TradeQuote; mode: ApprovalMode; A: TradeAddrs; config: ChainConfig; wallet: PrivyWallet; symbol: string; numSym: 'USDC' | 'MON';
   inDec: number; outDec: number; usdIn: number | null; usdOut: number | null; onClose: (swapped: boolean) => void;
 }) {
   const [accepted, setAccepted] = useState<TradeQuote>(initial);
@@ -327,11 +347,11 @@ function ReviewSwap({ initial, A, config, wallet, symbol, numSym, inDec, outDec,
       const c = c0 ?? clients ?? await walletClients(wallet, config);
       setClients(c);
       const st = await accountState(c.publicClient, A, c.account, q);
-      const pl: TradePlan = { ...q, ...st };
+      const pl: TradePlan = { ...q, ...st, approvalMode: mode };
       if (st.balanceIn < q.amountIn) throw new Error(`Not enough ${inSym}: balance ${fmtTok(st.balanceIn, inDec)}.`);
       setPlan(pl); setGasPrice(await c.publicClient.getGasPrice()); setSwapTx(null); setApprovalGas(null);
       if (pl.needsApproval) {
-        const g = await c.publicClient.estimateContractGas({ account: c.account, address: pl.inputToken as Address, abi: approveAbi, functionName: 'approve', args: [A.permit2, pl.amountIn] });
+        const g = await c.publicClient.estimateContractGas({ account: c.account, address: pl.inputToken as Address, abi: approveAbi, functionName: 'approve', args: [A.permit2, approvalAmount(mode, pl.amountIn)] });
         setApprovalGas(withBuffer(g));
       } else if (!pl.needsPermit) {
         const tx = await buildTradeTx(c.walletClient, c.account, A, config.chainId, pl);   // no signature needed
@@ -356,11 +376,12 @@ function ReviewSwap({ initial, A, config, wallet, symbol, numSym, inDec, outDec,
 
   const step: StepKey = plan?.needsApproval ? 'approve' : plan?.needsPermit && !swapTx ? 'permit' : 'swap';
   const steps: { key: StepKey; label: string; show: boolean }[] = [
-    { key: 'approve', label: `Allow Permit2 to use exactly ${fmtTok(initial.amountIn, inDec)} ${inSym}`, show: !!plan && (plan.needsApproval || approvedOnce) },
-    { key: 'permit', label: 'Sign the Permit2 message (no gas)', show: !!plan && (plan.needsPermit || signedOnce) },
+    { key: 'approve', label: mode === 'exact' ? `Allow Permit2 to use exactly ${fmtTok(initial.amountIn, inDec)} ${inSym}` : `Allow Permit2 to use your ${inSym} (unlimited, one time)`, show: !!plan && (plan.needsApproval || approvedOnce) },
+    { key: 'permit', label: mode === 'exact' ? 'Sign a permit for this amount, valid 30 minutes (no gas)' : `Sign a 30-day permit for the Universal Router (no gas)`, show: !!plan && (plan.needsPermit || signedOnce) },
     { key: 'swap', label: 'Confirm the swap', show: true },
   ];
   const order: StepKey[] = ['approve', 'permit', 'swap'];
+  const permitUntil = new Date(Date.now() + LONG_PERMIT_S * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   const stateOf = (k: StepKey): StepState => (done ? 'done' : order.indexOf(k) < order.indexOf(step) ? 'done' : k === step ? 'active' : 'todo');
 
   async function go() {
@@ -370,7 +391,7 @@ function ReviewSwap({ initial, A, config, wallet, symbol, numSym, inDec, outDec,
     try {
       if (step === 'approve') {
         setBusy('Approve in your wallet…');
-        await approvePermit2(c.publicClient, c.walletClient, c.account, A, plan.inputToken as Address, plan.amountIn);
+        await approvePermit2(c.publicClient, c.walletClient, c.account, A, plan.inputToken as Address, approvalAmount(mode, plan.amountIn));
         setApprovedOnce(true);
         await prepare(accepted, c);
         return;
@@ -378,7 +399,7 @@ function ReviewSwap({ initial, A, config, wallet, symbol, numSym, inDec, outDec,
       if (step === 'permit') {
         setBusy('Sign in your wallet…');
         // Floor = the minimum the user reviewed; a fresh quote only refreshes allowances and the nonce.
-        const tx = await buildTradeTx(c.walletClient, c.account, A, config.chainId, { ...plan, minOut: accepted.minOut });
+        const tx = await buildTradeTx(c.walletClient, c.account, A, config.chainId, { ...plan, minOut: accepted.minOut, approvalMode: mode });
         setSignedOnce(true);
         setBusy('Simulating the swap…');
         setSwapTx({ ...tx, gas: await simulateTrade(c.publicClient, c.account, tx) });
@@ -471,6 +492,18 @@ function ReviewSwap({ initial, A, config, wallet, symbol, numSym, inDec, outDec,
               );
             })}
           </ol>
+        )}
+
+        {mode === 'standard' && plan && (plan.needsApproval || plan.needsPermit) && !signedOnce && (
+          <div role="note" style={{ background: '#2B2410', border: '1px solid #4A3B12', borderRadius: '14px', padding: '10px 12px', fontSize: '13px', lineHeight: 1.45, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <strong style={{ color: C.warn }}>This grants a long-lived permission</strong>
+            <span>
+              {plan.needsApproval && <>Permit2 gets an <b>unlimited</b> approval for your {inSym}. </>}
+              {plan.needsPermit && <>You sign a permit that lets the Uniswap Universal Router spend <b>any amount</b> of your {inSym} through Permit2 until <b>{permitUntil}</b>. </>}
+              The router can only use it in swaps you send yourself. Later {inSym} trades will need one confirmation.
+            </span>
+            <span style={{ color: C.dim }}>To approve only this trade's amount, turn on "Exact approvals only" in the swap settings.</span>
+          </div>
         )}
 
         {highImpact && (

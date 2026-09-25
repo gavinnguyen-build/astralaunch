@@ -10,10 +10,13 @@
  *                    → the user pays native MON; it is wrapped in the same transaction.
  *   Sell, USDC pair: [PERMIT2_PERMIT] V4_SWAP{ SWAP, SETTLE_ALL(token), TAKE_ALL(USDC, minOut) }
  *   Sell, MON pair : [PERMIT2_PERMIT] V4_SWAP{ SWAP, SETTLE_ALL(token), TAKE(WMON → router) } UNWRAP_WETH(user, minOut)
- * ERC-20 inputs need an ERC-20 approval of Permit2 (exact amount, only when the allowance is short).
+ * ERC-20 inputs need an ERC-20 approval of Permit2 and a Permit2 permit for the Universal Router (D-PD3):
+ *   'standard' (default): unlimited approval once + permit for max uint160, valid 30 days → repeat trades need
+ *                         one confirmation (the swap).
+ *   'exact'             : approval and permit for exactly this trade's amount, permit valid 30 minutes.
  */
 import {
-  concatHex, encodeAbiParameters, encodeFunctionData, getAddress, maxUint48, parseAbiParameters, toHex,
+  concatHex, encodeAbiParameters, encodeFunctionData, getAddress, maxUint160, maxUint256, maxUint48, parseAbiParameters, toHex,
   type Address, type Hex, type PublicClient, type WalletClient,
 } from 'viem';
 import { withBuffer } from '@astralaunch/shared';
@@ -92,6 +95,23 @@ export interface TradePlan {
   side: 'buy' | 'sell'; asset: Address; key: PoolKey; numeraire: Address; isMonPair: boolean; zeroForOne: boolean;
   inputToken: Address | 'MON'; outputToken: Address | 'MON'; amountIn: bigint; quoteOut: bigint; minOut: bigint; slippageBps: number;
   needsApproval: boolean; needsPermit: boolean; permitNonce: number; balanceIn: bigint;
+  /** Approval / permit policy (D-PD3). Default 'standard'. */
+  approvalMode?: ApprovalMode;
+}
+
+export type ApprovalMode = 'standard' | 'exact';
+export const LONG_PERMIT_S = 30 * 86_400;
+export const EXACT_PERMIT_S = 30 * 60;
+const SIG_DEADLINE_S = 30 * 60;
+
+/** ERC-20 → Permit2 approval amount for a trade. */
+export const approvalAmount = (mode: ApprovalMode, amountIn: bigint) => (mode === 'exact' ? amountIn : maxUint256);
+
+/** Permit2 PermitSingle terms for the Universal Router: amount, expiration, signature deadline. */
+export function permitTerms(mode: ApprovalMode, amountIn: bigint, nowS: number) {
+  return mode === 'exact'
+    ? { amount: amountIn, expiration: nowS + EXACT_PERMIT_S, sigDeadline: BigInt(nowS + SIG_DEADLINE_S) }
+    : { amount: maxUint160, expiration: nowS + LONG_PERMIT_S, sigDeadline: BigInt(nowS + SIG_DEADLINE_S) };
 }
 
 export type TradeQuote = Omit<TradePlan, 'needsApproval' | 'needsPermit' | 'permitNonce' | 'balanceIn'> & {
@@ -144,10 +164,10 @@ export async function planTrade(pc: PublicClient, a: TradeAddrs, account: Addres
 }
 
 /** Permit2 PermitSingle for the Universal Router (EIP-712, signed by the wallet). */
-async function signPermit(wc: WalletClient, account: Address, a: TradeAddrs, chainId: number, token: Address, amount: bigint, nonce: number) {
-  const now = Math.floor(Date.now() / 1000);
-  const details = { token, amount, expiration: now + 1800, nonce };
-  const sigDeadline = BigInt(now + 1800);
+async function signPermit(wc: WalletClient, account: Address, a: TradeAddrs, chainId: number, token: Address, amountIn: bigint, nonce: number, mode: ApprovalMode) {
+  const t = permitTerms(mode, amountIn, Math.floor(Date.now() / 1000));
+  const details = { token, amount: t.amount, expiration: t.expiration, nonce };
+  const sigDeadline = t.sigDeadline;
   const signature = await wc.signTypedData({
     account,
     domain: { name: 'Permit2', chainId, verifyingContract: a.permit2 },
@@ -181,7 +201,7 @@ export async function buildTradeTx(wc: WalletClient, account: Address, a: TradeA
   } else {
     if (p.needsPermit) {
       cmds.push(CMD.PERMIT2_PERMIT);
-      inputs.push(await signPermit(wc, account, a, chainId, tokenIn, p.amountIn, p.permitNonce));
+      inputs.push(await signPermit(wc, account, a, chainId, tokenIn, p.amountIn, p.permitNonce, p.approvalMode ?? 'standard'));
     }
     if (p.side === 'sell' && p.isMonPair) {
       cmds.push(CMD.V4_SWAP); inputs.push(v4Swap(
@@ -201,7 +221,7 @@ export async function buildTradeTx(wc: WalletClient, account: Address, a: TradeA
   return { to: a.universalRouter, data, value };
 }
 
-/** ERC-20 approval of Permit2 for exactly the trade amount (simulated, gas × 1.1). */
+/** ERC-20 approval of Permit2 for `amount` (see approvalAmount; simulated, gas × 1.1). */
 export async function approvePermit2(pc: PublicClient, wc: WalletClient, account: Address, a: TradeAddrs, token: Address, amount: bigint) {
   const { request } = await pc.simulateContract({ account, address: token, abi: erc20Abi, functionName: 'approve', args: [a.permit2, amount] });
   const gas = await pc.estimateContractGas({ account, address: token, abi: erc20Abi, functionName: 'approve', args: [a.permit2, amount] });
