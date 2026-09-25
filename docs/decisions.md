@@ -224,3 +224,15 @@ against a local RPC only.
 Fee recipient, Supply, Vesting, Launch fee (10 MON) and Estimated total (fee + gas), with Cancel and
 "Confirm and launch". The plan simulation and every check in `lib/launch.ts` are unchanged; only the
 display was reduced.
+
+## Admin hide (2026-09-26)
+
+**D-AD1.** `POST /api/admin/tokens/:asset/hide {reason}` / `.../unhide`, authenticated with `Authorization: Bearer
+<ADMIN_API_KEY>`; `GET /api/admin/tokens/hidden` lists them (table `hidden_tokens`, migration 0010).
+"Listed" is now *fee consumed and not hidden* (`isListedSql` / `isAssetListed`), so a hidden token
+disappears from every public endpoint:
+- tokens (list, detail and sub-routes), explorer, creator, leaderboard, stats
+- new service registration
+
+The `/s/*` gateway keeps serving existing services, and on-chain state is untouched.
+Script: `apps/server/src/scripts/hideToken.ts` (dry run unless `--yes`).

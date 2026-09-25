@@ -22,7 +22,7 @@ import {
   LAUNCH_RATE_LIMIT,
   LAUNCH_RATE_WINDOW_S,
 } from '@astralaunch/shared';
-import { feeReceipts, idxRegistrations, tokens, type FeeReceipt } from '../db/schema.js';
+import { feeReceipts, hiddenTokens, idxRegistrations, tokens, type FeeReceipt } from '../db/schema.js';
 
 // Any drizzle Postgres database or transaction (postgres-js in prod, PGlite in tests).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -345,13 +345,31 @@ export async function launchStatus(db: Db, wallet: string, nowS: bigint) {
 
 /** SQL predicate: the asset in `assetCol` has a consumed fee receipt (is listed). */
 export function isListedSql(assetCol: Column | SQL): SQL {
-  return sql`EXISTS (SELECT 1 FROM ${feeReceipts} WHERE ${feeReceipts.consumedAsset} = ${assetCol})`;
+  // Listed = launch fee consumed AND not hidden by an admin (D-AD1).
+  return sql`(EXISTS (SELECT 1 FROM ${feeReceipts} WHERE ${feeReceipts.consumedAsset} = ${assetCol})
+    AND NOT EXISTS (SELECT 1 FROM ${hiddenTokens} WHERE ${hiddenTokens.asset} = ${assetCol}))`;
 }
 
 export async function isAssetListed(db: Db, asset: string): Promise<boolean> {
-  const [row] = await db.select({ id: feeReceipts.id }).from(feeReceipts)
-    .where(eq(feeReceipts.consumedAsset, asset.toLowerCase())).limit(1);
-  return !!row;
+  const a = asset.toLowerCase();
+  const [row] = await db.select({ id: feeReceipts.id }).from(feeReceipts).where(eq(feeReceipts.consumedAsset, a)).limit(1);
+  if (!row) return false;
+  const [hidden] = await db.select({ asset: hiddenTokens.asset }).from(hiddenTokens).where(eq(hiddenTokens.asset, a)).limit(1);
+  return !hidden;
+}
+
+/** Admin: hide / unhide a token from every public endpoint (D-AD1). Idempotent. */
+export async function hideToken(db: Db, asset: string, reason: string) {
+  const [row] = await db.insert(hiddenTokens).values({ asset: asset.toLowerCase(), reason })
+    .onConflictDoUpdate({ target: hiddenTokens.asset, set: { reason } }).returning();
+  return row!;
+}
+export async function unhideToken(db: Db, asset: string): Promise<boolean> {
+  const rows = await db.delete(hiddenTokens).where(eq(hiddenTokens.asset, asset.toLowerCase())).returning();
+  return rows.length > 0;
+}
+export async function listHiddenTokens(db: Db) {
+  return db.select().from(hiddenTokens);
 }
 
 /** Registered on-chain but never listed (no consumed receipt). Admin-only view. */

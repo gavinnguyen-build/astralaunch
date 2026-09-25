@@ -64,6 +64,13 @@
       "when": 1727740800000,
       "tag": "0009_market",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1727827200000,
+      "tag": "0010_hidden_tokens",
+      "breakpoints": true
     }
   ]
 }

@@ -347,3 +347,10 @@ export const idxAssetTransfers = pgTable('idx_asset_transfers', {
   uniqueIndex('idx_asset_transfers_unique').on(t.chainId, t.txHash, t.logIndex),
   index('idx_asset_transfers_asset').on(t.asset),
 ]);
+
+// ── hidden_tokens (migration 0010, D-AD1): admin hide from public endpoints ──
+export const hiddenTokens = pgTable('hidden_tokens', {
+  asset:    text('asset').primaryKey(),
+  reason:   text('reason').notNull(),
+  hiddenAt: timestamp('hidden_at', { withTimezone: true }).notNull().defaultNow(),
+});

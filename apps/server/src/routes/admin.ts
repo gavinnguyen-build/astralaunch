@@ -7,7 +7,9 @@ import { Hono } from 'hono';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { db } from '../db/client.js';
 import { ADMIN_API_KEY } from '../env.js';
-import { listUnlistedRegistrations } from '../services/launchFee.js';
+import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
+import { hideToken, listHiddenTokens, listUnlistedRegistrations, unhideToken } from '../services/launchFee.js';
 
 const digest = (s: string) => createHash('sha256').update(s).digest();
 
@@ -33,5 +35,26 @@ app.get('/tokens/unlisted', async (c) => {
     })),
   });
 });
+
+// POST /api/admin/tokens/:asset/hide { reason } — hide from every public endpoint (D-AD1)
+app.post('/tokens/:asset/hide', zValidator('json', z.object({ reason: z.string().trim().min(3).max(300) })), async (c) => {
+  const asset = c.req.param('asset');
+  if (!/^0x[0-9a-fA-F]{40}$/.test(asset)) return c.json({ error: 'asset must be an address' }, 400);
+  const row = await hideToken(db, asset, c.req.valid('json').reason);
+  console.log(`[admin] hid ${row.asset}: ${row.reason}`);
+  return c.json({ hidden: true, asset: row.asset, reason: row.reason, hiddenAt: row.hiddenAt });
+});
+
+// POST /api/admin/tokens/:asset/unhide
+app.post('/tokens/:asset/unhide', async (c) => {
+  const asset = c.req.param('asset');
+  if (!/^0x[0-9a-fA-F]{40}$/.test(asset)) return c.json({ error: 'asset must be an address' }, 400);
+  const removed = await unhideToken(db, asset);
+  console.log(`[admin] unhid ${asset.toLowerCase()} (was hidden: ${removed})`);
+  return c.json({ hidden: false, asset: asset.toLowerCase(), wasHidden: removed });
+});
+
+// GET /api/admin/tokens/hidden
+app.get('/tokens/hidden', async (c) => c.json({ tokens: await listHiddenTokens(db) }));
 
 export default app;

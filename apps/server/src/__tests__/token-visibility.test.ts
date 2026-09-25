@@ -167,3 +167,31 @@ describe('token visibility', () => {
     expect(await db.select().from(services).where(eq(services.slug, 'unpaid-svc'))).toHaveLength(0);
   });
 });
+
+describe('admin hide', async () => {
+  it('hides a listed token from every public endpoint, requires the key, and unhide restores it', async () => {
+    const { db, close } = await createTestDb();
+    h.db = db;
+    const { tokens: tk } = await import('../db/schema.js');
+    const { adminListAsset } = await import('../services/launchFee.js');
+    const A = '0x' + 'e'.repeat(40);
+    await db.insert(tk).values({ asset: A, name: 'Test', symbol: 'TEST', creator: '0x' + '1'.repeat(40), router: '0x' + '2'.repeat(40) });
+    await adminListAsset(db, A, 143, 'test');
+    const app2 = new Hono();
+    app2.route('/api/tokens', tokensRouter);
+    app2.route('/api/admin', adminRouter);
+    const auth = { Authorization: 'Bearer test-admin-key', 'Content-Type': 'application/json' };
+    expect((await app2.request(`/api/tokens/${A}`)).status).toBe(200);
+    expect((await app2.request(`/api/admin/tokens/${A}/hide`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"reason":"spam"}' })).status).toBe(401);
+    expect((await app2.request(`/api/admin/tokens/${A}/hide`, { method: 'POST', headers: auth, body: '{"reason":"x"}' })).status).toBe(400);
+    expect((await app2.request(`/api/admin/tokens/${A}/hide`, { method: 'POST', headers: auth, body: '{"reason":"test token"}' })).status).toBe(200);
+    expect((await app2.request(`/api/tokens/${A}`)).status).toBe(404);
+    const list = await (await app2.request('/api/tokens')).json() as { tokens: { asset: string }[] };
+    expect(list.tokens.map((t) => t.asset)).not.toContain(A);
+    const hidden = await (await app2.request('/api/admin/tokens/hidden', { headers: auth })).json() as { tokens: { asset: string; reason: string }[] };
+    expect(hidden.tokens).toMatchObject([{ asset: A, reason: 'test token' }]);
+    expect((await app2.request(`/api/admin/tokens/${A}/unhide`, { method: 'POST', headers: auth })).status).toBe(200);
+    expect((await app2.request(`/api/tokens/${A}`)).status).toBe(200);
+    await close();
+  }, 60_000); // the detail route's on-chain reads retry against the unreachable test RPC
+});
