@@ -26,7 +26,15 @@ contract InvMockUSDC {
 
 /// @dev Implements IFeeAdapter for invariant test use.
 contract InvMockInit is IFeeAdapter {
-    function collectFees(bytes32) external pure override returns (uint128, uint128) { return (0, 0); }
+    function doCollect(bytes32) external pure returns (uint128, uint128) { return (0, 0); }
+
+    function collectFeesCall(bytes32 poolId)
+        external view override
+        returns (address target, bytes memory data)
+    {
+        return (address(this), abi.encodeCall(this.doCollect, (poolId)));
+    }
+
     function getShares(bytes32, address) external pure override returns (uint256) { return 0; }
     function getState(address)
         external pure override

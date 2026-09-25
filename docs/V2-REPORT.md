@@ -92,7 +92,8 @@
 | `FeeEscrow.sol` | Rewritten. Per-token numeraire support. WMON fees park as `numerairePending`. `creditNumeraireSwap()` for keeper O4 swaps. Adapter pattern for fee collection. |
 | `BuybackVault.sol` | Rewritten. WMON-paired tokens revert `BuybackNotAvailable()`. Removed CapWindowActive guard (Decision #6). Adapter pattern. |
 | `PlatformFeeReceiver.sol` | Rewritten. Guardian can cancel treasury/admin proposals. Forwards USDC + WMON + tokens to treasury. Adapter pattern. |
-| `IFeeAdapter.sol` | New interface for initializer fee adapters. |
+| `IFeeAdapter.sol` | New interface. `collectFeesCall(poolId)` returns `(target, calldata)` so beneficiary calls initializer directly (preserves msg.sender for Doppler fee payouts). |
+| `InitializerV1Adapter.sol` | New. Wraps V4ScheduledMulticurveInitializer behind IFeeAdapter. `collectFeesCall` returns initializer address + `abi.encodeCall(collectFees, poolId)`. |
 | `IDopplerERC20V1.sol` | Added `isExcludedFromBalanceLimit(address)`. |
 | `Deploy.s.sol` | Updated for v2 constructor signatures + guardian + initial initializer seeding. |
 
@@ -105,8 +106,8 @@ All v1 contracts copied to `deployments/legacy-revpad/`.
 ```
 forge test -vv --no-match-path "test/fork/*"
 
-Ran 6 test suites in 7.02s (14.57s CPU time):
-  189 tests passed, 0 failed, 0 skipped (189 total tests)
+Ran 8 test suites in 6.81s (14.32s CPU time):
+  197 tests passed, 0 failed, 0 skipped (197 total tests)
 
 Invariant tests: 4 invariants, 500 runs, 50,000 calls, 0 reverts
 ```
@@ -119,6 +120,7 @@ Invariant tests: 4 invariants, 500 runs, 50,000 calls, 0 reverts
 - **BuybackVault.t.sol**: 17 tests (2 fuzz) — BuybackNotAvailable for WMON, cooldown, max-per-call, adapter
 - **PlatformFeeReceiver.t.sol**: 54 tests (2 fuzz) — guardian cancel, WMON forwarding, treasury change delay, admin transfer
 - **AstralaunchInvariants.t.sol**: 4 invariants — escrow allowance bounded, no overpayment, router dust, vault balance
+- **InitializerV1Adapter.t.sol**: 7 tests + 1 proof test — constructor, collectFeesCall target/calldata, caller identity, getShares/getState delegation, second-initializer proof
 
 ---
 
@@ -159,15 +161,128 @@ Invariant tests: 4 invariants, 500 runs, 50,000 calls, 0 reverts
 
 ---
 
+## Phase 3: Gap-Closing
+
+### Task 4: Adapter Redesign (collectFeesCall pattern)
+
+**Problem:** `IFeeAdapter.collectFees(poolId)` was called directly by beneficiaries. This works when the adapter IS the initializer, but a separate adapter contract would receive fees instead of the beneficiary (Doppler pays `msg.sender`).
+
+**Solution:** Replaced `collectFees` with `collectFeesCall` (a `view` function) that returns `(address target, bytes memory calldata)`. The beneficiary performs the raw `.call()` itself, preserving its identity as `msg.sender`.
+
+**Changes:**
+- `IFeeAdapter.sol`: `collectFees(bytes32) → (uint128, uint128)` replaced with `collectFeesCall(bytes32) → (address, bytes)`
+- New `InitializerV1Adapter.sol`: wraps initializer behind IFeeAdapter
+- `FeeEscrow.sol`, `BuybackVault.sol`, `PlatformFeeReceiver.sol`: use `target.call(cdata)` pattern + `CollectFeesFailed` error
+- `Deploy.s.sol`: nonce layout N+0..N+4 adapter, N+5 registry
+- All 5 test files: mock `doCollect()` + `collectFeesCall()` pattern
+- New `InitializerV1Adapter.t.sol`: 7 unit tests + 1 second-initializer proof test
+
+**Result:** 197 tests pass (was 189). The second-initializer proof test confirms that wrapping any initializer preserves beneficiary identity.
+
+### Task 6: TypeScript Typecheck + Tests
+
+**Fixes:**
+- `package.json`: Added `packageManager: "pnpm@12.5.1"` (required by turbo 2.11.2)
+- `apps/keeper/src/__tests__/ordering.test.ts`: Added `getAssetNumeraire` and `WMON` to chain.js mock
+- `apps/keeper/src/__tests__/share.test.ts`: Same mock additions
+
+**Results:**
+```
+pnpm typecheck:  6 tasks successful (shared build + 5 typechecks)
+pnpm test:       4 tasks successful
+  server:  11 passed
+  keeper:  44 passed
+  indexer: 43 passed, 1 skipped (migration.test.ts needs Postgres)
+```
+
+### Task 1a-c: Launch Scripts
+
+**New scripts:**
+- `revpad-anvil/src/launch-wmon.ts`: Launches WMON-paired token with `excludedFromBalanceLimit`
+- `revpad-anvil/src/launch-devbuy.ts`: Launches two dev-buy tokens (with/without Bundler vesting)
+- `revpad-anvil/src/02-launch.ts`: Added `excludedFromBalanceLimit: [escrow, vault, pfr]` to tokenConfig()
+
+### Tasks 1d-f, 2, 3: Fork Tests (Executed)
+
+**Fork test results (Anvil fork, block 107229260):**
+
+```
+Ran 4 test suites in 131.80ms: 30 tests passed, 0 failed, 5 skipped (35 total tests)
+
+RegistryFork.t.sol:  24 passed, 0 failed
+WmonFork.t.sol:       4 passed, 0 failed
+LiquidityProbe.t.sol: 2 passed, 0 failed
+DevBuyFork.t.sol:     0 passed, 0 failed, 5 skipped
+```
+
+**Task 2 — isExcludedFromBalanceLimit: CONFIRMED**
+
+`test_isExcludedFromBalanceLimit_existsOnRealToken` PASSED. The function exists on real DopplerERC20V1 bytecode. Evidence:
+- `tok.isExcludedFromBalanceLimit(escrow)` → `true`
+- `tok.isExcludedFromBalanceLimit(vault)` → `true`
+- `tok.isExcludedFromBalanceLimit(pfr)` → `true`
+- `tok.isExcludedFromBalanceLimit(0xCAFE)` → `false`
+
+The `excludedFromBalanceLimit` array passed in `tokenConfig()` at launch time is correctly applied on-chain. Note: `address(0xDEAD)` (the NOGOV address) is auto-excluded by Doppler, independent of launch config.
+
+**Task 3 — Dev-Buy Vesting: NOT APPLICABLE**
+
+The Doppler SDK rejects dev buys with the V4ScheduledMulticurveInitializer:
+```
+Error: Dev buys require a DopplerHookInitializer or Rehype initializer; 'scheduled' is not supported
+```
+Since Monad only has the V4ScheduledMulticurveInitializer (CLAUDE.md rule 11), **dev buys are not available in our setup**. The Registry's `vestedTotalAmount` / `totalAllocatedOf` checks are unaffected because dev buys cannot happen. DevBuyFork tests gracefully skip when state files are absent.
+
+**WMON-Paired Token: CONFIRMED WORKING**
+
+- `test_register_wmonNumeraire` PASSED: `registry.assetNumeraires(asset) == WMON`
+- `test_collect_receivesWMON` PASSED: escrow received `3999999999999999` WMON (~0.004 WMON from 1 WMON swap at 2%)
+- `test_execute_revertsForWMON` PASSED: vault correctly reverts `BuybackNotAvailable`
+- `test_pfr_forwardsWMON` PASSED: treasury received `5999999999999999` WMON (~0.006 WMON, the 30% PFR share)
+
+**Other fork test highlights:**
+- Real 10 USDC swap generates correct fee splits: escrow 39,999 (20%), vault 19,999 (10%)
+- PFR collect forwards 59,999 USDC to treasury (30% share)
+- Buyback burns 953,017,632,543,025,721,665,867 tokens for 10 USDC
+- Wash constraint holds: 1 USDC self-pay → 0.6 provider + 0.2 escrow = 0.8 received, net loss 0.2
+
+### Task 5: USDC/WMON Liquidity Measurement (Executed)
+
+**Monad mainnet probes (2025-09-25):**
+
+| Source | Pool | sqrtPriceX96 | Liquidity | Status |
+|--------|------|-------------|-----------|--------|
+| Uniswap v4 (hooks=0) | WMON/USDC fee=3000 ts=60 | 4295128740 (MIN) | 0 | Initialized, empty |
+| Uniswap v4 (hooks=0) | All other fee/ts combos | 0 | 0 | Not initialized |
+| Uniswap v4 (Doppler hook) | All fee/ts combos | 0 | 0 | Not initialized |
+| Uniswap v3 (factory 0x1F98...) | fee=100/500/3000/10000 | — | — | Pools do not exist |
+| Ambient CrocSwapDex | — | — | — | No contract deployed |
+| Kuru Router | — | — | — | No contract at guessed address |
+| Bean Router | — | — | — | No contract at guessed address |
+| 1inch Aggregator | — | — | — | No contract deployed |
+
+**PoolManager token balances (mainnet):**
+- USDC: 12,339,037,315,394 (~12.3M USDC) — from Doppler token pools, NOT USDC/WMON pair
+- WMON: 954,686,912,276,570,982,291,191 (~954K WMON) — from Doppler WMON-paired pools
+
+**USDC token stats:** totalSupply = 220,017,515,313,728 (~220M USDC on Monad)
+**WMON token stats:** totalSupply = 344,657,469,833,236,635,266,521,277 (~344M WMON)
+
+**Conclusion:** There is NO usable USDC/WMON liquidity on Monad mainnet via Uniswap v4 or v3. The one initialized pool (fee=3000 ts=60) has zero liquidity and MIN_SQRT_RATIO price. WMON-paired token buybacks remain blocked until a USDC/WMON pool with real liquidity appears. The PoolManager's large USDC/WMON balances come from individual Doppler token launch pools, not a general trading pair.
+
+---
+
 ## Open Questions
 
-1. **WMON→USDC swap for O4**: No Uniswap v4 USDC/WMON pool exists on Monad. The keeper O4 swap job for WMON-paired token escrow fees is a TODO stub. When a pool becomes available, implement the two-hop swap path (WMON → USDC via v4, or via an external DEX integration).
+1. **WMON→USDC swap for O4**: No Uniswap v4 USDC/WMON pool exists on Monad (confirmed by mainnet probe). The keeper O4 swap job for WMON-paired token escrow fees is a TODO stub. When a pool becomes available, implement the two-hop swap path (WMON → USDC via v4, or via an external DEX integration).
 
-2. **MON-paired token buyback**: BuybackVault accumulates USDC for MON-paired tokens but cannot execute the swap (no v4 path: USDC → WMON → token). When a USDC/WMON pool exists, implement two-hop buyback in `unlockCallback`.
+2. **MON-paired token buyback**: BuybackVault accumulates USDC for MON-paired tokens but cannot execute the swap (no v4 path: USDC → WMON → token). Confirmed: zero USDC/WMON liquidity on mainnet. When a pool with real liquidity appears, implement two-hop buyback in `unlockCallback`.
 
 3. **MON/USD price oracle**: Using CoinGecko API with 5-min cache. No on-chain oracle verified for Monad. If Pyth or Chainlink launches on Monad, consider switching to on-chain price for more reliability.
 
-4. **Balance-limit exclusion verification**: The `isExcludedFromBalanceLimit()` function on DopplerERC20V1 needs to be confirmed on the actual Monad mainnet token contract. The Doppler SDK creates tokens with `excludedFromBalanceLimit` list set by the SDK config — Astralaunch's launch flow must include escrow, vault, and PFR addresses in this list.
+4. **Balance-limit exclusion: CLOSED.** `isExcludedFromBalanceLimit()` confirmed working on real deployed tokens. Escrow, vault, and PFR are all correctly excluded. Launch scripts pass `excludedFromBalanceLimit: [escrow, vault, pfr]` to tokenConfig().
+
+5. **Dev buys: CLOSED — NOT AVAILABLE.** The Doppler SDK requires DopplerHookInitializer or Rehype for dev buys. The V4ScheduledMulticurveInitializer we use on Monad does not support dev buys. The Registry's vesting checks are unaffected.
 
 ---
 
@@ -175,7 +290,7 @@ Invariant tests: 4 invariants, 500 runs, 50,000 calls, 0 reverts
 
 | # | Decision | Rationale |
 |---|----------|-----------|
-| A1 | IFeeAdapter = IInitializer (same contract) for v2 launch | The V4ScheduledMulticurveInitializer already implements collectFees, getShares, getState — no need for a separate adapter wrapper. The registry seeds `INITIALIZER` as both the allowed initializer and its own adapter. |
+| A1 | IFeeAdapter.collectFeesCall + InitializerV1Adapter | Replaced `collectFees(poolId)` with `collectFeesCall(poolId) → (target, calldata)`. Beneficiaries do `target.call(calldata)` to preserve msg.sender identity for Doppler payouts. InitializerV1Adapter wraps the V4ScheduledMulticurveInitializer. Deploy.s.sol deploys adapter at nonce N+4, registry at N+5. |
 | A2 | WMON-paired buyback: accumulate USDC, revert on execute() | Per autonomous mode instructions: no USDC/WMON v4 pool → skip swap, don't invent DEX integration. |
 | A3 | FeeEscrow.creditNumeraireSwap: authorized by routers/registry | The keeper needs to call this after swapping WMON → USDC. Using the same authorization mechanism as recordRevenue (authorized routers). |
 | A4 | Guardian is immutable (set at deploy, cannot be changed) | Conservative choice per CLAUDE.md: the guardian is a safety mechanism, not an operational role. Changing the guardian would require a full redeploy. |

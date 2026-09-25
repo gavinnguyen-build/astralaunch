@@ -10,11 +10,19 @@ import {PoolKey} from "../../src/interfaces/IInitializer.sol";
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
 /// @dev Implements IFeeAdapter so it can serve as the fee adapter in tests.
+///      doCollect is a no-op. collectFeesCall returns calldata for doCollect.
 contract MockInitializerPFR is IFeeAdapter {
     address constant USDC = 0x754704Bc059F8C67012fEd69BC8A327a5aafb603;
 
-    function collectFees(bytes32) external pure override returns (uint128, uint128) {
+    function doCollect(bytes32) external pure returns (uint128, uint128) {
         return (0, 0);
+    }
+
+    function collectFeesCall(bytes32 poolId)
+        external view override
+        returns (address target, bytes memory data)
+    {
+        return (address(this), abi.encodeCall(this.doCollect, (poolId)));
     }
 
     function getShares(bytes32, address) external pure override returns (uint256) { return 0; }

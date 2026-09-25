@@ -8,6 +8,7 @@ import {BuybackVault} from "../src/BuybackVault.sol";
 import {PlatformFeeReceiver} from "../src/PlatformFeeReceiver.sol";
 import {RevenueRouter} from "../src/RevenueRouter.sol";
 import {AstralaunchRegistry} from "../src/AstralaunchRegistry.sol";
+import {InitializerV1Adapter} from "../src/InitializerV1Adapter.sol";
 
 /// @notice Deploy all Astralaunch v2 contracts.
 ///
@@ -36,11 +37,12 @@ import {AstralaunchRegistry} from "../src/AstralaunchRegistry.sol";
 ///   GUARDIAN_ADDRESS  — guardian (cancel-only role). Required for mainnet.
 ///
 /// Deployment order (nonce offsets from start nonce N):
-///   N+0  FeeEscrow             — requires futureRegistry (N+4)
-///   N+1  BuybackVault          — requires futureRegistry (N+4)
-///   N+2  PlatformFeeReceiver   — requires futureRegistry (N+4)
+///   N+0  FeeEscrow             — requires futureRegistry (N+5)
+///   N+1  BuybackVault          — requires futureRegistry (N+5)
+///   N+2  PlatformFeeReceiver   — requires futureRegistry (N+5)
 ///   N+3  RevenueRouter (implementation)
-///   N+4  AstralaunchRegistry   — seeds initial initializer + adapter
+///   N+4  InitializerV1Adapter  — wraps INITIALIZER behind IFeeAdapter
+///   N+5  AstralaunchRegistry   — seeds initial initializer + adapter
 contract DeployAstralaunch is Script {
     // Monad mainnet V4 PoolManager
     address constant POOL_MANAGER = 0x188d586Ddcf52439676Ca21A244753fA19F9Ea8e;
@@ -81,18 +83,17 @@ contract DeployAstralaunch is Script {
         vm.startBroadcast();
 
         // Pre-compute forward addresses:
-        // escrow=N+0, vault=N+1, pfr=N+2, routerImpl=N+3, registry=N+4
+        // escrow=N+0, vault=N+1, pfr=N+2, routerImpl=N+3, adapter=N+4, registry=N+5
         uint256 nonce          = vm.getNonce(msg.sender);
         address futureVault    = vm.computeCreateAddress(msg.sender, nonce + 1);
-        address futureRegistry = vm.computeCreateAddress(msg.sender, nonce + 4);
+        address futureRegistry = vm.computeCreateAddress(msg.sender, nonce + 5);
 
         FeeEscrow     escrow     = new FeeEscrow(futureRegistry, futureVault);                              // N+0
         BuybackVault  vault      = new BuybackVault(futureRegistry, address(POOL_MANAGER));                  // N+1
         PlatformFeeReceiver pfr  = new PlatformFeeReceiver(futureRegistry, treasury, admin, guardian_);      // N+2
         RevenueRouter routerImpl = new RevenueRouter();                                                       // N+3
+        InitializerV1Adapter adapter = new InitializerV1Adapter(INITIALIZER);                                 // N+4
 
-        // The V4ScheduledMulticurveInitializer itself serves as the fee adapter
-        // since it already implements collectFees, getShares, getState.
         AstralaunchRegistry registry = new AstralaunchRegistry(
             address(pfr),
             address(escrow),
@@ -100,9 +101,9 @@ contract DeployAstralaunch is Script {
             address(routerImpl),
             admin,
             guardian_,
-            INITIALIZER,  // initial allowed initializer
-            INITIALIZER   // adapter = same contract (IFeeAdapter-compatible)
-        );                                                                                                    // N+4
+            INITIALIZER,        // initial allowed initializer
+            address(adapter)    // adapter wraps initializer behind IFeeAdapter
+        );                                                                                                    // N+5
 
         require(address(registry) == futureRegistry, "nonce mismatch: registry");
         require(address(vault)    == futureVault,    "nonce mismatch: vault");
@@ -125,6 +126,7 @@ contract DeployAstralaunch is Script {
         console.log("BuybackVault        :", address(vault));
         console.log("PlatformFeeReceiver :", address(pfr));
         console.log("RouterImpl          :", address(routerImpl));
+        console.log("InitV1Adapter       :", address(adapter));
         console.log("Registry            :", address(registry));
         console.log("Treasury            :", treasury);
         console.log("Admin               :", admin);
@@ -143,6 +145,7 @@ contract DeployAstralaunch is Script {
         vm.serializeAddress(obj, "vault",                address(vault));
         vm.serializeAddress(obj, "platformFeeReceiver",  address(pfr));
         vm.serializeAddress(obj, "routerImpl",           address(routerImpl));
+        vm.serializeAddress(obj, "initV1Adapter",       address(adapter));
         vm.serializeAddress(obj, "registry",             address(registry));
         vm.serializeAddress(obj, "treasury",             treasury);
         vm.serializeAddress(obj, "guardian",             guardian_);

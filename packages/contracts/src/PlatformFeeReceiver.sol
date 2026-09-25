@@ -10,7 +10,7 @@ import {IFeeAdapter} from "./interfaces/IFeeAdapter.sol";
 /// @notice Singleton that sits as the 30% Doppler beneficiary, Airlock integrator,
 ///         and RevenueRouter treasury destination for every Astralaunch token.
 ///
-///         On `collect(asset)` it calls `adapter.collectFees(poolId)` to pull
+///         On `collect(asset)` it calls `adapter.collectFeesCall(poolId)` to pull
 ///         the platform's trading-fee share, then forwards ALL USDC, ALL WMON,
 ///         and ALL asset tokens to the current `treasury`.
 ///
@@ -53,6 +53,7 @@ contract PlatformFeeReceiver is ReentrancyGuard {
     error AssetNotRegistered();
     error NotPendingAdmin();
     error NoActiveTransfer();
+    error CollectFeesFailed();
 
     // ── Events ────────────────────────────────────────────────────────────────
     event AssetRegistered(address indexed asset, bytes32 indexed poolId, address numeraire);
@@ -109,7 +110,9 @@ contract PlatformFeeReceiver is ReentrancyGuard {
         if (poolId == bytes32(0)) revert AssetNotRegistered();
 
         // Pull platform's share from the Doppler initializer via adapter
-        _adapters[asset].collectFees(poolId);
+        (address target, bytes memory cdata) = _adapters[asset].collectFeesCall(poolId);
+        (bool ok,) = target.call(cdata);
+        if (!ok) revert CollectFeesFailed();
 
         // Forward everything to treasury
         address dest = treasury;

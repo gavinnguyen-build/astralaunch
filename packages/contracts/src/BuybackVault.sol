@@ -73,6 +73,7 @@ contract BuybackVault is ReentrancyGuard, IUnlockCallback {
     error SwapFailed();
     error InsufficientBalance();
     error BuybackNotAvailable(); // WMON-paired tokens cannot be bought back yet (no USDC/WMON pool)
+    error CollectFeesFailed();
 
     // ── Events ────────────────────────────────────────────────────────────────
     event AssetRegistered(address indexed asset, bytes32 poolId, address numeraire);
@@ -125,7 +126,9 @@ contract BuybackVault is ReentrancyGuard, IUnlockCallback {
         uint256 numeraireBefore = num.balanceOf(address(this));
         uint256 tokenBefore     = asset.balanceOf(address(this));
 
-        _adapters[asset].collectFees(d.poolId);
+        (address target, bytes memory cdata) = _adapters[asset].collectFeesCall(d.poolId);
+        (bool ok,) = target.call(cdata);
+        if (!ok) revert CollectFeesFailed();
 
         uint256 numeraireDelta = num.balanceOf(address(this)) - numeraireBefore;
         uint256 tokenDelta     = asset.balanceOf(address(this)) - tokenBefore;

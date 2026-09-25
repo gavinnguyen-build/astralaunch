@@ -82,8 +82,16 @@ contract MockInitializerReg is IFeeAdapter {
         return shares_[poolId][who];
     }
 
-    /// @dev IFeeAdapter.collectFees
-    function collectFees(bytes32) external pure override returns (uint128, uint128) { return (0, 0); }
+    /// @dev No-op fee collection for tests.
+    function doCollect(bytes32) external pure returns (uint128, uint128) { return (0, 0); }
+
+    /// @dev IFeeAdapter.collectFeesCall
+    function collectFeesCall(bytes32 poolId)
+        external view override
+        returns (address target, bytes memory data)
+    {
+        return (address(this), abi.encodeCall(this.doCollect, (poolId)));
+    }
 }
 
 contract MockToken {

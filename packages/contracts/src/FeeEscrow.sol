@@ -60,6 +60,7 @@ contract FeeEscrow is ReentrancyGuard {
     error ForfeitTooEarly();
     error AlreadyForfeited();
     error NothingToClaim();
+    error CollectFeesFailed();
 
     // ── Events ────────────────────────────────────────────────────────────────
     event AssetRegistered(address indexed asset, address indexed creator, uint48 launchTime, address numeraire);
@@ -126,7 +127,9 @@ contract FeeEscrow is ReentrancyGuard {
         uint256 numeraireBefore = num.balanceOf(address(this));
         uint256 tokenBefore     = asset.balanceOf(address(this));
 
-        _adapters[asset].collectFees(d.poolId);
+        (address target, bytes memory cdata) = _adapters[asset].collectFeesCall(d.poolId);
+        (bool ok,) = target.call(cdata);
+        if (!ok) revert CollectFeesFailed();
 
         uint256 numeraireDelta = num.balanceOf(address(this)) - numeraireBefore;
         uint256 tokenDelta     = asset.balanceOf(address(this)) - tokenBefore;

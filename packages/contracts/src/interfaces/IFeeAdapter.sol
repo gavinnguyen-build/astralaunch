@@ -7,12 +7,18 @@ import {PoolKey} from "./IInitializer.sol";
 /// @notice Adapter interface for collecting Doppler trading fees from different initializer types.
 ///         Each allowed initializer in the AstralaunchRegistry has a corresponding IFeeAdapter
 ///         that normalizes fee collection across initializer versions.
+///
+///         `collectFeesCall` returns the target + calldata so the beneficiary itself performs the
+///         raw `.call()`, preserving its identity as `msg.sender`. This is critical because
+///         Doppler pays trading fees **only to the caller** of `collectFees`.
 interface IFeeAdapter {
-    /// @notice Collect accrued trading fees for the caller's share in `poolId`.
+    /// @notice Returns the target address and calldata for a fee-collection call.
+    ///         The beneficiary must execute `target.call(data)` itself so that Doppler
+    ///         pays fees to the beneficiary (msg.sender == beneficiary).
     /// @param poolId  Uniswap v4 pool identifier.
-    /// @return fees0  Amount of currency0 collected.
-    /// @return fees1  Amount of currency1 collected.
-    function collectFees(bytes32 poolId) external returns (uint128 fees0, uint128 fees1);
+    /// @return target  The contract to call (e.g. the initializer).
+    /// @return data    The encoded calldata (e.g. `abi.encodeCall(IInitializer.collectFees, (poolId))`).
+    function collectFeesCall(bytes32 poolId) external view returns (address target, bytes memory data);
 
     /// @notice Returns the WAD share (out of 1e18) allocated to `beneficiary` for `poolId`.
     /// @param poolId       Uniswap v4 pool identifier.

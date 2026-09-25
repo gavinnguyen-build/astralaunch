@@ -94,6 +94,8 @@ async function main() {
       // Using 900 caused WrongBalanceCap on Monad because 902 > 900 (decisions.md D20).
       maxBalanceLimit: SUPPLY / 100n,
       balanceLimitEnd: startTime + 720,
+      // Decision #6: exclude our fee-collecting contracts from the per-wallet balance cap
+      excludedFromBalanceLimit: [escrowAddr, buybackAddr, treasuryAddr],
     })
     .saleConfig({ initialSupply: SUPPLY, numTokensToSell: POOL_TOKENS, numeraire: USDC })
     .withCurves({

@@ -11,7 +11,9 @@ import {SOURCE_FORFEIT} from "../../src/interfaces/IBuybackVault.sol";
 // ── Stubs ─────────────────────────────────────────────────────────────────────
 
 /// @dev Implements IFeeAdapter so it can serve as both the fee adapter in tests.
-///      Simulates collectFees: sends USDC (or WMON) and optionally tokens to caller.
+///      doCollect simulates fee collection: sends USDC (or WMON) to the caller.
+///      collectFeesCall returns (address(this), abi.encodeCall(doCollect, (poolId)))
+///      so the beneficiary calls doCollect directly, preserving msg.sender.
 contract MockInitializerFee is IFeeAdapter {
     MockTokenUSDC usdc;
     address       wmon;
@@ -32,7 +34,8 @@ contract MockInitializerFee is IFeeAdapter {
         wmonPending[poolId][who] = amt;
     }
 
-    function collectFees(bytes32 poolId) external override returns (uint128, uint128) {
+    /// @dev Called by beneficiary via raw .call() — msg.sender is the beneficiary.
+    function doCollect(bytes32 poolId) external returns (uint128, uint128) {
         lastCaller = msg.sender;
         uint256 u = usdcPending[poolId][msg.sender];
         uint256 w = wmonPending[poolId][msg.sender];
@@ -45,6 +48,13 @@ contract MockInitializerFee is IFeeAdapter {
             MockTokenUSDC(wmon).mint(msg.sender, w);
         }
         return (uint128(u), uint128(w));
+    }
+
+    function collectFeesCall(bytes32 poolId)
+        external view override
+        returns (address target, bytes memory data)
+    {
+        return (address(this), abi.encodeCall(this.doCollect, (poolId)));
     }
 
     function getShares(bytes32, address) external pure override returns (uint256) { return 0; }

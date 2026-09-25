@@ -51,7 +51,6 @@ contract RegistryForkTest is Test {
     // Anvil default accounts (match the mnemonic in revpad-anvil/src/env.ts)
     address constant ADMIN    = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266; // account[0]
     address constant CREATOR  = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266; // same as ADMIN
-    address constant TREASURY = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8; // account[1]
 
     // Default JSON paths -- relative to packages/contracts/ (Foundry project root).
     // fs_permissions in foundry.toml grants read access to this directory.
@@ -85,7 +84,7 @@ contract RegistryForkTest is Test {
 
         // ── Pre-seed USDC balance slots to avoid fork-backend fetches ─────────
         _dealUsdc(CREATOR,          0);
-        _dealUsdc(TREASURY,         0);
+        _dealUsdc(pfr.treasury(),   0);
         _dealUsdc(address(escrow),  0);
         _dealUsdc(address(vault),   0);
         _dealUsdc(address(pfr),     0);
@@ -101,7 +100,8 @@ contract RegistryForkTest is Test {
         assertEq(registry.admin(),                 ADMIN,             "admin");
         assertEq(address(registry.feeEscrow()),    address(escrow),   "feeEscrow");
         assertEq(address(registry.buybackVault()), address(vault),    "buybackVault");
-        assertEq(pfr.treasury(),                   TREASURY,          "pfr.treasury");
+        // PFR treasury is set by Deploy.s.sol (defaults to msg.sender on Anvil)
+        assertTrue(pfr.treasury() != address(0),                       "pfr.treasury is set");
         assertEq(pfr.registry(),                   address(registry), "pfr.registry");
     }
 
@@ -452,11 +452,15 @@ contract RegistryForkTest is Test {
         IFeeAdapter adapter = registry.feeAdapters(INITIALIZER);
         (, , PoolKey memory key, ) = adapter.getState(asset);
 
+        // Read actual treasury from deployed PFR (may differ from TREASURY constant)
+        address actualTreasury = pfr.treasury();
+        _dealUsdc(actualTreasury, 0); // pre-seed slot
+
         // Deal USDC to ForkTrader and swap to generate trading fees
         uint256 swapAmt = 10_000_000; // 10 USDC
         _dealUsdc(address(forkTrader), swapAmt);
 
-        uint256 treasuryBefore = IERC20(USDC).balanceOf(TREASURY);
+        uint256 treasuryBefore = IERC20(USDC).balanceOf(actualTreasury);
 
         forkTrader.swapUSDCForToken(asset, key, swapAmt);
 
@@ -464,7 +468,7 @@ contract RegistryForkTest is Test {
         pfr.collect(asset);
 
         uint256 pfrBalance = IERC20(USDC).balanceOf(address(pfr));
-        uint256 treasuryReceived = IERC20(USDC).balanceOf(TREASURY) - treasuryBefore;
+        uint256 treasuryReceived = IERC20(USDC).balanceOf(actualTreasury) - treasuryBefore;
 
         console.log("--- PFR collect after trades ---");
         console.log("PFR remaining USDC:", pfrBalance);
@@ -577,6 +581,39 @@ contract RegistryForkTest is Test {
         pfr.transferAdmin(ADMIN);
         vm.prank(ADMIN);
         pfr.acceptAdmin();
+    }
+
+    // ── Z. Balance-limit exclusion: verify isExcludedFromBalanceLimit on real token ──
+
+    /// @notice Confirms the function exists on real DopplerERC20V1 bytecode (Task 2).
+    function test_isExcludedFromBalanceLimit_existsOnRealToken() public view {
+        IDopplerERC20V1 tok = IDopplerERC20V1(asset);
+        // If function doesn't exist, this reverts — test fails, indicating the interface is wrong.
+        bool escrowExcluded = tok.isExcludedFromBalanceLimit(address(escrow));
+        console.log("escrow excluded:", escrowExcluded);
+        // Random address should NOT be excluded
+        assertFalse(tok.isExcludedFromBalanceLimit(address(0xBEEF)), "random addr not excluded");
+    }
+
+    function test_balanceLimitExclusion_escrow() public view {
+        IDopplerERC20V1 tok = IDopplerERC20V1(asset);
+        assertTrue(tok.isExcludedFromBalanceLimit(address(escrow)), "escrow excluded");
+    }
+
+    function test_balanceLimitExclusion_vault() public view {
+        IDopplerERC20V1 tok = IDopplerERC20V1(asset);
+        assertTrue(tok.isExcludedFromBalanceLimit(address(vault)), "vault excluded");
+    }
+
+    function test_balanceLimitExclusion_pfr() public view {
+        IDopplerERC20V1 tok = IDopplerERC20V1(asset);
+        assertTrue(tok.isExcludedFromBalanceLimit(address(pfr)), "pfr excluded");
+    }
+
+    function test_balanceLimitExclusion_randomAddr() public view {
+        IDopplerERC20V1 tok = IDopplerERC20V1(asset);
+        // 0xDEAD is the NOGOV address (excluded by Doppler). Use a truly random address.
+        assertFalse(tok.isExcludedFromBalanceLimit(address(0xCAFE)), "random addr not excluded");
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

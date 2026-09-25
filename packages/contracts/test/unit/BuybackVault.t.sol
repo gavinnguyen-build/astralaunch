@@ -34,6 +34,8 @@ contract MockWMONVault {
 }
 
 /// @dev Implements IFeeAdapter for test use.
+///      doCollect simulates fee collection. collectFeesCall returns the calldata
+///      so the beneficiary calls doCollect directly (preserving msg.sender).
 contract MockInitializerVault is IFeeAdapter {
     MockUSDCVault usdc;
     mapping(bytes32 => mapping(address => uint256)) public usdcPending;
@@ -44,13 +46,21 @@ contract MockInitializerVault is IFeeAdapter {
         usdcPending[poolId][who] = amt;
     }
 
-    function collectFees(bytes32 poolId) external override returns (uint128, uint128) {
+    /// @dev Called by beneficiary via raw .call() — msg.sender is the beneficiary.
+    function doCollect(bytes32 poolId) external returns (uint128, uint128) {
         uint256 u = usdcPending[poolId][msg.sender];
         if (u > 0) {
             usdcPending[poolId][msg.sender] = 0;
             usdc.mint(msg.sender, u);
         }
         return (uint128(u), 0);
+    }
+
+    function collectFeesCall(bytes32 poolId)
+        external view override
+        returns (address target, bytes memory data)
+    {
+        return (address(this), abi.encodeCall(this.doCollect, (poolId)));
     }
 
     function getShares(bytes32, address) external pure override returns (uint256) { return 0; }
