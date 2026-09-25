@@ -37,7 +37,8 @@ All services use `restart: unless-stopped` and capped json-file logs (5 × 20 MB
    the records resolve, because the domains in step 2 use `https://`. Let DNS propagate
    before the first deploy, or the certificate challenge fails and has to be retried.
 4. **Environment variables**: fill in the variables below in the Coolify env editor. Tick
-   *Is Build Variable?* for every `VITE_*` (web). Mark the secrets as locked.
+   *Is Build Variable?* for every `VITE_*` (web). Mark the secrets as locked, and do **not**
+   tick *Is Build Variable?* for them. The build needs no secret (see "Secrets: build vs runtime").
 5. **Deploy.** The expected order is postgres → demo-services → server (runs migrations) → indexer and keeper. web starts independently.
 6. **Verify** (see "Post-deploy checks").
 
@@ -52,11 +53,33 @@ Contract addresses are the **v2 mainnet deployment**,
 (registry `0x25845Cee…`) is retired. `docs/MAINNET-RUNBOOK.md` and `apps/*/.env.mainnet.example`
 now carry v2.
 
+### Secrets: build vs runtime
+
+`docker compose build` interpolates the whole compose file, and Coolify builds without
+secrets. So no value in `docker-compose.prod.yml` uses `${VAR:?}`: every secret is
+`${VAR:-}`, and the image build never sees one. The requirement is enforced when each
+container **starts**, by a small `entrypoint` guard that runs before the image's normal command:
+
+| Service | Refuses to start without |
+|---|---|
+| postgres | `POSTGRES_PASSWORD` |
+| server | `POSTGRES_PASSWORD`, `GATEWAY_HMAC_MASTER_KEY` |
+| indexer | `POSTGRES_PASSWORD` |
+| keeper | `POSTGRES_PASSWORD`, `KEEPER_PRIVATE_KEY` |
+
+A missing secret stops that container with a log line such as
+`FATAL: GATEWAY_HMAC_MASTER_KEY is not set`, and exit code 2. The restart policy retries,
+so the container shows as restarting until the variable is set. `ADMIN_API_KEY` and
+`TELEGRAM_BOT_TOKEN` are secret but optional by design: unset disables the admin API or the
+Telegram alerts, so they are not guarded. Each guarded service's compose `command` repeats
+its Dockerfile `CMD`, because a compose `entrypoint` discards the image's default command.
+Keep the two in sync when either changes.
+
 ### Shared by several services
 
 | Var | Used by | Kind | Value |
 |---|---|---|---|
-| `POSTGRES_PASSWORD` | postgres, server, indexer, keeper | **secret**, required | `openssl rand -hex 24` (hex, so it is URL-safe inside `DATABASE_URL`) |
+| `POSTGRES_PASSWORD` | postgres, server, indexer, keeper | **secret**, required at runtime | `openssl rand -hex 24` (hex, so it is URL-safe inside `DATABASE_URL`) |
 | `MONAD_RPC_URL` | server, indexer, keeper | public | default `https://rpc.monad.xyz` |
 | `MONAD_CHAIN_ID` | server, keeper | public | default `143` |
 | `FACILITATOR_SUBMITTER_ADDRESSES` | server, indexer, keeper | public | default `0x7f6a2850669202519f0FE8aa912451238820Db86` |
@@ -76,7 +99,7 @@ copied `monad-mainnet.json`.
 
 | Var | Kind | Value / notes |
 |---|---|---|
-| `GATEWAY_HMAC_MASTER_KEY` | **secret**, required | `openssl rand -hex 32`. Rotating it invalidates existing gateway credentials. |
+| `GATEWAY_HMAC_MASTER_KEY` | **secret**, required at runtime | `openssl rand -hex 32`. Rotating it invalidates existing gateway credentials. |
 | `ADMIN_API_KEY` | **secret**, optional | Bearer token for `/api/admin/*`. Unset = admin API disabled. |
 | `UPSTREAM_ALLOWLIST` | public | default `http://demo-services:4001`: the one private origin allowed past the SSRF block |
 | `CORS_ORIGINS` | public | default `https://astralaunch.xyz,https://www.astralaunch.xyz`. Read by the server (`apps/server/src/lib/cors.ts`); bare origins only, a wildcard or path refuses to start. |
@@ -108,7 +131,7 @@ backfills from block `107840649`, and the healthcheck allows a 10-minute start p
 
 | Var | Kind | Value / notes |
 |---|---|---|
-| `KEEPER_PRIVATE_KEY` | **secret**, required | Key for the keeper wallet **`0x9e641007829DA8eB199b2Bec64B1E6dcbfdaB854`**. Used only by the keeper, never by any other service, and never an Anvil or test key (CLAUDE.md rule 15). Keep the wallet funded with MON. |
+| `KEEPER_PRIVATE_KEY` | **secret**, required at runtime | Key for the keeper wallet **`0x9e641007829DA8eB199b2Bec64B1E6dcbfdaB854`**. Used only by the keeper, never by any other service, and never an Anvil or test key (CLAUDE.md rule 15). Keep the wallet funded with MON. |
 | `DATABASE_URL` | (assembled in compose) | Token discovery. Each tick the keeper reads the listed tokens (launch fee consumed, not hidden) with router, numeraire and pool id. A new listing is picked up on the next tick without a restart. It only runs `SELECT`s, so a read-only Postgres role is enough if you want to tighten it. |
 | `ASSETS` | public, optional | **Debug override only; leave empty.** Alone, it services those tokens from the DB, listed or not. With `ROUTERS`, it uses explicit pairs without the DB. |
 | `ROUTERS` | public, optional | Comma-separated RevenueRouter addresses matching `ASSETS` |
@@ -181,7 +204,7 @@ docker build -f apps/indexer/Dockerfile       -t astralaunch-indexer .
 docker build -f apps/keeper/Dockerfile        -t astralaunch-keeper .
 docker build -f apps/demo-services/Dockerfile -t astralaunch-demo-services .
 docker build -f apps/web/Dockerfile           -t astralaunch-web .
-docker compose -f docker-compose.prod.yml config   # validate the stack file
+docker compose -f docker-compose.prod.yml config   # validate the stack file (works with every secret unset)
 ```
 
 All builds use the repo root as the context. `.dockerignore` keeps every `.env*` file
@@ -208,6 +231,18 @@ back to JS and never reach the browser bundle, so the build still succeeds.
 | demo-services image | `/health` and `/sight/signals` return 200. It binds `0.0.0.0` via env. |
 | web image | `tsc` + `vite build` pass. `/`, `/token/…` (SPA fallback) and `/healthz` return 200. `index.html` is `no-cache`, and hashed assets are `immutable`. The bundle contains `api.astralaunch.xyz` and the Privy app id. |
 | Secrets in images | No `.env*` files except the committed `*.example`. All Node images run as `node`. |
+
+**Secrets out of the build (2026-09-26):** with `POSTGRES_PASSWORD`,
+`GATEWAY_HMAC_MASTER_KEY`, `KEEPER_PRIVATE_KEY`, `ADMIN_API_KEY` and `TELEGRAM_BOT_TOKEN` all
+unset, `docker compose config` and `docker compose build` (all five images) succeed. The runtime
+guards were then tested three ways:
+- **Nothing set:** postgres, server, indexer and keeper each exit 2 with
+  `FATAL: POSTGRES_PASSWORD is not set`.
+- **Only the password set:** server exits with `FATAL: GATEWAY_HMAC_MASTER_KEY is not set`,
+  and keeper with `FATAL: KEEPER_PRIVATE_KEY is not set`.
+- **All set:** the full stack comes up with all six services healthy. Migrations ran, the
+  server and keeper startup checks passed, the indexer checkpoint advanced, and keeper
+  `/health` returned `ok`.
 
 Not verified: a deploy on the VPS itself, Coolify domain routing and certificates, Hostinger
 DNS, and the keeper running with the real key.

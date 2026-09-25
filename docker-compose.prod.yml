@@ -7,8 +7,10 @@
 # routes to the containers. Postgres and demo-services are reachable only on the
 # `internal` network, which has no route to the internet.
 #
-# `${VAR:?}` = required (Coolify shows it in the env editor; compose refuses to start without it).
-# `${VAR:-x}` = optional with a default.
+# `${VAR:-x}` = optional with a default. No value compose interpolates uses `${VAR:?}`: Coolify
+# builds without secrets, and `docker compose build` interpolates the whole file. Required
+# secrets are instead checked when each container starts (the `entrypoint` guards below):
+# a missing one stops that container with a FATAL line in its log, before anything runs.
 # The root docker-compose.yml is the local-dev Postgres and is unrelated to this file.
 
 x-logging: &logging
@@ -34,7 +36,10 @@ services:
     environment:
       POSTGRES_USER: astralaunch
       POSTGRES_DB: astralaunch
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD (hex, URL-safe)}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}   # secret, required at runtime (hex, URL-safe)
+    # Runtime guard: refuse to start without a password (the image only enforces this on first init).
+    entrypoint: ['/bin/sh', '-c', ': "$${POSTGRES_PASSWORD:?FATAL: POSTGRES_PASSWORD is not set}"; exec docker-entrypoint.sh "$$@"', 'require-secrets']
+    command: ['postgres']
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks: [internal]
@@ -51,17 +56,20 @@ services:
     environment:
       <<: *chain-env
       PORT: 3001
-      DATABASE_URL: postgresql://astralaunch:${POSTGRES_PASSWORD:?}@postgres:5432/astralaunch
+      DATABASE_URL: postgresql://astralaunch:${POSTGRES_PASSWORD:-}@postgres:5432/astralaunch
       GUARDIAN_ADDRESS: ${GUARDIAN_ADDRESS:-0x62c1a140eB643BF43659E7e5134CAfDFeDe17e8b}
       TREASURY_ADDRESS: ${TREASURY_ADDRESS:-0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C}
       X402_FACILITATOR_URL: ${X402_FACILITATOR_URL:-https://x402-facilitator.molandak.org}
       PAYMENT_TIMEOUT_SECONDS: ${PAYMENT_TIMEOUT_SECONDS:-60}
-      GATEWAY_HMAC_MASTER_KEY: ${GATEWAY_HMAC_MASTER_KEY:?set GATEWAY_HMAC_MASTER_KEY (openssl rand -hex 32)}
-      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}   # only for the startup guard; DATABASE_URL carries it
+      GATEWAY_HMAC_MASTER_KEY: ${GATEWAY_HMAC_MASTER_KEY:-}   # secret, required at runtime (openssl rand -hex 32)
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}   # secret, optional: unset = admin API disabled
       # demo-services is on the private compose network; allow exactly its origin past the SSRF block.
       UPSTREAM_ALLOWLIST: ${UPSTREAM_ALLOWLIST:-http://demo-services:4001}
       # Not read by the server yet (see docs/DEPLOY-COOLIFY.md, "Code changes needed").
       CORS_ORIGINS: ${CORS_ORIGINS:-https://astralaunch.xyz,https://www.astralaunch.xyz}
+    entrypoint: ['/bin/sh', '-c', ': "$${POSTGRES_PASSWORD:?FATAL: POSTGRES_PASSWORD is not set}" "$${GATEWAY_HMAC_MASTER_KEY:?FATAL: GATEWAY_HMAC_MASTER_KEY is not set}"; exec "$$@"', 'require-secrets']
+    command: ['sh', '-c', 'node_modules/.bin/tsx src/db/migrate.ts && exec node_modules/.bin/tsx src/index.ts']   # = image CMD
     expose: ['3001']
     networks: [internal, egress]
     depends_on:
@@ -74,13 +82,16 @@ services:
     restart: unless-stopped
     environment:
       MONAD_RPC_URL: ${MONAD_RPC_URL:-https://rpc.monad.xyz}
-      DATABASE_URL: postgresql://astralaunch:${POSTGRES_PASSWORD:?}@postgres:5432/astralaunch
+      DATABASE_URL: postgresql://astralaunch:${POSTGRES_PASSWORD:-}@postgres:5432/astralaunch
       FACILITATOR_SUBMITTER_ADDRESSES: ${FACILITATOR_SUBMITTER_ADDRESSES:-0x7f6a2850669202519f0FE8aa912451238820Db86}
       INDEXER_POLL_INTERVAL_S: ${INDEXER_POLL_INTERVAL_S:-10}
       INDEXER_MAX_RPS: ${INDEXER_MAX_RPS:-25}
       INDEXER_CHUNK_SIZE: ${INDEXER_CHUNK_SIZE:-100}   # public RPC caps eth_getLogs ranges; the fetcher adapts either way
       INDEXER_FINALITY_LAG: ${INDEXER_FINALITY_LAG:-0}
       INDEXER_HEALTH_MAX_AGE_S: ${INDEXER_HEALTH_MAX_AGE_S:-600}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}   # only for the startup guard
+    entrypoint: ['/bin/sh', '-c', ': "$${POSTGRES_PASSWORD:?FATAL: POSTGRES_PASSWORD is not set}"; exec "$$@"', 'require-secrets']
+    command: ['node_modules/.bin/tsx', 'src/cli.ts', '--follow']   # = image CMD
     networks: [internal, egress]
     depends_on:
       # The server applies migrations on start; the indexer writes to those tables.
@@ -93,9 +104,10 @@ services:
     environment:
       <<: *chain-env
       # Must derive to the keeper wallet 0x9e641007829DA8eB199b2Bec64B1E6dcbfdaB854.
-      KEEPER_PRIVATE_KEY: ${KEEPER_PRIVATE_KEY:?set KEEPER_PRIVATE_KEY (keeper wallet only)}
+      KEEPER_PRIVATE_KEY: ${KEEPER_PRIVATE_KEY:-}   # secret, required at runtime (keeper wallet only)
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}   # only for the startup guard
       # Token discovery: listed tokens (fee consumed, not hidden) read each tick. Read-only use.
-      DATABASE_URL: postgresql://astralaunch:${POSTGRES_PASSWORD:?}@postgres:5432/astralaunch
+      DATABASE_URL: postgresql://astralaunch:${POSTGRES_PASSWORD:-}@postgres:5432/astralaunch
       # Debug override only; leave empty in production (see docs/DEPLOY-COOLIFY.md).
       ASSETS: ${ASSETS:-}
       ROUTERS: ${ROUTERS:-}
@@ -109,8 +121,10 @@ services:
       MIN_DISTRIBUTE_USDC: ${MIN_DISTRIBUTE_USDC:-}
       MIN_BUYBACK_USDC: ${MIN_BUYBACK_USDC:-}
       DRY_RUN: ${DRY_RUN:-false}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}   # secret, optional: unset = alerts logged only
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+    entrypoint: ['/bin/sh', '-c', ': "$${POSTGRES_PASSWORD:?FATAL: POSTGRES_PASSWORD is not set}" "$${KEEPER_PRIVATE_KEY:?FATAL: KEEPER_PRIVATE_KEY is not set}"; exec "$$@"', 'require-secrets']
+    command: ['node_modules/.bin/tsx', 'src/index.ts']   # = image CMD
     expose: ['8080']   # /health, internal only
     # internal: Postgres; egress: RPC + Telegram. No inbound traffic from outside.
     networks: [internal, egress]
