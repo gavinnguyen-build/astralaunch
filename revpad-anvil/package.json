@@ -6,7 +6,7 @@
     "check": "tsx src/01-check.ts",
     "launch": "tsx src/02-launch.ts",
     "launch-wmon": "tsx src/launch-wmon.ts",
-    "launch-devbuy": "tsx src/launch-devbuy.ts",
+
     "trade": "tsx src/03-trade.ts",
     "fees": "tsx src/04-fees.ts",
     "vesting": "tsx src/05-vesting.ts",

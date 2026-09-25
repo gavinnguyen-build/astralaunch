@@ -20,7 +20,7 @@
 | D7 | Supply: 1,000,000,000. 85% into the pool, 15% creator allocation vested 1 year with a 30-day cliff (native DopplerERC20V1 vesting). |
 | D8 | Buyback buys the token from its own pool and burns it. Execution is permissionless. |
 | D9 | Doppler multicurve (Uniswap v4), lockable beneficiaries, no migration, pool paired with USDC. |
-| D10 | **Initializer: `V4ScheduledMulticurveInitializer`.** Monad has no standard or decay multicurve initializer (SDK 1.0.43, confirmed on fork). Tick spacing 200. |
+| D10 | **Initializer: `V4ScheduledMulticurveInitializer`.** Monad has no standard or decay multicurve initializer (SDK 1.0.43, confirmed on fork). Tick spacing 200. Dev buy (via Bundler) is supported only by DopplerHookInitializer and Rehype initializer — not available with V4ScheduledMulticurveInitializer. Returns with Rehype. |
 | D11 | **Launch via Doppler SDK, then register on-chain.** The frontend creates the token with the SDK; `RevpadRegistry.register(asset)` verifies the on-chain config and only then deploys the router and lists the token (§6.1). Replaces "factory calls Airlock". |
 | D12 | **Anti-snipe v1 = DopplerERC20V1 per-wallet balance cap: 1% of supply for the first 12 minutes** (`balanceLimitEnd = startTime + 720 s`; registry accepts [600, 900] s). Verified: over-cap buy reverts, succeeds after the window. Weak against multi-wallet bots; accepted for v1. |
 | D13 | **x402 facilitator = Monad official** `https://x402-facilitator.molandak.org` (x402 v2 only). Always call it through the SDK `HTTPFacilitatorClient`. Self-hosted facilitator (SDK `registerExactEvmScheme`) is the fallback. |
@@ -125,9 +125,10 @@ Positioning (internal, not a tagline): same launch ease as agent-token launchpad
 ### 4.3 Creator escrow
 
 - `allowanceUSDC(asset) = recordedRevenue(asset) × 2000 / 10000`
-- Claimable = `min(allowanceUSDC, escrowUSDCAccrued) − escrowUSDCClaimed`
-- Token-denominated escrow fees: keeper swaps to USDC in small, slippage-capped batches (O4). Escrow accounting is USDC only.
-- `forfeit(asset)`: callable by anyone after `launchTime + 365 days`; moves remaining unclaimed escrow USDC to BuybackVault for that asset.
+- **USDC pairs:** Claimable = `min(allowanceUSDC, escrowUSDCAccrued) − escrowUSDCClaimed` (USDC out)
+- **MON pairs:** Escrow stays in WMON. Claimable WMON is computed via Chainlink MON/USD oracle at claim time: `allowanceUsd8 = recordedRevenue * ESCROW_UNLOCK_BPS * 100 / 10000` (8 dec), `claimableWmon = min(remainingUsd8 * 1e18 / oracleAnswer, wmonAccrued - wmonClaimed)`. Creator and treasury receive WMON directly — no swaps.
+- Token-denominated escrow fees: accumulated and burned separately (no keeper swap).
+- `forfeit(asset)`: callable by anyone after `launchTime + 365 days`; moves remaining unclaimed escrow (USDC or WMON) to BuybackVault for that asset.
 
 Effective provider take while escrow has balance: 0.6 + 0.2 = **0.8 per 1 USDC** of revenue.
 
@@ -276,38 +277,44 @@ Note: USDC arriving via `transferWithAuthorization` does not execute router code
 
 ### 6.3 `FeeEscrow` (singleton)
 
-State per asset: `creator, launchTime, usdcAccrued, usdcClaimed, tokenPending, recordedRevenue, forfeited`.
+State per asset: `creator, launchTime, usdcAccrued, usdcClaimed, tokenPending, wmonAccrued, wmonClaimed, wmonClaimedUsd, recordedRevenue, forfeited, numeraire`.
 
 ```solidity
 function collect(address asset) external;            // calls collectFees(poolId) on the scheduled initializer AS the beneficiary; attributes deltas
-function swapTokenFees(address asset, uint256 maxIn, uint256 minOut) external; // asset -> USDC via PoolManager.unlock (O4)
 function recordRevenue(address asset, uint256 amt) external; // only router
-function claimable(address asset) external view returns (uint256);
-function claim(address asset) external;              // only creator
+function claimable(address asset) external view returns (uint256);   // USDC pairs
+function claimableWmon(address asset) external view returns (uint256); // WMON pairs
+function claim(address asset) external;              // only creator (USDC or WMON depending on numeraire)
 function forfeit(address asset) external;            // anyone, after launchTime + 365 days
 ```
 
 - Doppler pays a beneficiary only when that beneficiary calls `collectFees` (verified), so `collect` must be called by this contract; anyone may trigger `collect`.
 - Attribution: collection is per pool; balance deltas around the call are attributed to that asset.
-- `claimable = min(recordedRevenue * 2000 / 10000, usdcAccrued) − usdcClaimed` (never negative).
-- `forfeit` moves unclaimed escrow (+ pending token fees) to BuybackVault for the asset; later accruals go straight to buyback.
+- USDC pairs: `claimable = min(recordedRevenue * 2000 / 10000, usdcAccrued) − usdcClaimed` (never negative).
+- MON pairs: WMON escrow stays in WMON. Claimable WMON valued via Chainlink MON/USD oracle (`0xBcD78f76005B7515837af6b50c7C52BCf73822fb`, 8 decimals, max 1h staleness). No swaps for creator or treasury.
+- `forfeit` moves unclaimed escrow (USDC or WMON, + pending token fees) to BuybackVault for the asset; later accruals go straight to buyback.
 
 ### 6.4 `BuybackVault` (singleton)
 
 ```solidity
 function collect(address asset) external;           // calls collectFees(poolId) on the initializer as the beneficiary
 function creditUSDC(address asset, uint256 amt, uint8 sourceTag) external; // only routers/escrow
-function execute(address asset, uint256 usdcIn, uint256 minTokenOut) external; // permissionless
+function execute(address asset, uint256 usdcIn, uint256 minMonOut, uint256 minTokenOut) external; // permissionless
 function burnTokens(address asset) external;        // burn asset-denominated balance
 ```
 
 Rules in `execute`:
 - `usdcIn ≤ min(balanceUSDC[asset], MAX_PER_CALL)`; at most once per `MIN_INTERVAL` (e.g. 10 min) per asset.
-- Swap USDC → `asset` **through `PoolManager.unlock()`** with an `unlockCallback` that swaps on the asset's own pool key, settles USDC, takes the asset. No Universal Router, no Permit2.
-- Require `minTokenOut`; burn all received tokens with DopplerERC20V1 `burn` (exists; confirm it burns the caller's own balance) or transfer to `0x…dEaD` as fallback.
+- **USDC pairs:** single-hop swap USDC → `asset` through `PoolManager.unlock()` → `unlockCallback`. Settles USDC, takes the asset.
+- **WMON pairs:** two-hop via `PoolManager.unlock()`:
+  1. Leg 1: swap USDC → native MON via v4 MON/USDC pool (PoolKey: `address(0), USDC, fee=500, ts=10, hooks=0`). Settle USDC, take native MON. Check `monOut >= minMonOut`.
+  2. Wrap: `IWMON(WMON).deposit{value: monOut}()` — native MON → WMON.
+  3. Leg 2: swap WMON → token via the Doppler pool. Settle WMON, take token, burn. Check `tokenOut >= minTokenOut`.
+  Both legs happen inside the same `unlock()` call.
+- No Universal Router, no Permit2.
+- Require `minTokenOut`; burn all received tokens with DopplerERC20V1 `burn`.
 - Track `buybackFromRevenue` vs `buybackFromTrading` per asset and emit `BuybackExecuted(asset, usdcIn, tokensBurned, sourceTag)`.
 - Known cost: the swap pays the 2% pool fee (≈1.75% net leakage after the vault's own share returns). Accept for v1.
-- During the balance cap window (first ~12 minutes; `balanceLimitEnd − vestingStart ∈ [600, 900] s`) `execute()` reverts with `CapWindowActive` (D19). Keeper waits until after `balanceLimitEnd`.
 
 ### 6.5 `PlatformFeeReceiver` (singleton, D21)
 
@@ -487,10 +494,10 @@ Default poll interval: **10 minutes** (`POLL_INTERVAL_S=600`). Minimum on non-lo
 
 ### Job order per asset (by usefulness — high-value first)
 
-1. `RevenueRouter.distribute()` — if router USDC balance ≥ `MIN_DISTRIBUTE_USDC` (default 1 USDC).
-2. `BuybackVault.execute(asset, …)` — if vault USDC balance ≥ `MIN_BUYBACK_USDC` (default 1 USDC), cap window ended, and cooldown elapsed.
+1. `RevenueRouter.distribute()` — if router USDC balance ≥ `MIN_DISTRIBUTE_USDC` (default 0.1 USDC).
+2. `BuybackVault.execute(asset, …)` — if vault USDC balance ≥ `MIN_BUYBACK_USDC` (default 0.5 USDC), cap window ended, and cooldown elapsed. USDC pairs: single-hop. WMON pairs: two-hop via native MON.
 3. `FeeEscrow.collect(asset)`, `BuybackVault.collect(asset)`, `PlatformFeeReceiver.collect(asset)` — each gated by:
-   - **Pending fee pre-check:** simulates `initializer.collectFees(poolId)` via `eth_call` from the beneficiary's address. Skips if pending USDC < `MIN_COLLECT_USDC` (default 1 USDC).
+   - **Pending fee pre-check:** simulates `initializer.collectFees(poolId)` via `eth_call` from the beneficiary's address. Skips if pending USDC < `MIN_COLLECT_USDC` (default 0.1 USDC).
    - **Cadence:** at most once per `COLLECT_INTERVAL_S` (default 6 hours) per beneficiary per asset.
 4. `FeeEscrow.forfeit(asset)` when due (365 days).
 
@@ -498,13 +505,13 @@ Distribute and buyback run before collect so a spend-guard block from expensive 
 
 ### Economic thresholds
 
-All are keeper-side gas-saving thresholds, independent of on-chain contract minimums (e.g. `RevenueRouter.MIN_DISTRIBUTE = 0.5 USDC`). Origin: each collect/distribute costs ~0.1 MON ≈ $0.03 at 100 gwei; 1 USDC ≈ 33× the gas cost, so the threshold ensures txs are economically justified.
+All are keeper-side gas-saving thresholds, independent of on-chain contract minimums (e.g. `RevenueRouter.MIN_DISTRIBUTE = 0.5 USDC`). Origin: Monad gas is ~$0.0003/tx; 0.1 USDC ≈ 333× the gas cost, so the threshold ensures txs are economically justified.
 
 | Env var | Default | Purpose |
 |---------|---------|---------|
-| `MIN_COLLECT_USDC` | 1 | Skip collect if pending USDC for that beneficiary < this |
-| `MIN_DISTRIBUTE_USDC` | 1 | Skip distribute if router USDC balance < this |
-| `MIN_BUYBACK_USDC` | 1 | Skip buyback if vault USDC balance < this |
+| `MIN_COLLECT_USDC` | 0.1 | Skip collect if pending USDC for that beneficiary < this |
+| `MIN_DISTRIBUTE_USDC` | 0.1 | Skip distribute if router USDC balance < this |
+| `MIN_BUYBACK_USDC` | 0.5 | Skip buyback if vault USDC balance < this (higher for two-hop gas) |
 | `COLLECT_INTERVAL_S` | 21600 (6h) | Min seconds between collects per beneficiary per asset |
 
 ### Spend guards

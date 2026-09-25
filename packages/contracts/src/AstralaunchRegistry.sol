@@ -307,7 +307,7 @@ contract AstralaunchRegistry {
         buybackVault.registerAsset(asset, poolKey, poolId, numeraire);
         buybackVault.authorize(router);
         buybackVault.authorize(address(feeEscrow));
-        BuybackVault(address(buybackVault)).setAdapter(asset, address(adapter));
+        BuybackVault(payable(address(buybackVault))).setAdapter(asset, address(adapter));
         platformFeeReceiver.registerAsset(asset, poolId, numeraire);
         PlatformFeeReceiver(address(platformFeeReceiver)).setAdapter(asset, address(adapter));
 

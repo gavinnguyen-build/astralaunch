@@ -45,6 +45,13 @@ contract InvMockInit is IFeeAdapter {
     }
 }
 
+contract InvMockOracle {
+    function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80) {
+        return (1, 2500000, 0, block.timestamp, 1); // $0.025 MON/USD, 8 decimals
+    }
+    function decimals() external pure returns (uint8) { return 8; }
+}
+
 contract InvMockPM {
     function unlock(bytes calldata) external pure returns (bytes memory) { return ""; }
     function swap(PoolKey memory, bytes calldata, bytes calldata) external pure returns (int256) { return 0; }
@@ -139,8 +146,8 @@ contract AstralaunchInvariantsTest is StdInvariant, Test {
         vm.etch(0x754704Bc059F8C67012fEd69BC8A327a5aafb603, address(usdc).code);
         usdc = InvMockUSDC(0x754704Bc059F8C67012fEd69BC8A327a5aafb603);
 
-        // v2 constructors: no initializer param
-        escrow = new FeeEscrow(registry, address(0));
+        InvMockOracle orc = new InvMockOracle();
+        escrow = new FeeEscrow(registry, address(0), address(orc), 3600);
         vault  = new BuybackVault(registry, address(pm));
 
         routerImpl = new RevenueRouter();

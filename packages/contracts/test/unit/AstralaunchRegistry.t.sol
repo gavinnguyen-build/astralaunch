@@ -149,6 +149,13 @@ contract MockPoolManagerReg {
     function take(address, address, uint256) external {}
 }
 
+contract MockOracleReg {
+    function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80) {
+        return (1, 2500000, 0, block.timestamp, 1);
+    }
+    function decimals() external pure returns (uint8) { return 8; }
+}
+
 // ── Test contract ──────────────────────────────────────────────────────────────
 contract AstralaunchRegistryTest is Test {
     // canonical Monad mainnet addresses (from AstralaunchRegistry)
@@ -185,9 +192,9 @@ contract AstralaunchRegistryTest is Test {
         // ── Pre-compute registry address ──────────────────────────────────────
         // Deployments before registry:
         //   +0 token, +1 tmpUsdc, +2 tmpWmon, +3 tmpAirlock, +4 tmpInit, +5 pm,
-        //   +6 escrow, +7 vault, +8 pfr, +9 routerImpl => +10 = registry
+        //   +6 orc, +7 escrow, +8 vault, +9 pfr, +10 routerImpl => +11 = registry
         uint256 startNonce = vm.getNonce(address(this));
-        address futureRegistry = vm.computeCreateAddress(address(this), startNonce + 10);
+        address futureRegistry = vm.computeCreateAddress(address(this), startNonce + 11);
 
         token = new MockToken();  // +0
 
@@ -215,11 +222,12 @@ contract AstralaunchRegistryTest is Test {
         init_ = MockInitializerReg(INITIALIZER_ADDR);
 
         pm         = new MockPoolManagerReg();  // +5
-        escrow     = new FeeEscrow(futureRegistry, address(0));  // +6
-        vault      = new BuybackVault(futureRegistry, address(pm));  // +7
-        pfr        = new PlatformFeeReceiver(futureRegistry, treasury, admin, guardian); // +8
-        routerImpl = new RevenueRouter();  // +9
-        registry   = new AstralaunchRegistry(  // +10
+        MockOracleReg orc = new MockOracleReg(); // +6
+        escrow     = new FeeEscrow(futureRegistry, address(0), address(orc), 3600);  // +7
+        vault      = new BuybackVault(futureRegistry, address(pm));  // +8
+        pfr        = new PlatformFeeReceiver(futureRegistry, treasury, admin, guardian); // +9
+        routerImpl = new RevenueRouter();  // +10
+        registry   = new AstralaunchRegistry(  // +11
             address(pfr), address(escrow), address(vault), address(routerImpl),
             admin, guardian, INITIALIZER_ADDR, address(init_)
         );

@@ -26,8 +26,10 @@ interface IBuybackVault {
 
     /// @notice Execute a buyback: swap up to `usdcIn` USDC for `asset` and burn it.
     ///         Permissionless; subject to MAX_PER_CALL and MIN_INTERVAL constraints.
-    ///         Reverts with BuybackNotAvailable for WMON-paired assets (no USDC/asset pool).
-    function execute(address asset, uint256 usdcIn, uint256 minTokenOut) external;
+    ///         For USDC pairs: single-hop. For WMON pairs: two-hop via native MON.
+    /// @param minMonOut   Minimum native MON output for leg 1 (WMON pairs only; ignored for USDC).
+    /// @param minTokenOut Minimum token output from the final swap.
+    function execute(address asset, uint256 usdcIn, uint256 minMonOut, uint256 minTokenOut) external;
 
     /// @notice Burn the vault's accumulated token balance for `asset`.
     function burnTokens(address asset) external;

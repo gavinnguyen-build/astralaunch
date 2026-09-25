@@ -7,6 +7,7 @@ import {FeeEscrow} from "../src/FeeEscrow.sol";
 import {BuybackVault} from "../src/BuybackVault.sol";
 import {PlatformFeeReceiver} from "../src/PlatformFeeReceiver.sol";
 import {RevenueRouter} from "../src/RevenueRouter.sol";
+import {AstralaunchConstants as C} from "../src/AstralaunchConstants.sol";
 import {AstralaunchRegistry} from "../src/AstralaunchRegistry.sol";
 import {InitializerV1Adapter} from "../src/InitializerV1Adapter.sol";
 
@@ -88,7 +89,7 @@ contract DeployAstralaunch is Script {
         address futureVault    = vm.computeCreateAddress(msg.sender, nonce + 1);
         address futureRegistry = vm.computeCreateAddress(msg.sender, nonce + 5);
 
-        FeeEscrow     escrow     = new FeeEscrow(futureRegistry, futureVault);                              // N+0
+        FeeEscrow     escrow     = new FeeEscrow(futureRegistry, futureVault, C.MON_USD_ORACLE, C.MAX_ORACLE_STALENESS); // N+0
         BuybackVault  vault      = new BuybackVault(futureRegistry, address(POOL_MANAGER));                  // N+1
         PlatformFeeReceiver pfr  = new PlatformFeeReceiver(futureRegistry, treasury, admin, guardian_);      // N+2
         RevenueRouter routerImpl = new RevenueRouter();                                                       // N+3

@@ -90,6 +90,28 @@ contract MockTokenUSDC {
     }
 }
 
+/// @dev Configurable Chainlink oracle mock.
+contract MockChainlinkOracle {
+    int256  public answerValue;
+    uint256 public updatedAtValue;
+    uint8   public decValue;
+
+    constructor(int256 _answer, uint256 _updatedAt, uint8 _decimals) {
+        answerValue    = _answer;
+        updatedAtValue = _updatedAt;
+        decValue       = _decimals;
+    }
+
+    function setAnswer(int256 a) external { answerValue = a; }
+    function setUpdatedAt(uint256 t) external { updatedAtValue = t; }
+
+    function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80) {
+        return (1, answerValue, 0, updatedAtValue, 1);
+    }
+
+    function decimals() external view returns (uint8) { return decValue; }
+}
+
 // ── Test contract ─────────────────────────────────────────────────────────────
 contract FeeEscrowTest is Test {
     address constant USDC_ADDR = 0x754704Bc059F8C67012fEd69BC8A327a5aafb603;
@@ -100,6 +122,7 @@ contract FeeEscrowTest is Test {
     MockBuybackVaultFee vault;
     MockTokenUSDC       usdc;
     MockTokenUSDC       wmon;
+    MockChainlinkOracle oracle;
 
     address registry = address(this);
     address asset    = address(0xA55E7);
@@ -124,8 +147,11 @@ contract FeeEscrowTest is Test {
         init_  = new MockInitializerFee(address(usdc), address(wmon));
         vault  = new MockBuybackVaultFee();
 
-        // v2 constructor: (registry, buybackVault) - no initializer
-        escrow = new FeeEscrow(registry, address(vault));
+        // Oracle: $0.025 MON/USD (2500000 with 8 decimals), fresh timestamp
+        oracle = new MockChainlinkOracle(2500000, block.timestamp, 8);
+
+        // v2 constructor: (registry, buybackVault, oracle, maxStaleness)
+        escrow = new FeeEscrow(registry, address(vault), address(oracle), 3600);
 
         // Register asset with USDC numeraire
         escrow.registerAsset(asset, creator, launch, poolId, USDC_ADDR);
@@ -180,7 +206,7 @@ contract FeeEscrowTest is Test {
     }
 
     // ── collect (WMON numeraire) ──────────────────────────────────────────────
-    function test_collect_wmon_parksAsNumerairePending() public {
+    function test_collect_wmon_accumsAsWmonAccrued() public {
         // Register a WMON-paired asset
         address wmonAsset = address(0xBEE);
         bytes32 wmonPoolId = keccak256("wmon-pool");
@@ -190,10 +216,10 @@ contract FeeEscrowTest is Test {
         init_.setWMONPending(wmonPoolId, address(escrow), 300_000);
         escrow.collect(wmonAsset);
 
-        FeeEscrow.TokenData memory d = escrow.tokenData(wmonAsset);
-        // WMON fees are parked as numerairePending (not usdcAccrued)
-        assertEq(d.numerairePending, 300_000);
-        assertEq(d.usdcAccrued, 0);
+        FeeEscrow.WmonData memory w = escrow.wmonData(wmonAsset);
+        // WMON fees are parked as wmonAccrued (not usdcAccrued)
+        assertEq(w.wmonAccrued, 300_000);
+        assertEq(escrow.tokenData(wmonAsset).usdcAccrued, 0);
     }
 
     // ── recordRevenue ─────────────────────────────────────────────────────────
@@ -208,7 +234,7 @@ contract FeeEscrowTest is Test {
         escrow.recordRevenue(asset, 1_000_000);
     }
 
-    // ── claimable ─────────────────────────────────────────────────────────────
+    // ── claimable (USDC) ──────────────────────────────────────────────────────
     function test_claimable_zeroBeforeRevenue() public view {
         assertEq(escrow.claimable(asset), 0);
     }
@@ -243,7 +269,7 @@ contract FeeEscrowTest is Test {
         assertEq(usdc.balanceOf(creator), before);
     }
 
-    // ── claim ─────────────────────────────────────────────────────────────────
+    // ── claim (USDC) ─────────────────────────────────────────────────────────
     function test_claim_revertsIfNotCreator() public {
         vm.expectRevert(FeeEscrow.NotCreator.selector);
         escrow.claim(asset);
@@ -253,6 +279,128 @@ contract FeeEscrowTest is Test {
         vm.prank(creator);
         vm.expectRevert(FeeEscrow.NothingToClaim.selector);
         escrow.claim(asset);
+    }
+
+    // ── claim WMON (oracle-valued) ───────────────────────────────────────────
+    function test_claimWmon_freshOracle() public {
+        // Register a WMON-paired asset
+        address wmonAsset = address(0xBEE);
+        bytes32 wmonPoolId = keccak256("wmon-pool");
+        escrow.registerAsset(wmonAsset, creator, launch, wmonPoolId, WMON_ADDR);
+        escrow.setAdapter(wmonAsset, address(init_));
+        escrow.authorizeRouter(router1);
+
+        // Record 10 USDC revenue
+        vm.prank(router1);
+        escrow.recordRevenue(wmonAsset, 10_000_000);
+
+        // Collect 1000 WMON fees (18 dec)
+        init_.setWMONPending(wmonPoolId, address(escrow), 1000 ether);
+        escrow.collect(wmonAsset);
+
+        // Oracle: $0.025 MON/USD (2500000, 8 dec). Fresh timestamp.
+        oracle.setUpdatedAt(block.timestamp);
+
+        // Allowance = 10_000_000 * 2000 / 10000 = 2_000_000 USDC (6 dec) = 2 USDC
+        // Allowance in 8 dec = 2_000_000 * 100 = 200_000_000 (= $2.00)
+        // Claimable WMON = 200_000_000 * 1e18 / 2500000 = 80 WMON
+        uint256 claimable = escrow.claimableWmon(wmonAsset);
+        assertEq(claimable, 80 ether);
+
+        uint256 wmonBefore = wmon.balanceOf(creator);
+        vm.prank(creator);
+        escrow.claim(wmonAsset);
+
+        uint256 received = wmon.balanceOf(creator) - wmonBefore;
+        assertEq(received, 80 ether);
+
+        // wmonClaimedUsd should be updated
+        FeeEscrow.WmonData memory w = escrow.wmonData(wmonAsset);
+        assertGt(w.wmonClaimedUsd, 0);
+    }
+
+    function test_claimWmon_staleOracle_reverts() public {
+        // Warp forward so block.timestamp - 3601 doesn't underflow
+        vm.warp(10_000);
+
+        address wmonAsset = address(0xBEE2);
+        bytes32 wmonPoolId = keccak256("wmon-pool-2");
+        escrow.registerAsset(wmonAsset, creator, launch, wmonPoolId, WMON_ADDR);
+        escrow.setAdapter(wmonAsset, address(init_));
+        escrow.authorizeRouter(router1);
+
+        vm.prank(router1);
+        escrow.recordRevenue(wmonAsset, 10_000_000);
+        init_.setWMONPending(wmonPoolId, address(escrow), 1000 ether);
+        escrow.collect(wmonAsset);
+
+        // Set oracle to stale (> 1h ago)
+        oracle.setUpdatedAt(block.timestamp - 3601);
+
+        vm.prank(creator);
+        vm.expectRevert(FeeEscrow.OracleStale.selector);
+        escrow.claim(wmonAsset);
+    }
+
+    function test_claimWmon_zeroAnswer_reverts() public {
+        address wmonAsset = address(0xBEE3);
+        bytes32 wmonPoolId = keccak256("wmon-pool-3");
+        escrow.registerAsset(wmonAsset, creator, launch, wmonPoolId, WMON_ADDR);
+        escrow.setAdapter(wmonAsset, address(init_));
+        escrow.authorizeRouter(router1);
+
+        vm.prank(router1);
+        escrow.recordRevenue(wmonAsset, 10_000_000);
+        init_.setWMONPending(wmonPoolId, address(escrow), 1000 ether);
+        escrow.collect(wmonAsset);
+
+        // Set oracle answer to 0
+        oracle.setAnswer(0);
+        oracle.setUpdatedAt(block.timestamp);
+
+        vm.prank(creator);
+        vm.expectRevert(FeeEscrow.OracleZeroPrice.selector);
+        escrow.claim(wmonAsset);
+    }
+
+    function test_claimWmon_partialClaim() public {
+        address wmonAsset = address(0xBEE4);
+        bytes32 wmonPoolId = keccak256("wmon-pool-4");
+        escrow.registerAsset(wmonAsset, creator, launch, wmonPoolId, WMON_ADDR);
+        escrow.setAdapter(wmonAsset, address(init_));
+        escrow.authorizeRouter(router1);
+
+        // Record 5 USDC revenue
+        vm.prank(router1);
+        escrow.recordRevenue(wmonAsset, 5_000_000);
+
+        // Collect 1000 WMON fees
+        init_.setWMONPending(wmonPoolId, address(escrow), 1000 ether);
+        escrow.collect(wmonAsset);
+
+        oracle.setUpdatedAt(block.timestamp);
+
+        // Claim first half (allowance from 5 USDC revenue)
+        vm.prank(creator);
+        escrow.claim(wmonAsset);
+
+        FeeEscrow.WmonData memory w1 = escrow.wmonData(wmonAsset);
+        assertGt(w1.wmonClaimed, 0);
+
+        // Record 5 more USDC revenue
+        vm.prank(router1);
+        escrow.recordRevenue(wmonAsset, 5_000_000);
+
+        // Claim the rest
+        oracle.setUpdatedAt(block.timestamp);
+        uint256 claimable2 = escrow.claimableWmon(wmonAsset);
+        assertGt(claimable2, 0);
+
+        vm.prank(creator);
+        escrow.claim(wmonAsset);
+
+        FeeEscrow.WmonData memory w2 = escrow.wmonData(wmonAsset);
+        assertGt(w2.wmonClaimed, w1.wmonClaimed);
     }
 
     // ── forfeit ───────────────────────────────────────────────────────────────
@@ -294,8 +442,8 @@ contract FeeEscrowTest is Test {
         assertEq(escrow.claimable(asset), 0);
     }
 
-    // ── forfeit with WMON pending ─────────────────────────────────────────────
-    function test_forfeit_movesWMONToBuyback() public {
+    // ── forfeit with WMON ─────────────────────────────────────────────────────
+    function test_forfeitWmon() public {
         // Register a WMON-paired asset
         address wmonAsset = address(0xBEE);
         bytes32 wmonPoolId = keccak256("wmon-pool");
@@ -305,7 +453,7 @@ contract FeeEscrowTest is Test {
         // Accrue WMON
         init_.setWMONPending(wmonPoolId, address(escrow), 500_000);
         escrow.collect(wmonAsset);
-        assertEq(escrow.tokenData(wmonAsset).numerairePending, 500_000);
+        assertEq(escrow.wmonData(wmonAsset).wmonAccrued, 500_000);
 
         vm.warp(uint256(launch) + C.FORFEIT_DELAY + 1);
         escrow.forfeit(wmonAsset);
@@ -313,7 +461,6 @@ contract FeeEscrowTest is Test {
         assertTrue(escrow.tokenData(wmonAsset).forfeited);
         // WMON should be transferred to buyback vault
         assertEq(wmon.balanceOf(address(vault)), 500_000);
-        assertEq(escrow.tokenData(wmonAsset).numerairePending, 0);
     }
 
     // ── Fuzz ──────────────────────────────────────────────────────────────────

@@ -65,11 +65,11 @@ export const BUYBACK_MIN_INTERVAL_S = 600; // 10 minutes
 // Origin: chosen so gas cost (~0.1 MON ≈ $0.03 at 100 gwei) is a small fraction
 // of the USDC value being processed.  1 USDC ≈ 33× the gas cost.
 /** Skip collect if pending USDC for that beneficiary < this (6 dec, env: MIN_COLLECT_USDC). */
-export const KEEPER_MIN_COLLECT_USDC = 1_000_000n; // 1 USDC
+export const KEEPER_MIN_COLLECT_USDC = 100_000n; // 0.1 USDC (MON gas ~$0.0003/tx → 333× cost)
 /** Skip distribute if router USDC balance < this (6 dec, env: MIN_DISTRIBUTE_USDC). */
-export const KEEPER_MIN_DISTRIBUTE_USDC = 1_000_000n; // 1 USDC
+export const KEEPER_MIN_DISTRIBUTE_USDC = 100_000n; // 0.1 USDC
 /** Skip buyback if vault USDC balance < this (6 dec, env: MIN_BUYBACK_USDC). */
-export const KEEPER_MIN_BUYBACK_USDC = 1_000_000n; // 1 USDC
+export const KEEPER_MIN_BUYBACK_USDC = 500_000n; // 0.5 USDC (two swaps for WMON pairs → more gas)
 
 // ── Keeper — collect cadence ─────────────────────────────────────────────────
 /** Min seconds between collect calls per beneficiary per asset (env: COLLECT_INTERVAL_S). */

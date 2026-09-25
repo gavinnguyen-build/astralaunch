@@ -6,15 +6,17 @@ import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
 import {AstralaunchConstants as C} from "./AstralaunchConstants.sol";
 import {IFeeAdapter} from "./interfaces/IFeeAdapter.sol";
 import {IBuybackVault, SOURCE_FORFEIT} from "./interfaces/IBuybackVault.sol";
+import {IAggregatorV3} from "./interfaces/IAggregatorV3.sol";
 
 /// @title  FeeEscrow
 /// @notice Singleton that holds the 20% escrowed creator fee share for every Astralaunch asset.
 ///         Trading fees (from Doppler) accumulate here when `collect` is called.
-///         Service revenue (from distribute) unlocks escrowed USDC at 0.2 : 1 ratio.
+///         Service revenue (from distribute) unlocks escrowed funds at 0.2 : 1 ratio.
 ///
 ///         v2: supports dual numeraire (USDC or WMON). For WMON-paired tokens,
-///         the numeraire side of trading fees is WMON, which the keeper swaps to USDC
-///         via O4. Escrow accounting is always in USDC terms.
+///         the numeraire side of trading fees is WMON. WMON escrow stays in WMON;
+///         claimable amount is valued via Chainlink MON/USD oracle at claim time.
+///         No keeper swap (O4) required.
 ///
 ///         SPEC §4.3 / §6.3.
 contract FeeEscrow is ReentrancyGuard {
@@ -25,27 +27,33 @@ contract FeeEscrow is ReentrancyGuard {
         address creator;
         uint48  launchTime;
         bool    forfeited;
-        uint128 usdcAccrued;         // USDC collected (directly for USDC pairs, or after O4 swap for WMON pairs)
+        uint128 usdcAccrued;         // USDC collected (for USDC pairs)
         uint128 usdcClaimed;         // USDC already paid to creator
-        uint128 tokenPending;        // asset-denominated fees not yet burned/swapped
-        uint128 numerairePending;    // numeraire fees pending swap to USDC (nonzero only for WMON pairs)
+        uint128 tokenPending;        // asset-denominated fees
         uint128 recordedRevenue;     // cumulative USDC recorded by router.distribute()
         bytes32 poolId;              // Uniswap v4 pool id for collectFees
-        address numeraire;           // USDC or WMON — determines fee attribution in collect()
+        address numeraire;           // USDC or WMON
+    }
+
+    /// @notice WMON-specific escrow data, stored separately to avoid stack-too-deep.
+    struct WmonData {
+        uint128 wmonAccrued;         // total WMON collected
+        uint128 wmonClaimed;         // WMON already paid to creator
+        uint128 wmonClaimedUsd;      // cumulative USD value of WMON claims (8 decimals)
     }
 
     mapping(address asset => TokenData) private _data;
+    mapping(address asset => WmonData)  private _wmon;
 
     // ── Singletons ────────────────────────────────────────────────────────────
     address         public immutable registry;
     address         public immutable buybackVault;
+    IAggregatorV3   public immutable oracle;
+    uint256         public immutable maxStaleness;
     address         constant USDC = 0x754704Bc059F8C67012fEd69BC8A327a5aafb603;
     address         constant WMON = 0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A;
 
     /// @notice Fee adapter used for collectFees calls. Set at construction.
-    ///         In v2, the registry tells us which adapter to use per-token via the
-    ///         initializer allowlist, but for fee collection the escrow needs a
-    ///         reference. We store the adapter per-asset at registration.
     mapping(address asset => IFeeAdapter) private _adapters;
 
     // Addresses authorised to call recordRevenue (set of routers, maintained via registry)
@@ -61,19 +69,23 @@ contract FeeEscrow is ReentrancyGuard {
     error AlreadyForfeited();
     error NothingToClaim();
     error CollectFeesFailed();
+    error OracleZeroPrice();
+    error OracleStale();
 
     // ── Events ────────────────────────────────────────────────────────────────
     event AssetRegistered(address indexed asset, address indexed creator, uint48 launchTime, address numeraire);
-    event FeeCollected(address indexed asset, uint256 usdcDelta, uint256 tokenDelta, uint256 numeraireDelta);
+    event FeeCollected(address indexed asset, uint256 usdcDelta, uint256 tokenDelta, uint256 wmonDelta);
     event RevenueRecorded(address indexed asset, uint256 amt, uint256 newTotal);
     event Claimed(address indexed asset, address indexed creator, uint256 amt);
-    event Forfeited(address indexed asset, uint256 usdcMoved, uint256 tokenMoved, uint256 numeraireMoved);
-    event NumeraireSwapped(address indexed asset, uint256 numeraireIn, uint256 usdcOut);
+    event ClaimedWmon(address indexed asset, address indexed creator, uint256 wmonAmt, uint256 usdValue);
+    event Forfeited(address indexed asset, uint256 usdcMoved, uint256 tokenMoved, uint256 wmonMoved);
 
     // ── Constructor ───────────────────────────────────────────────────────────
-    constructor(address _registry, address _buybackVault) {
-        registry     = _registry;
-        buybackVault = _buybackVault;
+    constructor(address _registry, address _buybackVault, address _oracle, uint256 _maxStaleness) {
+        registry      = _registry;
+        buybackVault  = _buybackVault;
+        oracle        = IAggregatorV3(_oracle);
+        maxStaleness  = _maxStaleness;
     }
 
     // ── Registry callbacks ────────────────────────────────────────────────────
@@ -94,7 +106,6 @@ contract FeeEscrow is ReentrancyGuard {
             usdcAccrued:      0,
             usdcClaimed:      0,
             tokenPending:     0,
-            numerairePending: 0,
             recordedRevenue:  0,
             poolId:           poolId,
             numeraire:        numeraire
@@ -116,9 +127,6 @@ contract FeeEscrow is ReentrancyGuard {
 
     // ── Collect trading fees ──────────────────────────────────────────────────
     /// @notice Pull the escrow's share of Doppler trading fees for `asset`.
-    ///         Anyone may trigger; the escrow calls collectFees as the beneficiary.
-    ///         For USDC-paired tokens: receives USDC + asset tokens.
-    ///         For WMON-paired tokens: receives WMON + asset tokens.
     function collect(address asset) external nonReentrant {
         TokenData storage d = _data[asset];
         if (d.launchTime == 0) revert AssetNotRegistered();
@@ -135,54 +143,31 @@ contract FeeEscrow is ReentrancyGuard {
         uint256 tokenDelta     = asset.balanceOf(address(this)) - tokenBefore;
 
         uint256 usdcDelta;
+        uint256 wmonDelta;
 
         if (d.forfeited) {
-            // Post-forfeit: route any new accruals directly to BuybackVault
             if (num == USDC && numeraireDelta > 0) {
                 USDC.safeTransfer(buybackVault, numeraireDelta);
                 IBuybackVault(buybackVault).creditUSDC(asset, numeraireDelta, SOURCE_FORFEIT);
             }
             if (num == WMON && numeraireDelta > 0) {
-                // WMON post-forfeit: send to buyback vault as pending
                 WMON.safeTransfer(buybackVault, numeraireDelta);
             }
         } else {
             if (num == USDC) {
-                // USDC pair: numeraire fees are USDC, credit directly
                 usdcDelta = numeraireDelta;
                 if (usdcDelta > 0) d.usdcAccrued += uint128(usdcDelta);
             } else {
-                // WMON pair: numeraire fees are WMON, park as pending for keeper O4 swap
-                if (numeraireDelta > 0) d.numerairePending += uint128(numeraireDelta);
+                wmonDelta = numeraireDelta;
+                if (wmonDelta > 0) _wmon[asset].wmonAccrued += uint128(wmonDelta);
             }
             if (tokenDelta > 0) d.tokenPending += uint128(tokenDelta);
         }
 
-        emit FeeCollected(asset, usdcDelta, tokenDelta, num == WMON ? numeraireDelta : 0);
-    }
-
-    // ── O4: Credit USDC from keeper swap of WMON numeraire fees ──────────────
-    /// @notice Called by the keeper after swapping WMON → USDC for a WMON-paired asset.
-    ///         The keeper transfers USDC to this contract then calls this to credit escrow.
-    /// @param asset     The asset whose WMON fees were swapped.
-    /// @param usdcAmt   The USDC received from the swap.
-    /// @param wmonUsed  The WMON consumed in the swap (deducted from numerairePending).
-    function creditNumeraireSwap(address asset, uint128 usdcAmt, uint128 wmonUsed) external {
-        if (!authorizedRouters[msg.sender] && msg.sender != registry) revert NotRouter();
-        TokenData storage d = _data[asset];
-        if (d.launchTime == 0) revert AssetNotRegistered();
-        require(d.numeraire == WMON, "not WMON pair");
-        require(wmonUsed <= d.numerairePending, "exceeds pending");
-
-        d.numerairePending -= wmonUsed;
-        d.usdcAccrued      += usdcAmt;
-
-        emit NumeraireSwapped(asset, wmonUsed, usdcAmt);
+        emit FeeCollected(asset, usdcDelta, tokenDelta, wmonDelta);
     }
 
     // ── Revenue recording ─────────────────────────────────────────────────────
-    /// @notice Called by the asset's RevenueRouter after distribute().
-    ///         Records full distribution amount so escrow unlock (0.2 × revenue) can be computed.
     function recordRevenue(address asset, uint256 amt) external {
         if (!authorizedRouters[msg.sender]) revert NotRouter();
         TokenData storage d = _data[asset];
@@ -192,29 +177,38 @@ contract FeeEscrow is ReentrancyGuard {
     }
 
     // ── Claim ─────────────────────────────────────────────────────────────────
-    /// @notice Returns how many USDC the creator may claim right now.
-    ///         = min(recordedRevenue × ESCROW_UNLOCK_BPS / 10000, usdcAccrued) − usdcClaimed
     function claimable(address asset) external view returns (uint256) {
         return _claimable(_data[asset]);
     }
 
-    /// @notice Creator claims available escrowed USDC.
+    function claimableWmon(address asset) external view returns (uint256) {
+        (uint256 wmonAmt,) = _computeClaimableWmon(asset);
+        return wmonAmt;
+    }
+
     function claim(address asset) external nonReentrant {
         TokenData storage d = _data[asset];
         if (d.launchTime == 0) revert AssetNotRegistered();
         if (msg.sender != d.creator) revert NotCreator();
 
-        uint256 amt = _claimable(d);
-        if (amt == 0) revert NothingToClaim();
-
-        d.usdcClaimed += uint128(amt);
-        USDC.safeTransfer(d.creator, amt);
-
-        emit Claimed(asset, d.creator, amt);
+        if (d.numeraire == USDC) {
+            uint256 amt = _claimable(d);
+            if (amt == 0) revert NothingToClaim();
+            d.usdcClaimed += uint128(amt);
+            USDC.safeTransfer(d.creator, amt);
+            emit Claimed(asset, d.creator, amt);
+        } else {
+            (uint256 wmonAmt, uint256 usdValue) = _computeClaimableWmon(asset);
+            if (wmonAmt == 0) revert NothingToClaim();
+            WmonData storage w = _wmon[asset];
+            w.wmonClaimed    += uint128(wmonAmt);
+            w.wmonClaimedUsd += uint128(usdValue);
+            WMON.safeTransfer(d.creator, wmonAmt);
+            emit ClaimedWmon(asset, d.creator, wmonAmt, usdValue);
+        }
     }
 
     // ── Forfeit ───────────────────────────────────────────────────────────────
-    /// @notice After launchTime + 365 days, anyone may move unclaimed escrow to BuybackVault.
     function forfeit(address asset) external nonReentrant {
         TokenData storage d = _data[asset];
         if (d.launchTime == 0) revert AssetNotRegistered();
@@ -223,12 +217,14 @@ contract FeeEscrow is ReentrancyGuard {
 
         d.forfeited = true;
 
-        uint256 usdcRemaining      = uint256(d.usdcAccrued) - uint256(d.usdcClaimed);
-        uint256 tokenRemaining     = uint256(d.tokenPending);
-        uint256 numeraireRemaining = uint256(d.numerairePending);
+        uint256 usdcRemaining  = uint256(d.usdcAccrued) - uint256(d.usdcClaimed);
+        uint256 tokenRemaining = uint256(d.tokenPending);
+
+        WmonData storage w = _wmon[asset];
+        uint256 wmonRemaining = uint256(w.wmonAccrued) - uint256(w.wmonClaimed);
 
         if (usdcRemaining > 0) {
-            d.usdcAccrued = d.usdcClaimed; // zero out available balance
+            d.usdcAccrued = d.usdcClaimed;
             USDC.safeTransfer(buybackVault, usdcRemaining);
             IBuybackVault(buybackVault).creditUSDC(asset, usdcRemaining, SOURCE_FORFEIT);
         }
@@ -236,18 +232,21 @@ contract FeeEscrow is ReentrancyGuard {
             d.tokenPending = 0;
             asset.safeTransfer(buybackVault, tokenRemaining);
         }
-        if (numeraireRemaining > 0) {
-            d.numerairePending = 0;
-            // Send WMON to buyback vault
-            WMON.safeTransfer(buybackVault, numeraireRemaining);
+        if (wmonRemaining > 0) {
+            w.wmonAccrued = w.wmonClaimed;
+            WMON.safeTransfer(buybackVault, wmonRemaining);
         }
 
-        emit Forfeited(asset, usdcRemaining, tokenRemaining, numeraireRemaining);
+        emit Forfeited(asset, usdcRemaining, tokenRemaining, wmonRemaining);
     }
 
     // ── View ──────────────────────────────────────────────────────────────────
     function tokenData(address asset) external view returns (TokenData memory) {
         return _data[asset];
+    }
+
+    function wmonData(address asset) external view returns (WmonData memory) {
+        return _wmon[asset];
     }
 
     // ── Internal ──────────────────────────────────────────────────────────────
@@ -258,5 +257,29 @@ contract FeeEscrow is ReentrancyGuard {
         uint256 already    = uint256(d.usdcClaimed);
         if (maxPayable <= already) return 0;
         return maxPayable - already;
+    }
+
+    function _computeClaimableWmon(address asset) internal view returns (uint256 wmonAmt, uint256 usdValue) {
+        TokenData storage d = _data[asset];
+        WmonData storage w  = _wmon[asset];
+
+        if (d.forfeited || d.launchTime == 0 || d.numeraire != WMON) return (0, 0);
+
+        uint256 allowanceUsd8 = (uint256(d.recordedRevenue) * C.ESCROW_UNLOCK_BPS * 100) / 10_000;
+
+        uint256 remainingUsd8 = allowanceUsd8 > uint256(w.wmonClaimedUsd)
+            ? allowanceUsd8 - uint256(w.wmonClaimedUsd)
+            : 0;
+        if (remainingUsd8 == 0) return (0, 0);
+
+        (, int256 answer,, uint256 updatedAt,) = oracle.latestRoundData();
+        if (answer <= 0) revert OracleZeroPrice();
+        if (block.timestamp - updatedAt > maxStaleness) revert OracleStale();
+        uint256 monPriceUsd8 = uint256(answer);
+
+        uint256 maxWmon = (remainingUsd8 * 1e18) / monPriceUsd8;
+        uint256 availableWmon = uint256(w.wmonAccrued) - uint256(w.wmonClaimed);
+        wmonAmt = maxWmon < availableWmon ? maxWmon : availableWmon;
+        usdValue = (wmonAmt * monPriceUsd8) / 1e18;
     }
 }

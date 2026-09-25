@@ -23,47 +23,58 @@
 
 ### 2. Uniswap v4 USDC/MON Pool on Monad
 
-**Finding:** No known Uniswap v4 USDC/WMON pool with real liquidity was found on Monad.
+**Finding (updated 2026-09-25):** Deep native MON/USDC liquidity exists on Uniswap v4 on Monad.
 
-- Monad's Uniswap v4 deployment (PoolManager: `0x188d586Ddcf52439676Ca21A244753fA19F9Ea8e`) has pools created by Doppler launches, but no general USDC/WMON trading pair was verified.
-- Other DEXes (Kuru, Bean, etc.) may have USDC/MON liquidity but are not Uniswap v4 and cannot be swapped via `PoolManager.unlock()`.
+**GeckoTerminal top USDC/MON pools on Monad (chain 143):**
 
-**Implication for BuybackVault (per autonomous mode instructions):**
-- For MON-paired tokens, the BuybackVault cannot do a two-hop swap (USDC → WMON → token) because no USDC/WMON v4 pool exists.
-- **Decision:** MON-paired token buybacks accumulate USDC in the vault and skip the swap. Documented as a TODO for when a USDC/WMON v4 pool becomes available. The vault tracks `pendingBuybackUSDC` per MON-paired asset.
-- For USDC-paired tokens, buyback works exactly as before (single-hop USDC → token via the token's own pool).
+| DEX | Version | Pool | Fee | TVL | 24h Vol |
+|---|---|---|---|---|---|
+| Uniswap | v4 | Native MON/USDC (PoolId `0x18a9fc...`, currency0=address(0)) | 500 (0.05%) | ~$1.1M | ~$2.2M |
+| Uniswap | v3 | WMON/USDC (`0x2fb1252...`) | 3000 (0.3%) | ~$1.3M | ~$200K |
+| PancakeSwap | v3 | USDC/WMON | 500 (0.05%) | ~$164K | ~$30K |
+| Balancer | v3 | MON/USDC | n/a | ~$25K | low |
+
+**On-chain verification (cast call against mainnet RPC):**
+
+1. **Uniswap v4 native MON/USDC (fee=500, ts=10):**
+   - PoolKey: `(address(0), 0x754704...USDC, 500, 10, address(0))`
+   - sqrtPriceX96: `12586971096737792889464`
+   - liquidity: `21584406959668679180`
+   - **Selected for two-hop buyback leg 1.**
+
+2. **Uniswap v3 WMON/USDC (fee=3000):**
+   - Pool: `0x2fb12527CF9Ff41dF82de41528F4F43904101d35`
+   - USDC balance: ~$494K, WMON balance: ~31K WMON
+   - liquidity: `27133035452901267460`
+
+3. **Chainlink MON/USD oracle:**
+   - Address: `0xBcD78f76005B7515837af6b50c7C52BCf73822fb`
+   - `latestRoundData()`: answer=2523372 (8 dec = $0.02523/MON)
+   - `decimals()`: 8
+   - `description()`: "MON / USD"
+
+**Decision (updated):** Two-hop buyback implemented for WMON-paired tokens: USDC → native MON (via v4 pool fee=500 ts=10) → wrap → WMON → token → burn. FeeEscrow uses Chainlink oracle for WMON claim valuation.
 
 ### 3. Dev Buy on Monad
 
-**Finding:** Doppler Bundler is deployed on Monad mainnet.
+**Finding (updated):** Dev buy is **not available** with V4ScheduledMulticurveInitializer. The Doppler SDK rejects dev buys with this initializer:
+```
+Error: Dev buys require a DopplerHookInitializer or Rehype initializer; 'scheduled' is not supported
+```
 
-- **Bundler address:** `0xf45588E8e0B1df9dB9ae7E20eCE5726AE931357c`
-  Source: `@whetstone-research/doppler-sdk` GENERATED_DOPPLER_DEPLOYMENTS["143"].Bundler
-
-- **SDK support:** The `CreateMulticurveParams` interface includes an optional `devBuy` field:
-  ```typescript
-  interface MulticurveDevBuyConfig {
-    exactAmountIn: bigint;
-    recipient: Address;
-    vesting: MulticurveDevBuyVestingConfig;
-  }
-  ```
-  The `devBuy` field is available on `createMulticurve()` which is the same method used for scheduled multicurve launches. The SDK resolves the Bundler address per chain and handles the atomic buy.
-
-- **Registry compatibility:** The Registry must accept tokens launched with dev buy. Dev buy does not change the Airlock config (same beneficiaries, same pool, same vesting). The only difference is the Bundler holds some tokens in vesting for the dev buyer. The Registry's checks (supply, pool config, beneficiaries, vesting) remain valid because:
-  - `totalSupply` is unchanged (dev buy purchases from the pool, doesn't mint extra)
-  - Pool config and beneficiaries are identical
-  - Creator vesting is separate from dev buy vesting
-  - `totalAllocatedOf(creator)` still returns the creator's vesting amount (Bundler vesting is separate)
-
-- **Decision:** Registry v2 does NOT need special handling for dev buy. It works transparently.
+**Decision:** Dev buy removed from the codebase. Returns with Rehype/DopplerHook initializer (via the initializer allowlist). Bundler address (`0xf45588E8e0B1df9dB9ae7E20eCE5726AE931357c`) removed from `addresses.ts`, launch UI, and test scripts.
 
 ### 4. MON/USD Price Source
 
-**Finding:** No on-chain Monad oracle for MON/USD was found (no Chainlink, no Pyth verified).
+**Finding (updated 2026-09-25):** Chainlink MON/USD oracle verified on Monad mainnet.
 
-- **Decision:** Use CoinGecko API or similar off-chain price feed for the launch UI. The `numerairePrice` parameter in the SDK is only used for tick range computation (off-chain), not enforced on-chain. The Registry does NOT check market cap (per v2 decision #2).
-- Server can cache MON/USD price and expose it via `/api/price/mon`.
+- **Oracle address:** `0xBcD78f76005B7515837af6b50c7C52BCf73822fb`
+- **Decimals:** 8
+- **Description:** "MON / USD"
+- **Latest answer:** 2523372 (= $0.02523/MON at time of verification)
+- **Staleness:** typically < 1 minute
+
+**Decision:** FeeEscrow uses the on-chain Chainlink oracle for WMON escrow claim valuation (max staleness 1 hour). Launch UI still uses CoinGecko API for the `numerairePrice` SDK parameter (tick range computation only, not enforced on-chain).
 
 ---
 
@@ -73,10 +84,10 @@
 |----------|--------|
 | WMON address | `0x3bd359c1119da7da1d913d1c4d2b7c461115433a` |
 | Numeraire for MON pairing | WMON (ERC-20, 18 decimals) |
-| USDC/WMON v4 pool | **Not found** — MON buybacks accumulate USDC, skip swap |
-| Bundler address | `0xf45588E8e0B1df9dB9ae7E20eCE5726AE931357c` |
-| Dev buy + scheduled multicurve | Compatible — SDK supports it; Registry needs no changes for dev buy |
-| MON/USD price | Off-chain (CoinGecko API) — no on-chain oracle on Monad |
+| Native MON/USDC v4 pool | fee=500, ts=10, ~$1.1M TVL — used for two-hop buyback |
+| Chainlink MON/USD oracle | `0xBcD78f76005B7515837af6b50c7C52BCf73822fb`, 8 dec, max 1h staleness |
+| Dev buy + scheduled multicurve | **Not available** — requires DopplerHookInitializer or Rehype |
+| MON/USD price (launch UI) | Off-chain (CoinGecko API) — on-chain oracle used only by FeeEscrow |
 
 ---
 
@@ -225,13 +236,9 @@ DevBuyFork.t.sol:     0 passed, 0 failed, 5 skipped
 
 The `excludedFromBalanceLimit` array passed in `tokenConfig()` at launch time is correctly applied on-chain. Note: `address(0xDEAD)` (the NOGOV address) is auto-excluded by Doppler, independent of launch config.
 
-**Task 3 — Dev-Buy Vesting: NOT APPLICABLE**
+**Task 3 — Dev-Buy: REMOVED**
 
-The Doppler SDK rejects dev buys with the V4ScheduledMulticurveInitializer:
-```
-Error: Dev buys require a DopplerHookInitializer or Rehype initializer; 'scheduled' is not supported
-```
-Since Monad only has the V4ScheduledMulticurveInitializer (CLAUDE.md rule 11), **dev buys are not available in our setup**. The Registry's `vestedTotalAmount` / `totalAllocatedOf` checks are unaffected because dev buys cannot happen. DevBuyFork tests gracefully skip when state files are absent.
+Dev buys require DopplerHookInitializer or Rehype (not V4ScheduledMulticurveInitializer). All dev buy code removed from codebase: `launch-devbuy.ts`, `DevBuyFork.t.sol`, BUNDLER address, Launch.tsx dev buy fields. Returns with Rehype initializer via the allowlist.
 
 **WMON-Paired Token: CONFIRMED WORKING**
 
@@ -246,43 +253,47 @@ Since Monad only has the V4ScheduledMulticurveInitializer (CLAUDE.md rule 11), *
 - Buyback burns 953,017,632,543,025,721,665,867 tokens for 10 USDC
 - Wash constraint holds: 1 USDC self-pay → 0.6 provider + 0.2 escrow = 0.8 received, net loss 0.2
 
-### Task 5: USDC/WMON Liquidity Measurement (Executed)
+### Task 5: USDC/MON Liquidity Measurement (Redone 2026-09-25)
 
-**Monad mainnet probes (2025-09-25):**
+**Methodology:** GeckoTerminal API + on-chain verification via `cast call` against Monad mainnet RPC.
 
-| Source | Pool | sqrtPriceX96 | Liquidity | Status |
-|--------|------|-------------|-----------|--------|
-| Uniswap v4 (hooks=0) | WMON/USDC fee=3000 ts=60 | 4295128740 (MIN) | 0 | Initialized, empty |
-| Uniswap v4 (hooks=0) | All other fee/ts combos | 0 | 0 | Not initialized |
-| Uniswap v4 (Doppler hook) | All fee/ts combos | 0 | 0 | Not initialized |
-| Uniswap v3 (factory 0x1F98...) | fee=100/500/3000/10000 | — | — | Pools do not exist |
-| Ambient CrocSwapDex | — | — | — | No contract deployed |
-| Kuru Router | — | — | — | No contract at guessed address |
-| Bean Router | — | — | — | No contract at guessed address |
-| 1inch Aggregator | — | — | — | No contract deployed |
+**Native MON/USDC pools (Uniswap v4, currency0=address(0)):**
 
-**PoolManager token balances (mainnet):**
-- USDC: 12,339,037,315,394 (~12.3M USDC) — from Doppler token pools, NOT USDC/WMON pair
-- WMON: 954,686,912,276,570,982,291,191 (~954K WMON) — from Doppler WMON-paired pools
+| Fee | Tick Spacing | sqrtPriceX96 | Liquidity | TVL | Status |
+|-----|-------------|-------------|-----------|-----|--------|
+| 500 | 10 | 12586971096737792889464 | 21584406959668679180 | ~$1.1M | **Deep liquidity — selected for two-hop** |
 
-**USDC token stats:** totalSupply = 220,017,515,313,728 (~220M USDC on Monad)
-**WMON token stats:** totalSupply = 344,657,469,833,236,635,266,521,277 (~344M WMON)
+**WMON/USDC pools (Uniswap v3):**
 
-**Conclusion:** There is NO usable USDC/WMON liquidity on Monad mainnet via Uniswap v4 or v3. The one initialized pool (fee=3000 ts=60) has zero liquidity and MIN_SQRT_RATIO price. WMON-paired token buybacks remain blocked until a USDC/WMON pool with real liquidity appears. The PoolManager's large USDC/WMON balances come from individual Doppler token launch pools, not a general trading pair.
+| Fee | Pool | Liquidity | TVL |
+|-----|------|-----------|-----|
+| 3000 | `0x2fb12527CF9Ff41dF82de41528F4F43904101d35` | 27133035452901267460 | ~$1.3M |
+
+**Chainlink MON/USD oracle:**
+
+| Field | Value |
+|-------|-------|
+| Address | `0xBcD78f76005B7515837af6b50c7C52BCf73822fb` |
+| answer | 2523372 (= $0.02523/MON) |
+| decimals | 8 |
+| description | "MON / USD" |
+| updatedAt | 1790311169 (< 1 min staleness) |
+
+**Conclusion:** The native MON/USDC v4 pool (fee=500, ts=10, hooks=0) has ~$1.1M TVL and ~$2.2M daily volume. This is the deepest on-chain liquidity path and is used for leg 1 of the two-hop buyback. The Chainlink oracle provides reliable MON/USD pricing for escrow valuation.
 
 ---
 
 ## Open Questions
 
-1. **WMON→USDC swap for O4**: No Uniswap v4 USDC/WMON pool exists on Monad (confirmed by mainnet probe). The keeper O4 swap job for WMON-paired token escrow fees is a TODO stub. When a pool becomes available, implement the two-hop swap path (WMON → USDC via v4, or via an external DEX integration).
+1. **WMON→USDC swap for escrow: CLOSED.** FeeEscrow now holds WMON escrow directly (no swap needed). Creator claims WMON valued via Chainlink MON/USD oracle at claim time. O4 swap job removed from keeper.
 
-2. **MON-paired token buyback**: BuybackVault accumulates USDC for MON-paired tokens but cannot execute the swap (no v4 path: USDC → WMON → token). Confirmed: zero USDC/WMON liquidity on mainnet. When a pool with real liquidity appears, implement two-hop buyback in `unlockCallback`.
+2. **MON-paired token buyback: CLOSED.** Two-hop buyback implemented: USDC → native MON (v4 pool fee=500 ts=10) → wrap → WMON → token → burn. Both legs inside one `unlock()` call.
 
-3. **MON/USD price oracle**: Using CoinGecko API with 5-min cache. No on-chain oracle verified for Monad. If Pyth or Chainlink launches on Monad, consider switching to on-chain price for more reliability.
+3. **MON/USD price oracle: CLOSED.** Chainlink MON/USD oracle verified on Monad mainnet (`0xBcD78f76005B7515837af6b50c7C52BCf73822fb`, 8 decimals, max 1h staleness). Used by FeeEscrow for WMON claim valuation. Launch UI still uses CoinGecko for SDK `numerairePrice`.
 
 4. **Balance-limit exclusion: CLOSED.** `isExcludedFromBalanceLimit()` confirmed working on real deployed tokens. Escrow, vault, and PFR are all correctly excluded. Launch scripts pass `excludedFromBalanceLimit: [escrow, vault, pfr]` to tokenConfig().
 
-5. **Dev buys: CLOSED — NOT AVAILABLE.** The Doppler SDK requires DopplerHookInitializer or Rehype for dev buys. The V4ScheduledMulticurveInitializer we use on Monad does not support dev buys. The Registry's vesting checks are unaffected.
+5. **Dev buys: CLOSED — REMOVED.** The Doppler SDK requires DopplerHookInitializer or Rehype for dev buys. The V4ScheduledMulticurveInitializer we use on Monad does not support dev buys. Dev buy code removed from codebase; returns with Rehype.
 
 ---
 

@@ -31,11 +31,12 @@ contract MockWMONVault {
         balanceOf[to]         += amt;
         return true;
     }
+    function deposit() external payable {
+        balanceOf[msg.sender] += msg.value;
+    }
 }
 
 /// @dev Implements IFeeAdapter for test use.
-///      doCollect simulates fee collection. collectFeesCall returns the calldata
-///      so the beneficiary calls doCollect directly (preserving msg.sender).
 contract MockInitializerVault is IFeeAdapter {
     MockUSDCVault usdc;
     mapping(bytes32 => mapping(address => uint256)) public usdcPending;
@@ -75,17 +76,19 @@ contract MockInitializerVault is IFeeAdapter {
 }
 
 /// @dev PoolManager stub: swap just returns tokens to vault without touching real v4.
+///      Supports both single-hop and two-hop (via isWmonPair flag in encoded data).
 contract MockPoolManager {
     MockAssetToken asset_;
     uint256 public swapUsdcIn;
     uint256 public swapTokenOut;
-    address public vaultAddr;
+    address payable public vaultAddr;
 
     constructor(address _asset) { asset_ = MockAssetToken(_asset); }
 
     function unlock(bytes calldata data) external returns (bytes memory) {
-        vaultAddr = msg.sender;
-        (address assetAddr, uint256 usdcIn, uint256 minOut) = abi.decode(data, (address,uint256,uint256));
+        vaultAddr = payable(msg.sender);
+        (address assetAddr, uint256 usdcIn, uint256 minOut, bool isWmonPair) =
+            abi.decode(data, (address, uint256, uint256, bool));
         swapUsdcIn  = usdcIn;
         // Simulate receiving tokens
         uint256 tokensOut = usdcIn * 100; // 100:1 rate for testing
@@ -93,7 +96,7 @@ contract MockPoolManager {
         swapTokenOut = tokensOut;
 
         // Call unlockCallback on vault -- passes back decoded data
-        bytes memory cbData = abi.encode(assetAddr, usdcIn, minOut);
+        bytes memory cbData = abi.encode(assetAddr, usdcIn, minOut, isWmonPair);
         bytes memory ret = BuybackVaultHarness(vaultAddr).unlockCallback(cbData);
         return ret;
     }
@@ -112,7 +115,6 @@ contract MockPoolManager {
 
 /// @dev Thin wrapper so tests can call unlockCallback (which is external).
 contract BuybackVaultHarness is BuybackVault {
-    // v2 constructor: (registry, poolManager) - no initializer
     constructor(address r, address pm) BuybackVault(r, pm) {}
 }
 
@@ -120,7 +122,6 @@ contract MockAssetToken {
     mapping(address => uint256) public balanceOf;
     uint256 public burnedTotal;
 
-    // v2: isExcludedFromBalanceLimit instead of balanceLimitEnd
     mapping(address => bool) public isExcludedFromBalanceLimit;
 
     function mint(address to, uint256 amt) external { balanceOf[to] += amt; }
@@ -167,14 +168,13 @@ contract BuybackVaultTest is Test {
         vm.etch(USDC_ADDR, address(tmpUsdc).code);
         usdc = MockUSDCVault(USDC_ADDR);
 
-        // Etch WMON at canonical address
+        // Etch WMON at canonical address (with deposit() support)
         MockWMONVault tmpWmon = new MockWMONVault();
         vm.etch(WMON_ADDR, address(tmpWmon).code);
 
         init_ = new MockInitializerVault(address(usdc));
         pm    = new MockPoolManager(address(token));
 
-        // v2 constructor: (registry, poolManager) - no initializer
         vault = new BuybackVaultHarness(registry, address(pm));
         asset = address(token);
 
@@ -248,16 +248,14 @@ contract BuybackVaultTest is Test {
     }
 
     // ── execute (USDC pair) ──────────────────────────────────────────────────
-    // v2: CapWindowActive guard removed (Decision #6)
-    // balanceLimitEnd check is no longer done; vault is excluded from balance limit
 
     function test_execute_revertsIfCooldown() public {
         usdc.mint(address(vault), 10e6);
         vm.prank(router1);
         vault.creditUSDC(asset, 10e6, SOURCE_REVENUE);
-        vault.execute(asset, 1e6, 0);
+        vault.execute(asset, 1e6, 0, 0);
         vm.expectRevert(BuybackVault.CooldownActive.selector);
-        vault.execute(asset, 1e6, 0);
+        vault.execute(asset, 1e6, 0, 0);
     }
 
     function test_execute_revertsIfExceedsMax() public {
@@ -266,12 +264,12 @@ contract BuybackVaultTest is Test {
         vm.prank(router1);
         vault.creditUSDC(asset, bigAmt, SOURCE_REVENUE);
         vm.expectRevert(BuybackVault.ExceedsMaxPerCall.selector);
-        vault.execute(asset, bigAmt, 0);
+        vault.execute(asset, bigAmt, 0, 0);
     }
 
     function test_execute_revertsIfInsufficient() public {
         vm.expectRevert(BuybackVault.InsufficientBalance.selector);
-        vault.execute(asset, 1e6, 0);
+        vault.execute(asset, 1e6, 0, 0);
     }
 
     function test_execute_reducesBalance() public {
@@ -279,36 +277,15 @@ contract BuybackVaultTest is Test {
         usdc.mint(address(vault), amt);
         vm.prank(router1);
         vault.creditUSDC(asset, amt, SOURCE_REVENUE);
-        vault.execute(asset, amt, 0);
+        vault.execute(asset, amt, 0, 0);
         assertEq(vault.assetData(asset).balanceUSDC, 0);
     }
 
-    // ── execute: BuybackNotAvailable for WMON-paired tokens ──────────────────
-    function test_execute_revertsForWMONPair() public {
-        // Register a WMON-paired asset
-        MockAssetToken wmonToken = new MockAssetToken();
-        address wmonAsset = address(wmonToken);
-
-        PoolKey memory wmonPoolKey = PoolKey({
-            currency0:   WMON_ADDR < wmonAsset ? WMON_ADDR : wmonAsset,
-            currency1:   WMON_ADDR < wmonAsset ? wmonAsset : WMON_ADDR,
-            fee:         20_000,
-            tickSpacing: 200,
-            hooks:       address(0)
-        });
-        bytes32 wmonPoolId = keccak256("wmon-pool");
-
-        vault.registerAsset(wmonAsset, wmonPoolKey, wmonPoolId, WMON_ADDR);
-        vault.authorize(router1);
-
-        // Credit some USDC
-        usdc.mint(address(vault), 1e6);
-        vm.prank(router1);
-        vault.creditUSDC(wmonAsset, 1e6, SOURCE_REVENUE);
-
-        // Should revert with BuybackNotAvailable
-        vm.expectRevert(BuybackVault.BuybackNotAvailable.selector);
-        vault.execute(wmonAsset, 1e6, 0);
+    // ── receive() ────────────────────────────────────────────────────────────
+    function test_receive_acceptsNativeMON() public {
+        vm.deal(address(this), 1 ether);
+        (bool ok,) = address(vault).call{value: 1 ether}("");
+        assertTrue(ok);
     }
 
     // ── burnTokens ────────────────────────────────────────────────────────────
@@ -344,7 +321,7 @@ contract BuybackVaultTest is Test {
         vm.prank(router1);
         vault.creditUSDC(asset, amt, SOURCE_REVENUE);
         uint256 before = vault.assetData(asset).balanceUSDC;
-        vault.execute(asset, amt, 0);
+        vault.execute(asset, amt, 0, 0);
         assertLe(vault.assetData(asset).balanceUSDC, before);
     }
 }

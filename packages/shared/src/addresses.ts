@@ -35,9 +35,6 @@ export const USDC = '0x754704Bc059F8C67012fEd69BC8A327a5aafb603';
 /** WMON (Wrapped MON) on Monad mainnet: from Doppler SDK weth field for chain 143 */
 export const WMON = '0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A';
 
-// ── Doppler Bundler (dev buy support) ────────────────────────────────────────
-/** Bundler contract for atomic dev buy during launch: SDK GENERATED_DOPPLER_DEPLOYMENTS["143"].Bundler */
-export const BUNDLER = '0xf45588E8e0B1df9dB9ae7E20eCE5726AE931357c';
 
 /** Supported numeraire addresses for Astralaunch launches. */
 export const SUPPORTED_NUMERAIRES = [USDC, WMON] as const;

@@ -7,7 +7,6 @@
  *   2. buyback   — swap accumulated USDC → token and burn
  *   3. collect   — pull Doppler trading fees (escrow + vault + PFR)
  *   4. forfeit   — move unclaimed escrow to vault after 365 days
- *   5. swapWmonToUsdc — (O4 stub) swap WMON numeraire fees to USDC for FeeEscrow
  *
  * Collects are gated by:
  *   - Pending fee pre-check (simulateContract on initializer.collectFees)
@@ -17,8 +16,7 @@
  * Dual-numeraire (v2):
  *   - For USDC-paired tokens: collect returns USDC + asset tokens (unchanged behavior)
  *   - For WMON-paired tokens: collect returns WMON + asset tokens
- *   - Buyback: skipped for WMON-paired tokens (vault reverts BuybackNotAvailable)
- *   - O4 swap: stub job to swap FeeEscrow.numerairePending WMON → USDC
+ *   - Buyback: two-hop for WMON-paired tokens (USDC → native MON → wrap → WMON → token)
  */
 import { formatUnits, parseUnits, type Address } from 'viem';
 import {
@@ -67,7 +65,6 @@ const escrowAbi = [
       { name: 'usdcClaimed',     type: 'uint128' },
       { name: 'tokenPending',    type: 'uint128' },
       { name: 'recordedRevenue', type: 'uint128' },
-      { name: 'numerairePending', type: 'uint128' },
       { name: 'poolId',          type: 'bytes32' },
       { name: 'numeraire',       type: 'address' },
     ]}],
@@ -77,26 +74,29 @@ const escrowAbi = [
 const vaultAbi = [
   { type: 'function', name: 'collect',   stateMutability: 'nonpayable', inputs: [{ name: 'asset', type: 'address' }], outputs: [] },
   { type: 'function', name: 'execute',   stateMutability: 'nonpayable',
-    inputs: [{ name: 'asset', type: 'address' }, { name: 'usdcIn', type: 'uint256' }, { name: 'minTokenOut', type: 'uint256' }],
+    inputs: [{ name: 'asset', type: 'address' }, { name: 'usdcIn', type: 'uint256' }, { name: 'minMonOut', type: 'uint256' }, { name: 'minTokenOut', type: 'uint256' }],
     outputs: [] },
   { type: 'function', name: 'assetData', stateMutability: 'view',
     inputs: [{ name: 'asset', type: 'address' }],
     outputs: [{ type: 'tuple', components: [
-      { name: 'poolKey',            type: 'tuple', components: [
-        { name: 'currency0',  type: 'address' },
-        { name: 'currency1',  type: 'address' },
-        { name: 'fee',        type: 'uint24'  },
-        { name: 'tickSpacing', type: 'int24'  },
-        { name: 'hooks',      type: 'address' },
-      ]},
       { name: 'poolId',             type: 'bytes32' },
       { name: 'registered',         type: 'bool'    },
+      { name: 'numeraire',          type: 'address' },
       { name: 'balanceUSDC',        type: 'uint128' },
       { name: 'buybackFromRevenue', type: 'uint128' },
       { name: 'buybackFromTrading', type: 'uint128' },
       { name: 'tokenBalance',       type: 'uint128' },
       { name: 'lastExecuteTime',    type: 'uint64'  },
-      { name: 'numeraire',          type: 'address' },
+    ]}],
+  },
+  { type: 'function', name: 'getPoolKey', stateMutability: 'view',
+    inputs: [{ name: 'asset', type: 'address' }],
+    outputs: [{ type: 'tuple', components: [
+      { name: 'currency0',  type: 'address' },
+      { name: 'currency1',  type: 'address' },
+      { name: 'fee',        type: 'uint24'  },
+      { name: 'tickSpacing', type: 'int24'  },
+      { name: 'hooks',      type: 'address' },
     ]}],
   },
 ] as const;
@@ -134,9 +134,14 @@ async function getAssetMeta(asset: Address): Promise<AssetMeta> {
   const cached = metaCache.get(key);
   if (cached) return cached;
 
-  const data = await publicClient.readContract({
-    address: VAULT, abi: vaultAbi, functionName: 'assetData', args: [asset],
-  });
+  const [data, poolKey] = await Promise.all([
+    publicClient.readContract({
+      address: VAULT, abi: vaultAbi, functionName: 'assetData', args: [asset],
+    }),
+    publicClient.readContract({
+      address: VAULT, abi: vaultAbi, functionName: 'getPoolKey', args: [asset],
+    }),
+  ]);
 
   // Determine numeraire from registry (authoritative source)
   const numeraire = await getAssetNumeraire(asset);
@@ -144,7 +149,7 @@ async function getAssetMeta(asset: Address): Promise<AssetMeta> {
 
   const meta: AssetMeta = {
     poolId: data.poolId as `0x${string}`,
-    isUsdcCurrency0: data.poolKey.currency0.toLowerCase() === USDC.toLowerCase(),
+    isUsdcCurrency0: poolKey.currency0.toLowerCase() === USDC.toLowerCase(),
     numeraire,
     isWmonPair,
   };
@@ -181,10 +186,10 @@ async function getPendingNumeraire(asset: Address, beneficiary: Address): Promis
     // Actually, we should check which side is the numeraire (WMON).
     // The pool has WMON and TOKEN. We check if WMON is currency0.
     // Re-read from pool key for accuracy:
-    const data = await publicClient.readContract({
-      address: VAULT, abi: vaultAbi, functionName: 'assetData', args: [asset],
+    const poolKey = await publicClient.readContract({
+      address: VAULT, abi: vaultAbi, functionName: 'getPoolKey', args: [asset],
     });
-    const wmonIsCurr0 = data.poolKey.currency0.toLowerCase() === WMON.toLowerCase();
+    const wmonIsCurr0 = poolKey.currency0.toLowerCase() === WMON.toLowerCase();
     totalNumeraire = wmonIsCurr0 ? fees0 : fees1;
   } else {
     // USDC pair: original behavior
@@ -260,18 +265,11 @@ export async function jobDistribute(router: Address): Promise<void> {
 
 /**
  * Execute buyback for `asset`.
- * Skips if balance < threshold, cap window active, cooldown not elapsed,
- * or asset is WMON-paired (vault reverts BuybackNotAvailable for WMON pairs).
+ * Skips if balance < threshold, cap window active, or cooldown not elapsed.
+ * For WMON-paired tokens, uses two-hop buyback (USDC → MON → WMON → token).
  */
 export async function jobBuyback(asset: Address): Promise<void> {
   const tag = `buyback:${asset}`;
-
-  // Skip WMON-paired tokens — BuybackVault.execute() reverts BuybackNotAvailable
-  const meta = await getAssetMeta(asset);
-  if (meta.isWmonPair) {
-    console.log(`[${tag}] SKIP — WMON-paired token, buyback not available`);
-    return;
-  }
 
   const data = await publicClient.readContract({
     address: VAULT, abi: vaultAbi, functionName: 'assetData', args: [asset],
@@ -304,7 +302,7 @@ export async function jobBuyback(asset: Address): Promise<void> {
   const usdcIn = balance > MAX_BUYBACK_PER_CALL_USDC ? MAX_BUYBACK_PER_CALL_USDC : balance;
   console.log(`[${tag}] SEND — ${formatUnits(usdcIn, 6)} USDC`);
   try {
-    const { hash } = await sendTx({ address: VAULT, abi: vaultAbi, functionName: 'execute', args: [asset, usdcIn, 0n] });
+    const { hash } = await sendTx({ address: VAULT, abi: vaultAbi, functionName: 'execute', args: [asset, usdcIn, 0n, 0n] });
     log(tag, `${formatUnits(usdcIn, 6)} USDC`, hash);
     if (!DRY_RUN) await publicClient.waitForTransactionReceipt({ hash });
   } catch (e) {
@@ -432,65 +430,19 @@ export async function jobForfeit(asset: Address): Promise<void> {
   }
 }
 
-// ── Job: O4 swap WMON → USDC (stub) ────────────────────────────────────────
-
-/**
- * O4: Swap accumulated WMON numeraire fees to USDC for FeeEscrow.
- *
- * For WMON-paired tokens, FeeEscrow accumulates WMON in `numerairePending`.
- * This job should swap that WMON to USDC via a DEX and call
- * FeeEscrow.creditUsdcFromSwap(asset, wmonUsed, usdcReceived).
- *
- * TODO: Implement once a USDC/WMON v4 pool (or alternative DEX route) is available.
- * For now, this logs the pending WMON amount and skips. The keeper operator
- * can handle WMON → USDC swaps manually and call creditUsdcFromSwap.
- */
-export async function jobSwapWmonToUsdc(asset: Address): Promise<void> {
-  const tag = `o4-swap:${asset}`;
-  const meta = await getAssetMeta(asset);
-
-  if (!meta.isWmonPair) {
-    // Not a WMON pair — nothing to swap
-    return;
-  }
-
-  try {
-    const data = await publicClient.readContract({
-      address: ESCROW, abi: escrowAbi, functionName: 'tokenData', args: [asset],
-    });
-    const numerairePending = data.numerairePending;
-
-    if (numerairePending === 0n) {
-      return; // No pending WMON to swap
-    }
-
-    // TODO: Once a USDC/WMON pool is available on Monad, implement:
-    //   1. Approve WMON to the swap router
-    //   2. Swap WMON → USDC via PoolManager.unlock() or Universal Router
-    //   3. Call FeeEscrow.creditUsdcFromSwap(asset, wmonUsed, usdcReceived)
-    //
-    // For now, just log the pending amount for manual handling.
-    console.log(`[${tag}] PENDING — ${formatUnits(numerairePending, 18)} WMON awaiting swap to USDC (manual handling required)`);
-  } catch (e) {
-    logError(tag, 'swapWmonToUsdc', e);
-  }
-}
-
 // ── Orchestrator ────────────────────────────────────────────────────────────
 
 /**
  * Run all jobs for one asset in priority order:
  *   distribute, buyback (high value, use existing USDC) →
  *   collect (expensive, may have nothing) →
- *   forfeit (rare) →
- *   O4 swap (WMON → USDC, stub for now)
+ *   forfeit (rare)
  */
 export async function runAssetJobs(asset: Address, router: Address): Promise<void> {
   await jobDistribute(router);
   await jobBuyback(asset);
   await jobCollectAll(asset);
   await jobForfeit(asset);
-  await jobSwapWmonToUsdc(asset);
 }
 
 // ── PlatformFeeReceiver ABI (for telegram monitors) ────────────────────────

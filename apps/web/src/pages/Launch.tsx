@@ -1,7 +1,7 @@
 /**
  * Launch page (SPEC §7) — Astralaunch v2
  *
- * Step 1: Creator fills token metadata + launch config (pairing, start mcap, dev buy)
+ * Step 1: Creator fills token metadata + launch config (pairing, start mcap)
  *         + optional service details.
  * Step 2: Frontend shows fixed economics + MON gas estimate.
  * Step 3: On confirm -> Doppler SDK launch (in wallet) -> registry.register -> POST /api/tokens.
@@ -17,7 +17,6 @@ import { API_BASE } from '../env.js';
 // Known addresses (from packages/shared/src/addresses.ts)
 const USDC_ADDR  = '0x754704Bc059F8C67012fEd69BC8A327a5aafb603' as const;
 const WMON_ADDR  = '0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A' as const;
-const BUNDLER    = '0xf45588E8e0B1df9dB9ae7E20eCE5726AE931357c' as const;
 
 type Pairing = 'USDC' | 'MON';
 type Step = 'form' | 'review' | 'launching' | 'done';
@@ -32,7 +31,6 @@ interface FormData {
   // Launch config
   pairing:         Pairing;
   startMarketCap:  string; // human-readable USD, e.g. "50000"
-  devBuyAmount:    string; // optional, in chosen numeraire units, e.g. "100" USDC or "5" MON
   // Service (optional)
   attachService:  boolean;
   serviceSlug:    string;
@@ -44,7 +42,7 @@ interface FormData {
 
 const DEFAULTS: FormData = {
   name: '', symbol: '', description: '', imageUrl: '', website: '', twitter: '',
-  pairing: 'USDC', startMarketCap: '50000', devBuyAmount: '',
+  pairing: 'USDC', startMarketCap: '50000',
   attachService: false, serviceSlug: '', serviceName: '', serviceDesc: '',
   upstreamUrl: '', priceUsdc: '1.00',
 };
@@ -165,8 +163,6 @@ export default function Launch() {
       //   - numeraireDecimals: nc.numeraireDecimals
       //   - startPriceNumeraire: computed from start market cap / supply / numerairePrice
       //   - integrator: treasury
-      //   - devBuy (optional): form.devBuyAmount in nc.numeraireSymbol via Bundler
-      //   - bundler: BUNDLER (0xf45588E8e0B1df9dB9ae7E20eCE5726AE931357c)
       //
       // const walletClient = createWalletClient({ account: wallet.address as Address, chain: monadChain, transport: custom(await wallet.getEthereumProvider()) });
       // const launchConfig = {
@@ -175,7 +171,6 @@ export default function Launch() {
       //   startPrice: startPriceNumeraire,
       //   ...
       // };
-      // if (form.devBuyAmount) { launchConfig.devBuy = { amount: form.devBuyAmount, bundler: BUNDLER }; }
       // const { asset } = await dopplerSdk.launch(launchConfig);
       //
       // For now, throw to indicate manual integration needed:
@@ -322,26 +317,6 @@ export default function Launch() {
               )}
             </Field>
 
-            {/* Dev buy */}
-            <Field label={`Dev buy amount (${nc.numeraireSymbol})`} hint="Optional initial buy via Bundler at launch">
-              <input
-                type="number"
-                min="0"
-                step={form.pairing === 'USDC' ? '1' : '0.1'}
-                value={form.devBuyAmount}
-                onChange={e => set('devBuyAmount', e.target.value)}
-                placeholder={`0 ${nc.numeraireSymbol} (no dev buy)`}
-              />
-              {form.devBuyAmount && Number(form.devBuyAmount) > 0 && (
-                <div style={{ fontSize: '11px', color: 'var(--color-muted)', marginTop: '4px' }}>
-                  {Number(form.devBuyAmount).toLocaleString()} {nc.numeraireSymbol} will be used to buy tokens at launch
-                  {nc.numerairePrice > 0 && form.pairing === 'MON' && (
-                    <> (~${(Number(form.devBuyAmount) * nc.numerairePrice).toFixed(2)} USD)</>
-                  )}
-                  {' '}via Bundler ({BUNDLER.slice(0, 6)}...{BUNDLER.slice(-4)})
-                </div>
-              )}
-            </Field>
           </div>
         </div>
 
@@ -412,11 +387,7 @@ export default function Launch() {
                 ? `${startPriceNumeraire.toFixed(nc.numeraireDecimals === 18 ? 12 : 6)} ${nc.numeraireSymbol}`
                 : '--'
             } />
-            <SummaryRow label="Dev buy" value={
-              form.devBuyAmount && Number(form.devBuyAmount) > 0
-                ? `${Number(form.devBuyAmount).toLocaleString()} ${nc.numeraireSymbol}`
-                : 'None'
-            } />
+
           </div>
         </div>
 
