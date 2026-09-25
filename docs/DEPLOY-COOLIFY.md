@@ -79,7 +79,7 @@ copied `monad-mainnet.json`.
 | `GATEWAY_HMAC_MASTER_KEY` | **secret**, required | `openssl rand -hex 32`. Rotating it invalidates existing gateway credentials. |
 | `ADMIN_API_KEY` | **secret**, optional | Bearer token for `/api/admin/*`. Unset = admin API disabled. |
 | `UPSTREAM_ALLOWLIST` | public | default `http://demo-services:4001`: the one private origin allowed past the SSRF block |
-| `CORS_ORIGINS` | public | default `https://astralaunch.xyz,https://www.astralaunch.xyz`. **Not read by the server yet**, see code changes. |
+| `CORS_ORIGINS` | public | default `https://astralaunch.xyz,https://www.astralaunch.xyz`. Read by the server (`apps/server/src/lib/cors.ts`); bare origins only, a wildcard or path refuses to start. |
 | `X402_FACILITATOR_URL` | public | default `https://x402-facilitator.molandak.org` |
 | `PAYMENT_TIMEOUT_SECONDS` | public | default `60`. The server refuses > 300 on a non-local RPC. |
 | `GUARDIAN_ADDRESS` | public | default `0x62c1a140eB643BF43659E7e5134CAfDFeDe17e8b` |
@@ -216,7 +216,7 @@ DNS, and the keeper running with the real key.
 These are required or recommended for Docker/production. Keeper discovery, keeper health and
 the v1 → v2 address cleanup of the runbook and env examples are done (keeper commit).
 
-1. **CORS (blocking).** `apps/server/src/index.ts` has no CORS middleware. The browser on
+1. **CORS: done (2026-09-26, `lib/cors.ts`).** Before this, `apps/server/src/index.ts` had no CORS middleware. The browser on
    `https://astralaunch.xyz` calling `https://api.astralaunch.xyz` fails every request.
    Add `hono/cors` restricted to the origins in `CORS_ORIGINS`
    (default `https://astralaunch.xyz,https://www.astralaunch.xyz`, parsed in `env.ts`). Allow
