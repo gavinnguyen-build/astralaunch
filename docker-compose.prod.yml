@@ -94,10 +94,14 @@ services:
       <<: *chain-env
       # Must derive to the keeper wallet 0x9e641007829DA8eB199b2Bec64B1E6dcbfdaB854.
       KEEPER_PRIVATE_KEY: ${KEEPER_PRIVATE_KEY:?set KEEPER_PRIVATE_KEY (keeper wallet only)}
+      # Token discovery: listed tokens (fee consumed, not hidden) read each tick. Read-only use.
+      DATABASE_URL: postgresql://astralaunch:${POSTGRES_PASSWORD:?}@postgres:5432/astralaunch
+      # Debug override only; leave empty in production (see docs/DEPLOY-COOLIFY.md).
       ASSETS: ${ASSETS:-}
       ROUTERS: ${ROUTERS:-}
       POLL_INTERVAL_S: ${POLL_INTERVAL_S:-600}   # shared KEEPER_DEFAULT_INTERVAL_S; < 300 is clamped on a non-local RPC
-      COLLECT_INTERVAL_S: ${COLLECT_INTERVAL_S:-}
+      COLLECT_INTERVAL_S: ${COLLECT_INTERVAL_S:-21600}   # shared COLLECT_INTERVAL_S (6 h)
+      KEEPER_HEALTH_PORT: 8080
       MIN_MON_BALANCE: ${MIN_MON_BALANCE:-}
       MAX_MON_PER_DAY: ${MAX_MON_PER_DAY:-}
       SINGLE_TX_ALERT: ${SINGLE_TX_ALERT:-}
@@ -107,8 +111,19 @@ services:
       DRY_RUN: ${DRY_RUN:-false}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
-    # Talks to the RPC and Telegram only; no database, no inbound traffic.
-    networks: [egress]
+    expose: ['8080']   # /health, internal only
+    # internal: Postgres; egress: RPC + Telegram. No inbound traffic from outside.
+    networks: [internal, egress]
+    depends_on:
+      # The server applies migrations on start; discovery reads those tables.
+      server: { condition: service_healthy }
+    healthcheck:
+      # 503 when no tick succeeded within 3 × POLL_INTERVAL_S (apps/keeper/src/health.ts).
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 60s
+      timeout: 5s
+      start_period: 2m
+      retries: 3
     logging: *logging
 
   demo-services:
