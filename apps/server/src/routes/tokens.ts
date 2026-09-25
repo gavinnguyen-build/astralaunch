@@ -3,6 +3,7 @@
  *
  * GET  /api/tokens               — explore list (sort=clean_revenue_30d|new)
  * POST /api/tokens               — creator-signed metadata update (tokens come from the indexer)
+ * POST /api/tokens/launch-details — metadata + service under one creator signature (one-tx launch)
  * GET  /api/tokens/:asset        — aggregated token + service + on-chain state
  * GET  /api/tokens/:asset/payments — recent settled payments
  * GET  /api/tokens/:asset/health   — service probe uptime data
@@ -15,7 +16,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { eq, desc, and, gte, sql, count, or, isNull, lt } from 'drizzle-orm';
+import { eq, desc, and, gte, sql, count } from 'drizzle-orm';
 import { createPublicClient, formatUnits, http, type Address } from 'viem';
 import { defineChain } from 'viem';
 import { db } from '../db/client.js';
@@ -24,8 +25,10 @@ import {
   idxRegistrations, idxDistributions, idxBuybacks, idxEscrowClaims,
   idxEscrowForfeits, idxUsdcTransfers, idxCheckpoints,
 } from '../db/schema.js';
-import { tokenMetadataSchema, tokenMetadataMessage, WMON } from '@astralaunch/shared';
+import { launchDetailsSchema, tokenMetadataSchema, tokenMetadataMessage, WMON } from '@astralaunch/shared';
 import { authorizeTokenCreator, consumeSignedMessage, ServiceAuthError } from '../services/serviceAuth.js';
+import { applyLaunchDetails, applyTokenMetadata, LaunchDetailsInputError } from '../services/creatorWrites.js';
+import { SsrfError } from '../lib/ssrf.js';
 import { RPC_URL, CHAIN_ID, REGISTRY_ADDR, SUBMITTERS } from '../env.js';
 import { isAssetListed, isListedSql } from '../services/launchFee.js';
 import { classifyTransfer, excludedPayers } from '../services/cleanRevenue.js';
@@ -254,18 +257,7 @@ app.post('/', zValidator('json', tokenMetadataSchema), async (c) => {
     });
     await db.transaction(async (tx) => {
       await consumeSignedMessage(tx, message, token.creator, 'token_metadata', body.issuedAt);
-      const [row] = await tx.update(tokens).set({
-        ...(body.imageUrl    !== undefined && { imageUrl:    body.imageUrl }),
-        ...(body.xHandle     !== undefined && { xHandle:     body.xHandle.replace(/^@/, '') }),
-        ...(body.website     !== undefined && { website:     body.website }),
-        ...(body.description !== undefined && { description: body.description }),
-        metadataSignedAt: BigInt(body.issuedAt),
-      })
-        // Monotonic guard against a concurrent, older signed update.
-        .where(and(eq(tokens.asset, asset),
-          or(isNull(tokens.metadataSignedAt), lt(tokens.metadataSignedAt, BigInt(body.issuedAt)))))
-        .returning({ asset: tokens.asset });
-      if (!row) throw new ServiceAuthError(409, 'A newer signed request was already accepted (issuedAt too old)');
+      await applyTokenMetadata(tx, asset, body, body.issuedAt);
     });
   } catch (e) {
     if (e instanceof ServiceAuthError) return c.json({ error: e.message }, e.status);
@@ -273,6 +265,21 @@ app.post('/', zValidator('json', tokenMetadataSchema), async (c) => {
   }
 
   return c.json({ asset, updated: true });
+});
+
+// POST /api/tokens/launch-details — metadata and/or a service under ONE creator signature
+// (launchDetailsMessage), used by the one-transaction launch. Same checks as POST /api/tokens and
+// POST /api/services; both writes commit together. The single-purpose endpoints stay as they are.
+app.post('/launch-details', zValidator('json', launchDetailsSchema), async (c) => {
+  try {
+    const r = await applyLaunchDetails(db, c.req.valid('json'), Math.floor(Date.now() / 1000));
+    return c.json(r, r.service ? 201 : 200);
+  } catch (e) {
+    if (e instanceof LaunchDetailsInputError) return c.json({ error: e.message }, 400);
+    if (e instanceof ServiceAuthError) return c.json({ error: e.message }, e.status);
+    if (e instanceof SsrfError) return c.json({ error: e.message }, 422);
+    throw e;
+  }
 });
 
 // GET /api/tokens/:asset — full token detail

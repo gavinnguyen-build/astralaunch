@@ -125,3 +125,47 @@ export function tokenMetadataMessage(m: Omit<TokenMetadataInput, 'signature'>): 
     xHandle: m.xHandle?.replace(/^@/, ''),
   }, TOKEN_METADATA_KEYS)}`;
 }
+
+// ── Launch details (POST /api/tokens/launch-details) ──────────────────────────
+// One creator signature for the token's display metadata AND its service, so the
+// launch flow needs a single signature. The single-purpose messages above
+// (tokenMetadataMessage, serviceCreateMessage) remain valid and unchanged.
+
+const launchServiceSchema = z.object(serviceFields);
+
+export const launchDetailsSchema = z.object({
+  asset:       addressSchema,
+  imageUrl:    z.string().url().max(500).optional(),
+  xHandle:     z.string().regex(/^@?[A-Za-z0-9_]{1,15}$/, 'Invalid X handle').optional(),
+  website:     z.string().url().max(500).optional(),
+  description: z.string().max(500).optional(),
+  /** Optional service to register for the token (same fields as POST /api/services). */
+  service:     launchServiceSchema.optional(),
+  ...signedFields,
+}).refine(
+  d => d.service !== undefined || d.imageUrl !== undefined || d.xHandle !== undefined
+    || d.website !== undefined || d.description !== undefined,
+  'metadata or service required',
+);
+
+export type LaunchDetailsInput = z.infer<typeof launchDetailsSchema>;
+
+const LAUNCH_DETAILS_KEYS = ['asset', 'imageUrl', 'xHandle', 'website', 'description', 'service', 'issuedAt'] as const;
+const LAUNCH_SERVICE_KEYS = ['slug', 'name', 'upstreamUrl', 'priceUsdc', 'requestSchema',
+  'responseSchema', 'timeoutSeconds', 'description'] as const;
+
+/** Message the token creator signs once for metadata + service: header + canonical JSON (nested service canonical too). */
+export function launchDetailsMessage(m: Omit<LaunchDetailsInput, 'signature'>): string {
+  const service = m.service ? JSON.parse(canonical(m.service, LAUNCH_SERVICE_KEYS)) as Record<string, unknown> : undefined;
+  return `Astralaunch: launch details\n${canonical({
+    ...m,
+    asset:   m.asset.toLowerCase(),
+    xHandle: m.xHandle?.replace(/^@/, ''),
+    service,
+  }, LAUNCH_DETAILS_KEYS)}`;
+}
+
+/** True if the launch-details request carries any display metadata. */
+export function hasLaunchMetadata(m: Pick<LaunchDetailsInput, 'imageUrl' | 'xHandle' | 'website' | 'description'>): boolean {
+  return m.imageUrl !== undefined || m.xHandle !== undefined || m.website !== undefined || m.description !== undefined;
+}

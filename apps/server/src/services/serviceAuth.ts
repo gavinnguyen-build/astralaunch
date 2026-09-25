@@ -57,7 +57,7 @@ export async function authorizeTokenCreator(db: Db, a: CreatorAuthInput): Promis
  * authorizes; throws 409 if the exact message was already accepted (replay).
  */
 export async function consumeSignedMessage(
-  tx: Db, message: string, signer: string, purpose: 'service_create' | 'service_update' | 'token_metadata', issuedAt: number,
+  tx: Db, message: string, signer: string, purpose: 'service_create' | 'service_update' | 'token_metadata' | 'launch_details', issuedAt: number,
 ): Promise<void> {
   const [row] = await tx.insert(signedRequests).values({
     messageHash: keccak256(toHex(message)),

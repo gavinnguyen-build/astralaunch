@@ -284,7 +284,7 @@ export type NewFeeReceipt = typeof feeReceipts.$inferInsert;
 export const signedRequests = pgTable('signed_requests', {
   messageHash: text('message_hash').primaryKey(),   // keccak256 of the signed message
   signer:      text('signer').notNull(),
-  purpose:     text('purpose').notNull(),           // 'service_create' | 'service_update'
+  purpose:     text('purpose').notNull(),           // 'service_create' | 'service_update' | 'token_metadata' | 'launch_details'
   issuedAt:    bigint('issued_at', { mode: 'bigint' }).notNull(),
   usedAt:      timestamp('used_at', { withTimezone: true }).notNull().defaultNow(),
 });

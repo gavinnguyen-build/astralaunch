@@ -7,9 +7,8 @@ import { createServiceSchema, updateServiceSchema, serviceCreateMessage, service
 import { MONAD_NETWORK, USDC } from '@astralaunch/shared';
 import { assertSafeUpstream, SsrfError } from '../lib/ssrf.js';
 import { upstreamBaseError } from '../lib/upstream.js';
-import { compileResponseSchema } from '../lib/responseSchema.js';
-import { generateSecret } from '../lib/hmac.js';
 import { authorizeTokenCreator, consumeSignedMessage, ServiceAuthError } from '../services/serviceAuth.js';
+import { insertService, serviceInputError } from '../services/creatorWrites.js';
 import { USDC_ADDR, PAYMENT_TIMEOUT_S } from '../env.js';
 
 const app = new Hono();
@@ -26,11 +25,8 @@ function authError(c: Context, e: unknown) {
 // POST /api/services — register a BYO service. Signed by the token's on-chain creator (D-SV1).
 app.post('/', zValidator('json', createServiceSchema), async (c) => {
   const body = c.req.valid('json');
-  const bad = upstreamBaseError(body.upstreamUrl);
+  const bad = serviceInputError(body);
   if (bad) return c.json({ error: bad }, 400);
-  if (body.responseSchema) {
-    try { compileResponseSchema(body.responseSchema); } catch (e) { return c.json({ error: (e as Error).message }, 400); }
-  }
   const { signature, ...signed } = body;
   const message = serviceCreateMessage(signed);
 
@@ -42,24 +38,7 @@ app.post('/', zValidator('json', createServiceSchema), async (c) => {
 
     const svc = await db.transaction(async (tx) => {
       await consumeSignedMessage(tx, message, token.creator, 'service_create', body.issuedAt);
-      const existing = await tx.query.services.findFirst({ where: eq(services.slug, body.slug) });
-      if (existing) throw new ServiceAuthError(409, 'Slug already taken');
-      const [row] = await tx.insert(services).values({
-        slug:           body.slug,
-        name:           body.name,
-        asset:          token.asset,
-        router:         token.router,       // from chain (Registered event), not the client
-        creator:        token.creator,      // on-chain creator, not the client
-        upstreamUrl:    body.upstreamUrl,
-        priceUsdc:      body.priceUsdc,
-        upstreamSecret: generateSecret(),
-        timeoutSeconds: body.timeoutSeconds ?? 20,
-        requestSchema:  body.requestSchema,
-        responseSchema: body.responseSchema,
-        description:    body.description,
-        authSignedAt:   BigInt(body.issuedAt),
-      }).returning();
-      return row!;
+      return insertService(tx, token, body, body.issuedAt);   // router + creator from chain, not the client
     });
     return c.json({ id: svc.id, slug: svc.slug, router: svc.router }, 201);
   } catch (e) {
