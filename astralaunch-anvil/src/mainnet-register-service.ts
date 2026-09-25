@@ -8,7 +8,10 @@
 //
 // Env:
 //   ASSET, SLUG, UPSTREAM_URL      required
-//   PRICE_USDC                     required, human USDC (e.g. 0.01), not raw units
+//   PRICE_USDC                     human USDC (e.g. 0.01), not raw units. Required to create; on an update,
+//                                  omit it to keep the current price
+//   UPSTREAM_URL                   may carry a path prefix (e.g. http://127.0.0.1:4001/sight): the gateway maps
+//                                  /s/{slug}/<path> to <UPSTREAM_URL>/<path> and never leaves the prefix
 //   CREATOR_KEYSTORE               Foundry keystore name/path of the token's on-chain creator (hidden password
 //                                  prompt, or CREATOR_KEYSTORE_PASSWORD_FILE); or CREATOR_PRIVATE_KEY
 //   SCHEMA                         optional request JSON schema: inline JSON or a path to a .json file
@@ -47,11 +50,11 @@ run(async () => {
   const asset = assetRaw.toLowerCase() as `0x${string}`;
   const slug = need('SLUG');
   const upstreamUrl = need('UPSTREAM_URL');
-  const priceHuman = need('PRICE_USDC');
-  if (!/^\d+(\.\d{1,6})?$/.test(priceHuman)) throw new Error('PRICE_USDC must be a decimal USDC amount like 0.01');
-  const priceRaw = parseUnits(priceHuman, 6);
+  const priceHuman = process.env.PRICE_USDC || undefined;
+  if (priceHuman !== undefined && !/^\d+(\.\d{1,6})?$/.test(priceHuman)) throw new Error('PRICE_USDC must be a decimal USDC amount like 0.01');
+  const priceRaw = priceHuman !== undefined ? parseUnits(priceHuman, 6) : undefined;
   if (priceRaw === 0n) throw new Error('PRICE_USDC must be > 0');
-  if (priceRaw > MAX_PRICE_USDC && process.env.ALLOW_HIGH_PRICE !== '1') {
+  if (priceRaw !== undefined && priceRaw > MAX_PRICE_USDC && process.env.ALLOW_HIGH_PRICE !== '1') {
     throw new Error(`PRICE_USDC ${priceHuman} is above ${formatUnits(MAX_PRICE_USDC, 6)} USDC per call. Set ALLOW_HIGH_PRICE=1 if intended.`);
   }
   const requestSchema = loadSchema('SCHEMA');
@@ -94,6 +97,7 @@ run(async () => {
   let body: Record<string, unknown>;
 
   if (!existing) {
+    if (priceRaw === undefined) throw new Error('PRICE_USDC is required to create a service');
     const fields = {
       asset, slug, name: process.env.NAME || slug, upstreamUrl, priceUsdc: priceRaw.toString(),
       ...(requestSchema !== undefined && { requestSchema }),
@@ -111,7 +115,7 @@ run(async () => {
   } else {
     if (process.env.NAME || requestSchema || responseSchema) console.log('\nNOTE: NAME, SCHEMA and RESPONSE_SCHEMA cannot be changed on an existing service; they are ignored.');
     const fields = {
-      priceUsdc: priceRaw.toString(), upstreamUrl,
+      ...(priceRaw !== undefined && { priceUsdc: priceRaw.toString() }), upstreamUrl,
       ...(timeoutSeconds !== undefined && { timeoutSeconds }),
       ...(description !== undefined && { description }),
       issuedAt,
@@ -121,10 +125,12 @@ run(async () => {
     updateServiceSchema.parse(body);
     method = 'PATCH';
     url = `${server}/api/services/${existing.id}`;
-    console.log(`\nAction:  UPDATE service "${slug}" (id ${existing.id}); price ${formatUnits(BigInt(existing.payment.amount), 6)} → ${priceHuman} USDC`);
+    const cur = formatUnits(BigInt(existing.payment.amount), 6);
+    console.log(`\nAction:  UPDATE service "${slug}" (id ${existing.id}); price ${priceHuman !== undefined ? `${cur} → ${priceHuman}` : `${cur} (unchanged)`} USDC`);
+    console.log(`Upstream: ${upstreamUrl}`);
   }
 
-  console.log(`Price:   ${priceHuman} USDC per call (${priceRaw} raw, 6 decimals)`);
+  if (priceRaw !== undefined) console.log(`Price:   ${priceHuman} USDC per call (${priceRaw} raw, 6 decimals)`);
   console.log(`\nSigned message (personal_sign):\n${message}`);
   show(`${method} ${url}`, body);
   await confirm(`Send this ${method} to ${server}?`);
