@@ -1,0 +1,15 @@
+{
+  "id": "0008_timestamptz",
+  "prevId": "0007_service_auth",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {},
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

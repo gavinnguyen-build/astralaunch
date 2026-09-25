@@ -46,8 +46,8 @@ export const services = pgTable('services', {
   description:    text('description'),
   active:         boolean('active').notNull().default(true),
   authSignedAt:   bigint('auth_signed_at', { mode: 'bigint' }), // issuedAt of last accepted signed request (0007)
-  createdAt:      timestamp('created_at').notNull().defaultNow(),
-  updatedAt:      timestamp('updated_at').notNull().defaultNow(),
+  createdAt:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:      timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export type Service = typeof services.$inferSelect;
@@ -69,7 +69,7 @@ export const gatewayRequests = pgTable('gateway_requests', {
   errorCode:      text('error_code'),             // 'upstream_error'|'settle_failed'|'verify_failed'
   requestBytes:   integer('request_bytes'),
   responseBytes:  integer('response_bytes'),
-  createdAt:      timestamp('created_at').notNull().defaultNow(),
+  createdAt:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export type GatewayRequest = typeof gatewayRequests.$inferSelect;
@@ -82,7 +82,7 @@ export const serviceProbes = pgTable('service_probes', {
   ok:         boolean('ok').notNull(),
   latencyMs:  integer('latency_ms'),
   statusCode: integer('status_code'),
-  checkedAt:  timestamp('checked_at').notNull().defaultNow(),
+  checkedAt:  timestamp('checked_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export type ServiceProbe = typeof serviceProbes.$inferSelect;
@@ -92,7 +92,7 @@ export type ServiceProbe = typeof serviceProbes.$inferSelect;
 export const idxCheckpoints = pgTable('idx_checkpoints', {
   contractSet: text('contract_set').primaryKey(),
   blockNumber:  bigint('block_number', { mode: 'bigint' }).notNull(),
-  updatedAt:    timestamp('updated_at').notNull().defaultNow(),
+  updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(), // TIMESTAMPTZ since 0008
 });
 
 export const idxRegistrations = pgTable('idx_registrations', {
