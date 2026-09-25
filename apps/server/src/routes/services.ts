@@ -109,6 +109,8 @@ app.get('/:slug/manifest', async (c) => {
   if (!svc || !svc.active) return c.json({ error: 'Not found' }, 404);
 
   return c.json({
+    id:          svc.id,
+    asset:       svc.asset,
     slug:        svc.slug,
     name:        svc.name,
     description: svc.description,

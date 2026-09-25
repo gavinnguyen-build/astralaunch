@@ -2,10 +2,10 @@
  * x402 gateway — route group /s/:slug/*
  *
  * Flow (SPEC §9):
- *  1. No X-PAYMENT header → 402 with PaymentRequired.
+ *  1. No payment header (PAYMENT-SIGNATURE, or legacy X-PAYMENT) → 402 with PaymentRequired.
  *  2. X-PAYMENT present → verify via facilitator.
  *  3. Verified → forward to upstream with HMAC signature + timeout.
- *  4. Upstream 2xx → settle → log settled=true → return upstream body.
+ *  4. Upstream 2xx → settle → log settled=true → return upstream body + PAYMENT-RESPONSE.
  *  5. Upstream non-2xx → log error, do NOT settle → return 502 to agent.
  *  6. Settle fails → log settle_failed → return 402 to agent with receipt context.
  *
@@ -20,6 +20,7 @@ import { eq } from 'drizzle-orm';
 import {
   HTTPFacilitatorClient,
   encodePaymentRequiredHeader,
+  encodePaymentResponseHeader,
   decodePaymentSignatureHeader,
   PAYMENT_REQUIRED_CACHE_CONTROL,
 } from '@x402/core/http';
@@ -31,8 +32,12 @@ import { signRequest } from '../lib/hmac.js';
 import { FACILITATOR_URL, USDC_ADDR, CHAIN_ID, PAYMENT_TIMEOUT_S } from '../env.js';
 import { MONAD_NETWORK } from '@astralaunch/shared';
 
-const PAYMENT_HEADER         = 'X-PAYMENT';
-const PAYMENT_REQUIRED_HEADER = 'X-PAYMENT-REQUIRED';
+// Header names as used by the x402 SDK's own HTTP client (x402HTTPClient in @x402/core/client,
+// which exports no constants): v2 = PAYMENT-SIGNATURE / PAYMENT-REQUIRED / PAYMENT-RESPONSE.
+// The legacy X-PAYMENT / X-PAYMENT-REQUIRED names are kept for existing clients (D-GW1).
+const PAYMENT_HEADERS          = ['PAYMENT-SIGNATURE', 'X-PAYMENT'] as const;
+const PAYMENT_REQUIRED_HEADERS = ['PAYMENT-REQUIRED', 'X-PAYMENT-REQUIRED'] as const;
+const PAYMENT_RESPONSE_HEADER  = 'PAYMENT-RESPONSE';
 const MAX_BODY_BYTES          = 10 * 1024 * 1024; // 10 MB
 
 const facilitator = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
@@ -71,15 +76,15 @@ app.all('/:slug/*', async (c) => {
   };
 
   // ── 1. No payment header → 402 ─────────────────────────────────────────────
-  const paymentHeader = c.req.header(PAYMENT_HEADER);
+  const paymentHeader = PAYMENT_HEADERS.map(h => c.req.header(h)).find(Boolean);
   if (!paymentHeader) {
     const encoded = encodePaymentRequiredHeader(paymentRequired);
     return new Response(JSON.stringify({ error: 'Payment required', x402Version: 2 }), {
       status: 402,
       headers: {
-        'Content-Type':      'application/json',
-        'Cache-Control':     PAYMENT_REQUIRED_CACHE_CONTROL,
-        [PAYMENT_REQUIRED_HEADER]: encoded,
+        'Content-Type':  'application/json',
+        'Cache-Control': PAYMENT_REQUIRED_CACHE_CONTROL,
+        ...Object.fromEntries(PAYMENT_REQUIRED_HEADERS.map(h => [h, encoded])),
       },
     });
   }
@@ -158,7 +163,10 @@ app.all('/:slug/*', async (c) => {
 
   return new Response(responseBodyBuf, {
     status:  upstreamStatus,
-    headers: { 'Content-Type': upstreamRes.headers.get('Content-Type') ?? 'application/json' },
+    headers: {
+      'Content-Type': upstreamRes.headers.get('Content-Type') ?? 'application/json',
+      [PAYMENT_RESPONSE_HEADER]: encodePaymentResponseHeader(settleResult),
+    },
   });
 });
 
