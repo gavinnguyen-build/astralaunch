@@ -5,6 +5,7 @@ import {
   escrowFeeCollectedEvent,
   revenueRecordedEvent,
   claimedEvent,
+  claimedWmonEvent,
   forfeitedEvent,
   vaultFeeCollectedEvent,
   buybackExecutedEvent,
@@ -28,10 +29,12 @@ export interface BaseRow {
 
 export interface RegistrationRow extends BaseRow {
   type: 'registration';
-  asset:   string;
-  creator: string;
-  router:  string;
-  poolId:  string;
+  asset:       string;
+  creator:     string;
+  router:      string;
+  poolId:      string;
+  numeraire:   string;
+  initializer: string;
 }
 
 export interface UsdcTransferRow extends BaseRow {
@@ -55,10 +58,12 @@ export interface DistributionRow extends BaseRow {
 
 export interface FeeCollectionRow extends BaseRow {
   type: 'fee_collection';
-  contract:   string;
-  asset:      string;
-  usdcDelta:  string;
-  tokenDelta: string;
+  contract:       string;
+  asset:          string;
+  usdcDelta:      string;
+  tokenDelta:     string;
+  wmonDelta:      string;   // escrow: wmonDelta from event; vault: '0'
+  numeraireDelta: string;   // vault: numeraireDelta from event; escrow: '0'
 }
 
 export interface RevenueRecordedRow extends BaseRow {
@@ -70,9 +75,11 @@ export interface RevenueRecordedRow extends BaseRow {
 
 export interface EscrowClaimRow extends BaseRow {
   type: 'escrow_claim';
-  asset:   string;
-  creator: string;
-  amount:  string;
+  asset:      string;
+  creator:    string;
+  amount:     string;   // Claimed: USDC amount; ClaimedWmon: '0'
+  wmonAmount: string;   // ClaimedWmon: WMON amount; Claimed: '0'
+  usdValue:   string;   // ClaimedWmon: USD equivalent; Claimed: '0'
 }
 
 export interface EscrowForfeitRow extends BaseRow {
@@ -80,6 +87,7 @@ export interface EscrowForfeitRow extends BaseRow {
   asset:      string;
   usdcMoved:  string;
   tokenMoved: string;
+  wmonMoved:  string;
 }
 
 export interface BuybackRow extends BaseRow {
@@ -98,9 +106,10 @@ export interface BurnRow extends BaseRow {
 
 export interface PfrCollectionRow extends BaseRow {
   type: 'pfr_collection';
-  asset:          string;
-  usdcForwarded:  string;
-  tokenForwarded: string;
+  asset:              string;
+  usdcForwarded:      string;
+  tokenForwarded:     string;
+  numeraireForwarded: string;
 }
 
 export type DecodedRow =
@@ -153,21 +162,42 @@ export function decodeStaticLog(
         return {
           ...b,
           type: 'registration',
-          asset:   (decoded.args as any).asset.toLowerCase(),
-          creator: (decoded.args as any).creator.toLowerCase(),
-          router:  (decoded.args as any).router.toLowerCase(),
-          poolId:  (decoded.args as any).poolId,
+          asset:       (decoded.args as any).asset.toLowerCase(),
+          creator:     (decoded.args as any).creator.toLowerCase(),
+          router:      (decoded.args as any).router.toLowerCase(),
+          poolId:      (decoded.args as any).poolId,
+          numeraire:   (decoded.args as any).numeraire.toLowerCase(),
+          initializer: (decoded.args as any).initializer.toLowerCase(),
         };
 
-      case 'FeeCollected':
-        return {
-          ...b,
-          type: 'fee_collection',
-          contract: addr === escrowAddr.toLowerCase() ? 'escrow' : 'vault',
-          asset:      (decoded.args as any).asset.toLowerCase(),
-          usdcDelta:  (decoded.args as any).usdcDelta.toString(),
-          tokenDelta: (decoded.args as any).tokenDelta.toString(),
-        };
+      case 'FeeCollected': {
+        const isEscrow = addr === escrowAddr.toLowerCase();
+        if (isEscrow) {
+          // Escrow FeeCollected: (asset, usdcDelta, tokenDelta, wmonDelta)
+          return {
+            ...b,
+            type: 'fee_collection',
+            contract: 'escrow',
+            asset:          (decoded.args as any).asset.toLowerCase(),
+            usdcDelta:      (decoded.args as any).usdcDelta.toString(),
+            tokenDelta:     (decoded.args as any).tokenDelta.toString(),
+            wmonDelta:      (decoded.args as any).wmonDelta.toString(),
+            numeraireDelta: '0',
+          };
+        } else {
+          // Vault FeeCollected: (asset, numeraireDelta, tokenDelta)
+          return {
+            ...b,
+            type: 'fee_collection',
+            contract: 'vault',
+            asset:          (decoded.args as any).asset.toLowerCase(),
+            usdcDelta:      '0',
+            tokenDelta:     (decoded.args as any).tokenDelta.toString(),
+            wmonDelta:      '0',
+            numeraireDelta: (decoded.args as any).numeraireDelta.toString(),
+          };
+        }
+      }
 
       case 'RevenueRecorded':
         return {
@@ -182,9 +212,22 @@ export function decodeStaticLog(
         return {
           ...b,
           type: 'escrow_claim',
-          asset:   (decoded.args as any).asset.toLowerCase(),
-          creator: (decoded.args as any).creator.toLowerCase(),
-          amount:  (decoded.args as any).amt.toString(),
+          asset:      (decoded.args as any).asset.toLowerCase(),
+          creator:    (decoded.args as any).creator.toLowerCase(),
+          amount:     (decoded.args as any).amt.toString(),
+          wmonAmount: '0',
+          usdValue:   '0',
+        };
+
+      case 'ClaimedWmon':
+        return {
+          ...b,
+          type: 'escrow_claim',
+          asset:      (decoded.args as any).asset.toLowerCase(),
+          creator:    (decoded.args as any).creator.toLowerCase(),
+          amount:     '0',
+          wmonAmount: (decoded.args as any).wmonAmt.toString(),
+          usdValue:   (decoded.args as any).usdValue.toString(),
         };
 
       case 'Forfeited':
@@ -194,6 +237,7 @@ export function decodeStaticLog(
           asset:      (decoded.args as any).asset.toLowerCase(),
           usdcMoved:  (decoded.args as any).usdcMoved.toString(),
           tokenMoved: (decoded.args as any).tokenMoved.toString(),
+          wmonMoved:  (decoded.args as any).wmonMoved.toString(),
         };
 
       case 'BuybackExecuted':
@@ -218,9 +262,10 @@ export function decodeStaticLog(
         return {
           ...b,
           type: 'pfr_collection',
-          asset:          (decoded.args as any).asset.toLowerCase(),
-          usdcForwarded:  (decoded.args as any).usdcForwarded.toString(),
-          tokenForwarded: (decoded.args as any).tokenForwarded.toString(),
+          asset:              (decoded.args as any).asset.toLowerCase(),
+          usdcForwarded:      (decoded.args as any).usdcForwarded.toString(),
+          tokenForwarded:     (decoded.args as any).tokenForwarded.toString(),
+          numeraireForwarded: (decoded.args as any).numeraireForwarded.toString(),
         };
 
       default:

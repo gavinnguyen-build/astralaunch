@@ -36,6 +36,8 @@ export async function writeChunk(
             creator:     row.creator,
             router:      row.router,
             poolId:      row.poolId,
+            numeraire:   row.numeraire,
+            initializer: row.initializer,
             blockNumber: row.blockNumber,
             timestamp:   row.timestamp,
           }).onConflictDoNothing();
@@ -74,15 +76,17 @@ export async function writeChunk(
 
         case 'fee_collection':
           await tx.insert(idxFeeCollections).values({
-            chainId:     row.chainId,
-            txHash:      row.txHash,
-            logIndex:    row.logIndex,
-            contract:    row.contract,
-            asset:       row.asset,
-            usdcDelta:   row.usdcDelta,
-            tokenDelta:  row.tokenDelta,
-            blockNumber: row.blockNumber,
-            timestamp:   row.timestamp,
+            chainId:        row.chainId,
+            txHash:         row.txHash,
+            logIndex:       row.logIndex,
+            contract:       row.contract,
+            asset:          row.asset,
+            usdcDelta:      row.usdcDelta,
+            tokenDelta:     row.tokenDelta,
+            wmonDelta:      row.wmonDelta,
+            numeraireDelta: row.numeraireDelta,
+            blockNumber:    row.blockNumber,
+            timestamp:      row.timestamp,
           }).onConflictDoNothing();
           break;
 
@@ -107,6 +111,8 @@ export async function writeChunk(
             asset:       row.asset,
             creator:     row.creator,
             amount:      row.amount,
+            wmonAmount:  row.wmonAmount,
+            usdValue:    row.usdValue,
             blockNumber: row.blockNumber,
             timestamp:   row.timestamp,
           }).onConflictDoNothing();
@@ -120,6 +126,7 @@ export async function writeChunk(
             asset:       row.asset,
             usdcMoved:   row.usdcMoved,
             tokenMoved:  row.tokenMoved,
+            wmonMoved:   row.wmonMoved,
             blockNumber: row.blockNumber,
             timestamp:   row.timestamp,
           }).onConflictDoNothing();
@@ -153,14 +160,15 @@ export async function writeChunk(
 
         case 'pfr_collection':
           await tx.insert(idxPfrCollections).values({
-            chainId:     row.chainId,
-            txHash:      row.txHash,
-            logIndex:    row.logIndex,
-            asset:       row.asset,
-            usdcForwarded:  row.usdcForwarded,
-            tokenForwarded: row.tokenForwarded,
-            blockNumber:    row.blockNumber,
-            timestamp:      row.timestamp,
+            chainId:            row.chainId,
+            txHash:             row.txHash,
+            logIndex:           row.logIndex,
+            asset:              row.asset,
+            usdcForwarded:      row.usdcForwarded,
+            tokenForwarded:     row.tokenForwarded,
+            numeraireForwarded: row.numeraireForwarded,
+            blockNumber:        row.blockNumber,
+            timestamp:          row.timestamp,
           }).onConflictDoNothing();
           break;
       }

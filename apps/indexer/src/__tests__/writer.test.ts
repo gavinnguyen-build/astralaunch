@@ -60,6 +60,8 @@ describe('writeChunk', () => {
       creator: '0xcreator',
       router: '0xrouter',
       poolId: '0xpoolid',
+      numeraire: '0xusdc',
+      initializer: '0xinit',
     };
 
     await writeChunk(db as any, [row], 'static', 100n);
@@ -90,12 +92,14 @@ describe('writeChunk', () => {
         chainId: 143, txHash: '0xa', logIndex: 0,
         blockNumber: 100n, timestamp: 1n,
         asset: '0x1', creator: '0x2', router: '0x3', poolId: '0x4',
+        numeraire: '0xusdc', initializer: '0xinit',
       },
       {
         type: 'fee_collection',
         chainId: 143, txHash: '0xb', logIndex: 1,
         blockNumber: 100n, timestamp: 1n,
         contract: 'escrow', asset: '0x1', usdcDelta: '500', tokenDelta: '0',
+        wmonDelta: '0', numeraireDelta: '0',
       },
       {
         type: 'buyback',

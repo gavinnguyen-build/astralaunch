@@ -11,7 +11,9 @@ import {
   escrowFeeCollectedEvent,
   revenueRecordedEvent,
   claimedEvent,
+  claimedWmonEvent,
   forfeitedEvent,
+  vaultFeeCollectedEvent,
   buybackExecutedEvent,
   tokensBurnedEvent,
   pfrCollectedEvent,
@@ -40,11 +42,13 @@ function makeLog(overrides: Partial<Log>): Log {
 }
 
 describe('decodeStaticLog', () => {
-  it('decodes Registered event', () => {
-    const asset   = '0x13DB78bd3F92382306a17d50dAC93Af1904e171d';
-    const creator = '0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6';
-    const router  = '0x95D381aa54A2DA62C835Dd081D1D5a0f8700C722';
-    const poolId  = '0x0000000000000000000000000000000000000000000000000000000000000001';
+  it('decodes Registered event (v2: 7 fields)', () => {
+    const asset       = '0x13DB78bd3F92382306a17d50dAC93Af1904e171d';
+    const creator     = '0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6';
+    const router      = '0x95D381aa54A2DA62C835Dd081D1D5a0f8700C722';
+    const poolId      = '0x0000000000000000000000000000000000000000000000000000000000000001';
+    const numeraire   = '0x754704Bc059F8C67012fEd69BC8A327a5aafb603';
+    const initializer = '0xce30042838e42790dbec27ef08f79191583a4d3b';
 
     const topics = encodeEventTopics({
       abi: [registeredEvent],
@@ -52,8 +56,8 @@ describe('decodeStaticLog', () => {
       args: { asset: asset as `0x${string}`, creator: creator as `0x${string}`, router: router as `0x${string}` },
     });
     const data = encodeAbiParameters(
-      [{ type: 'bytes32' }, { type: 'uint256' }],
-      [poolId as Hex, 1727000000n],
+      [{ type: 'bytes32' }, { type: 'address' }, { type: 'address' }, { type: 'uint256' }],
+      [poolId as Hex, numeraire as `0x${string}`, initializer as `0x${string}`, 1727000000n],
     );
 
     const log = makeLog({
@@ -70,10 +74,12 @@ describe('decodeStaticLog', () => {
       expect(row!.creator).toBe(creator.toLowerCase());
       expect(row!.router).toBe(router.toLowerCase());
       expect(row!.poolId).toBe(poolId);
+      expect(row!.numeraire).toBe(numeraire.toLowerCase());
+      expect(row!.initializer).toBe(initializer.toLowerCase());
     }
   });
 
-  it('decodes FeeCollected from escrow', () => {
+  it('decodes FeeCollected from escrow (v2: 4 fields with wmonDelta)', () => {
     const asset = '0x13DB78bd3F92382306a17d50dAC93Af1904e171d';
     const topics = encodeEventTopics({
       abi: [escrowFeeCollectedEvent],
@@ -81,8 +87,8 @@ describe('decodeStaticLog', () => {
       args: { asset: asset as `0x${string}` },
     });
     const data = encodeAbiParameters(
-      [{ type: 'uint256' }, { type: 'uint256' }],
-      [500000n, 1000n],
+      [{ type: 'uint256' }, { type: 'uint256' }, { type: 'uint256' }],
+      [500000n, 1000n, 250000n],
     );
 
     const log = makeLog({
@@ -98,13 +104,15 @@ describe('decodeStaticLog', () => {
       expect(row!.contract).toBe('escrow');
       expect(row!.usdcDelta).toBe('500000');
       expect(row!.tokenDelta).toBe('1000');
+      expect(row!.wmonDelta).toBe('250000');
+      expect(row!.numeraireDelta).toBe('0');
     }
   });
 
-  it('decodes FeeCollected from vault', () => {
+  it('decodes FeeCollected from vault (v2: numeraireDelta)', () => {
     const asset = '0x13DB78bd3F92382306a17d50dAC93Af1904e171d';
     const topics = encodeEventTopics({
-      abi: [escrowFeeCollectedEvent],
+      abi: [vaultFeeCollectedEvent],
       eventName: 'FeeCollected',
       args: { asset: asset as `0x${string}` },
     });
@@ -124,6 +132,10 @@ describe('decodeStaticLog', () => {
     expect(row!.type).toBe('fee_collection');
     if (row!.type === 'fee_collection') {
       expect(row!.contract).toBe('vault');
+      expect(row!.usdcDelta).toBe('0');
+      expect(row!.tokenDelta).toBe('500');
+      expect(row!.wmonDelta).toBe('0');
+      expect(row!.numeraireDelta).toBe('250000');
     }
   });
 
@@ -149,7 +161,7 @@ describe('decodeStaticLog', () => {
     }
   });
 
-  it('decodes Claimed', () => {
+  it('decodes Claimed (USDC)', () => {
     const asset   = '0x13DB78bd3F92382306a17d50dAC93Af1904e171d';
     const creator = '0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6';
     const topics = encodeEventTopics({
@@ -166,10 +178,41 @@ describe('decodeStaticLog', () => {
     if (row!.type === 'escrow_claim') {
       expect(row!.amount).toBe('100000');
       expect(row!.creator).toBe(creator.toLowerCase());
+      expect(row!.wmonAmount).toBe('0');
+      expect(row!.usdValue).toBe('0');
     }
   });
 
-  it('decodes Forfeited', () => {
+  it('decodes ClaimedWmon', () => {
+    const asset   = '0x13DB78bd3F92382306a17d50dAC93Af1904e171d';
+    const creator = '0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6';
+    const topics = encodeEventTopics({
+      abi: [claimedWmonEvent],
+      eventName: 'ClaimedWmon',
+      args: { asset: asset as `0x${string}`, creator: creator as `0x${string}` },
+    });
+    const data = encodeAbiParameters(
+      [{ type: 'uint256' }, { type: 'uint256' }],
+      [5000000000000000000n, 13500000n], // 5 WMON, $13.50
+    );
+
+    const log = makeLog({
+      address: ESCROW as `0x${string}`,
+      topics: topics as [Hex, ...Hex[]],
+      data,
+    });
+    const row = decodeStaticLog(log, CHAIN_ID, BLOCK_TS, ESCROW, VAULT);
+    expect(row).not.toBeNull();
+    expect(row!.type).toBe('escrow_claim');
+    if (row!.type === 'escrow_claim') {
+      expect(row!.amount).toBe('0');
+      expect(row!.wmonAmount).toBe('5000000000000000000');
+      expect(row!.usdValue).toBe('13500000');
+      expect(row!.creator).toBe(creator.toLowerCase());
+    }
+  });
+
+  it('decodes Forfeited (v2: 4 fields with wmonMoved)', () => {
     const asset = '0x13DB78bd3F92382306a17d50dAC93Af1904e171d';
     const topics = encodeEventTopics({
       abi: [forfeitedEvent],
@@ -177,8 +220,8 @@ describe('decodeStaticLog', () => {
       args: { asset: asset as `0x${string}` },
     });
     const data = encodeAbiParameters(
-      [{ type: 'uint256' }, { type: 'uint256' }],
-      [50000n, 999n],
+      [{ type: 'uint256' }, { type: 'uint256' }, { type: 'uint256' }],
+      [50000n, 999n, 3000000000000000000n],
     );
 
     const log = makeLog({ topics: topics as [Hex, ...Hex[]], data });
@@ -188,6 +231,7 @@ describe('decodeStaticLog', () => {
     if (row!.type === 'escrow_forfeit') {
       expect(row!.usdcMoved).toBe('50000');
       expect(row!.tokenMoved).toBe('999');
+      expect(row!.wmonMoved).toBe('3000000000000000000');
     }
   });
 
@@ -232,7 +276,7 @@ describe('decodeStaticLog', () => {
     }
   });
 
-  it('decodes PFR Collected', () => {
+  it('decodes PFR Collected (v2: 4 fields with numeraireForwarded)', () => {
     const asset = '0x13DB78bd3F92382306a17d50dAC93Af1904e171d';
     const topics = encodeEventTopics({
       abi: [pfrCollectedEvent],
@@ -240,8 +284,8 @@ describe('decodeStaticLog', () => {
       args: { asset: asset as `0x${string}` },
     });
     const data = encodeAbiParameters(
-      [{ type: 'uint256' }, { type: 'uint256' }],
-      [50000n, 0n],
+      [{ type: 'uint256' }, { type: 'uint256' }, { type: 'uint256' }],
+      [50000n, 0n, 1500000000000000000n],
     );
 
     const log = makeLog({ topics: topics as [Hex, ...Hex[]], data });
@@ -251,6 +295,7 @@ describe('decodeStaticLog', () => {
     if (row!.type === 'pfr_collection') {
       expect(row!.usdcForwarded).toBe('50000');
       expect(row!.tokenForwarded).toBe('0');
+      expect(row!.numeraireForwarded).toBe('1500000000000000000');
     }
   });
 

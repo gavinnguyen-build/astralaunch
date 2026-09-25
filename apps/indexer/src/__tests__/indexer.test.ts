@@ -58,8 +58,13 @@ function makeRegisteredLog(blockNumber: bigint): Log {
     },
   });
   const data = encodeAbiParameters(
-    [{ type: 'bytes32' }, { type: 'uint256' }],
-    ['0x0000000000000000000000000000000000000000000000000000000000000001' as Hex, 1727000000n],
+    [{ type: 'bytes32' }, { type: 'address' }, { type: 'address' }, { type: 'uint256' }],
+    [
+      '0x0000000000000000000000000000000000000000000000000000000000000001' as Hex,
+      USDC as `0x${string}`,   // numeraire
+      '0x0000000000000000000000000000000000000001' as `0x${string}`, // initializer
+      1727000000n,
+    ],
   );
   return {
     address: REGISTRY,

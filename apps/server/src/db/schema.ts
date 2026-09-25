@@ -91,6 +91,8 @@ export const idxRegistrations = pgTable('idx_registrations', {
   creator:     text('creator').notNull(),
   router:      text('router').notNull(),
   poolId:      text('pool_id').notNull(),
+  numeraire:   text('numeraire').notNull().default(''),
+  initializer: text('initializer').notNull().default(''),
   blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
   timestamp:   bigint('timestamp', { mode: 'bigint' }).notNull(),
 }, (t) => [
@@ -131,16 +133,18 @@ export const idxDistributions = pgTable('idx_distributions', {
 ]);
 
 export const idxFeeCollections = pgTable('idx_fee_collections', {
-  id:          serial('id').primaryKey(),
-  chainId:     integer('chain_id').notNull(),
-  txHash:      text('tx_hash').notNull(),
-  logIndex:    integer('log_index').notNull(),
-  contract:    text('contract').notNull(),
-  asset:       text('asset').notNull(),
-  usdcDelta:   numeric('usdc_delta', { precision: 78 }).notNull(),
-  tokenDelta:  numeric('token_delta', { precision: 78 }).notNull(),
-  blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
-  timestamp:   bigint('timestamp', { mode: 'bigint' }).notNull(),
+  id:             serial('id').primaryKey(),
+  chainId:        integer('chain_id').notNull(),
+  txHash:         text('tx_hash').notNull(),
+  logIndex:       integer('log_index').notNull(),
+  contract:       text('contract').notNull(),
+  asset:          text('asset').notNull(),
+  usdcDelta:      numeric('usdc_delta', { precision: 78 }).notNull(),
+  tokenDelta:     numeric('token_delta', { precision: 78 }).notNull(),
+  wmonDelta:      numeric('wmon_delta', { precision: 78 }).notNull().default('0'),
+  numeraireDelta: numeric('numeraire_delta', { precision: 78 }).notNull().default('0'),
+  blockNumber:    bigint('block_number', { mode: 'bigint' }).notNull(),
+  timestamp:      bigint('timestamp', { mode: 'bigint' }).notNull(),
 }, (t) => [
   uniqueIndex('idx_fee_collections_unique').on(t.chainId, t.txHash, t.logIndex),
 ]);
@@ -167,6 +171,8 @@ export const idxEscrowClaims = pgTable('idx_escrow_claims', {
   asset:       text('asset').notNull(),
   creator:     text('creator').notNull(),
   amount:      numeric('amount', { precision: 78 }).notNull(),
+  wmonAmount:  numeric('wmon_amount', { precision: 78 }).notNull().default('0'),
+  usdValue:    numeric('usd_value', { precision: 78 }).notNull().default('0'),
   blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
   timestamp:   bigint('timestamp', { mode: 'bigint' }).notNull(),
 }, (t) => [
@@ -181,6 +187,7 @@ export const idxEscrowForfeits = pgTable('idx_escrow_forfeits', {
   asset:       text('asset').notNull(),
   usdcMoved:   numeric('usdc_moved', { precision: 78 }).notNull(),
   tokenMoved:  numeric('token_moved', { precision: 78 }).notNull(),
+  wmonMoved:   numeric('wmon_moved', { precision: 78 }).notNull().default('0'),
   blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
   timestamp:   bigint('timestamp', { mode: 'bigint' }).notNull(),
 }, (t) => [
@@ -216,15 +223,16 @@ export const idxBurns = pgTable('idx_burns', {
 ]);
 
 export const idxPfrCollections = pgTable('idx_pfr_collections', {
-  id:          serial('id').primaryKey(),
-  chainId:     integer('chain_id').notNull(),
-  txHash:      text('tx_hash').notNull(),
-  logIndex:    integer('log_index').notNull(),
-  asset:       text('asset').notNull(),
-  usdcForwarded: numeric('usdc_forwarded', { precision: 78 }).notNull(),
-  tokenForwarded: numeric('token_forwarded', { precision: 78 }).notNull(),
-  blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
-  timestamp:   bigint('timestamp', { mode: 'bigint' }).notNull(),
+  id:                  serial('id').primaryKey(),
+  chainId:             integer('chain_id').notNull(),
+  txHash:              text('tx_hash').notNull(),
+  logIndex:            integer('log_index').notNull(),
+  asset:               text('asset').notNull(),
+  usdcForwarded:       numeric('usdc_forwarded', { precision: 78 }).notNull(),
+  tokenForwarded:      numeric('token_forwarded', { precision: 78 }).notNull(),
+  numeraireForwarded:  numeric('numeraire_forwarded', { precision: 78 }).notNull().default('0'),
+  blockNumber:         bigint('block_number', { mode: 'bigint' }).notNull(),
+  timestamp:           bigint('timestamp', { mode: 'bigint' }).notNull(),
 }, (t) => [
   uniqueIndex('idx_pfr_collections_unique').on(t.chainId, t.txHash, t.logIndex),
 ]);
