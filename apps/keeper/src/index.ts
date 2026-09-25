@@ -1,8 +1,10 @@
 /**
  * Astralaunch keeper — scheduled on-chain job runner.
  *
- * Reads the list of registered assets from env (comma-separated ASSETS) or from
- * the server database (DATABASE_URL) and runs jobs every POLL_INTERVAL_S seconds.
+ * Each tick loads the tokens to service from the server database (listed tokens
+ * only: launch fee consumed, not hidden; see targets.ts), cross-checks each one
+ * against the chain, and runs its jobs. Ticks run back to back with
+ * POLL_INTERVAL_S between them, never overlapping.
  *
  * Jobs per asset (ordered by usefulness — high-value first):
  *   1. distribute — forward revenue from routers
@@ -14,17 +16,21 @@
  * After the per-asset loop: monitor PlatformFeeReceiver for treasury proposals,
  * admin transfers, and AstralaunchRegistry for initializer proposals.
  *
+ * GET /health on KEEPER_HEALTH_PORT (default 8080): 503 when no tick has succeeded
+ * within 3 × POLL_INTERVAL_S. A tick that throws sends a Telegram alert.
+ *
  * Usage:
- *   ASSETS=0xToken1,0xToken2 ROUTERS=0xRouter1,0xRouter2 tsx src/index.ts
+ *   DATABASE_URL=postgres://… tsx src/index.ts
+ *   ASSETS=0xToken1,0xToken2 [ROUTERS=0xRouter1,0xRouter2]  — debug override (see targets.ts)
  *   --telegram-test  — send a dry-run Telegram alert and exit
  *   --dry-run        — estimate gas but send no transactions
- *   --once           — run a single tick, then exit (no schedule)
- *
- * Or with DATABASE_URL set, assets/routers are loaded from Postgres.
+ *   --once           — run a single tick, then exit (no schedule, no health server)
  */
 import { config } from 'dotenv';
-import { formatEther, isAddress, type Address } from 'viem';
-import { runAssetJobs } from './jobs.js';
+import { formatEther } from 'viem';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
+import { runTargetJobs } from './jobs.js';
 import {
   PLATFORM_FEE_RECEIVER,
   REGISTRY,
@@ -37,50 +43,47 @@ import {
 } from './chain.js';
 import { monitorTreasuryProposal, monitorAdminTransfers, monitorInitializerProposal, dryRunTelegramAlert } from './telegram.js';
 import { SpendGuardError } from './spend.js';
-import { KEEPER_DEFAULT_INTERVAL_S, KEEPER_MIN_INTERVAL_S } from '@astralaunch/shared';
+import { loadTargets, targetSource, type Db, type KeeperTarget } from './targets.js';
+import { KeeperHealth, startHealthServer } from './health.js';
+import { resolveInterval } from './interval.js';
+import { KEEPER_MIN_INTERVAL_S } from '@astralaunch/shared';
 
 config({ path: '../../.env' });
 config({ path: '.env', override: false });
 
 // ── Interval guard ──────────────────────────────────────────────────────────
 
-function resolveInterval(): number {
-  const configured = Number(process.env.POLL_INTERVAL_S ?? KEEPER_DEFAULT_INTERVAL_S);
-  const isLocal = /localhost|127\.0\.0\.1/.test(RPC_URL);
-
-  if (!isLocal && configured < KEEPER_MIN_INTERVAL_S) {
-    console.warn(
-      `[keeper] POLL_INTERVAL_S=${configured} is below minimum ${KEEPER_MIN_INTERVAL_S}s for non-localhost RPC. Clamping to ${KEEPER_MIN_INTERVAL_S}s.`,
-    );
-    return KEEPER_MIN_INTERVAL_S;
-  }
-
-  return configured;
+const interval = resolveInterval(RPC_URL, process.env.POLL_INTERVAL_S);
+if (interval.clamped) {
+  console.warn(
+    `[keeper] POLL_INTERVAL_S=${process.env.POLL_INTERVAL_S} is below minimum ${KEEPER_MIN_INTERVAL_S}s for non-localhost RPC. Clamping to ${KEEPER_MIN_INTERVAL_S}s.`,
+  );
 }
+const POLL_INTERVAL_S = interval.seconds;
 
-const POLL_INTERVAL_S = resolveInterval();
+const HEALTH_PORT = Number(process.env.KEEPER_HEALTH_PORT || 8080);
 
-/** Load asset+router pairs from env vars (for simple/fork usage without Postgres). */
-function loadFromEnv(): Array<{ asset: Address; router: Address }> {
-  const assets  = (process.env.ASSETS  ?? '').split(',').map(s => s.trim()).filter(s => isAddress(s));
-  const routers = (process.env.ROUTERS ?? '').split(',').map(s => s.trim()).filter(s => isAddress(s));
-  if (assets.length !== routers.length) throw new Error('ASSETS and ROUTERS must have equal length');
-  return assets.map((asset, i) => ({ asset: asset as Address, router: routers[i] as Address }));
-}
+// Read-only use: the keeper only SELECTs from tokens / fee_receipts / hidden_tokens.
+const db: Db | null = process.env.DATABASE_URL
+  ? drizzle(postgres(process.env.DATABASE_URL, { max: 2 }))
+  : null;
 
-async function runOnce(pairs: Array<{ asset: Address; router: Address }>) {
+const health = new KeeperHealth(POLL_INTERVAL_S);
+
+async function runOnce(targets: KeeperTarget[]) {
   // Refresh gas price and wallet balance at the start of each tick
   await refreshGasPrice();
   const balance = await refreshWalletBalance();
+  health.recordBalance(balance);
 
   console.log(
-    `[keeper] tick — ${pairs.length} asset(s)  balance=${formatEther(balance)} MON  ${new Date().toISOString()}`,
+    `[keeper] tick — ${targets.length} asset(s)  balance=${formatEther(balance)} MON  ${new Date().toISOString()}`,
   );
 
   try {
-    for (const { asset, router } of pairs) {
+    for (const target of targets) {
       // Order: distribute, buyback (high value) before collect (expensive, may have nothing)
-      await runAssetJobs(asset, router);
+      await runTargetJobs(target);
     }
   } catch (e) {
     if (e instanceof SpendGuardError) {
@@ -101,6 +104,20 @@ async function runOnce(pairs: Array<{ asset: Address; router: Address }>) {
   }
 }
 
+/** One tick: discover targets fresh (no restart needed for new listings), run jobs, record health. */
+async function tick(): Promise<boolean> {
+  try {
+    const targets = await loadTargets(process.env, db);
+    await runOnce(targets);
+    await health.recordSuccess(targets.length);
+    return true;
+  } catch (e) {
+    console.error(`[keeper] tick failed: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
+    await health.recordFailure(e);
+    return false;
+  }
+}
+
 async function main() {
   // Handle --telegram-test flag
   if (process.argv.includes('--telegram-test')) {
@@ -112,25 +129,30 @@ async function main() {
     console.log('[keeper] DRY RUN MODE — no transactions will be sent');
   }
 
+  // Fail fast on a malformed ASSETS/ROUTERS override or missing DATABASE_URL.
+  const source = targetSource(process.env, db !== null);
+
   // Verify contract addresses have code and admin wiring before starting jobs.
   await verifyContracts();
 
-  const pairs = loadFromEnv();
-  if (pairs.length === 0) {
-    console.warn('[keeper] No assets configured. Set ASSETS and ROUTERS env vars.');
-  }
   console.log(
-    `[keeper] starting — poll every ${POLL_INTERVAL_S}s  assets=${pairs.map(p => p.asset).join(',')}` +
+    `[keeper] starting — poll every ${POLL_INTERVAL_S}s  targets from ${source.describe}` +
     (DRY_RUN ? '  [DRY-RUN]' : ''),
   );
 
-  // Run immediately on start, then on schedule
-  await runOnce(pairs);
   if (process.argv.includes('--once')) {
+    const ok = await tick();
     console.log('[keeper] --once: single tick done, exiting');
-    process.exit(0);
+    process.exit(ok ? 0 : 1);
   }
-  setInterval(() => runOnce(pairs).catch(console.error), POLL_INTERVAL_S * 1000);
+
+  if (HEALTH_PORT > 0) startHealthServer(health, HEALTH_PORT);
+
+  // Run immediately on start, then POLL_INTERVAL_S after each tick ends (ticks never overlap).
+  for (;;) {
+    await tick();
+    await new Promise(r => setTimeout(r, POLL_INTERVAL_S * 1000));
+  }
 }
 
 main().catch(e => { console.error(e); process.exit(1); });

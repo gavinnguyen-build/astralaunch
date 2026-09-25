@@ -35,6 +35,7 @@ import {
   WAD,
 } from '@astralaunch/shared';
 import { SpendGuardError } from './spend.js';
+import type { KeeperTarget } from './targets.js';
 
 // ── Env-configurable thresholds ─────────────────────────────────────────────
 
@@ -47,7 +48,8 @@ function envUsdc(key: string, fallback: bigint): bigint {
 const minCollectUsdc    = envUsdc('MIN_COLLECT_USDC',    KEEPER_MIN_COLLECT_USDC);
 const minDistributeUsdc = envUsdc('MIN_DISTRIBUTE_USDC', KEEPER_MIN_DISTRIBUTE_USDC);
 const minBuybackUsdc    = envUsdc('MIN_BUYBACK_USDC',    KEEPER_MIN_BUYBACK_USDC);
-const collectIntervalS  = Number(process.env.COLLECT_INTERVAL_S ?? DEFAULT_COLLECT_INTERVAL_S);
+// `||`, not `??`: an empty COLLECT_INTERVAL_S (e.g. a blank compose var) must not become 0 = no cadence limit.
+const collectIntervalS  = Number(process.env.COLLECT_INTERVAL_S || DEFAULT_COLLECT_INTERVAL_S);
 
 // ── ABIs ────────────────────────────────────────────────────────────────────
 
@@ -445,6 +447,55 @@ export async function runAssetJobs(asset: Address, router: Address): Promise<voi
   await jobForfeit(asset);
 }
 
+// ── Target verification ────────────────────────────────────────────────────
+
+/** asset:router pairs already checked against the chain (immutable on-chain wiring). */
+const verifiedTargets = new Set<string>();
+
+/**
+ * Cross-check a discovered target against the chain before spending gas on it.
+ * The database is a discovery hint only: the router must report this asset, and
+ * the DB numeraire / pool id (when present) must match the vault + registry.
+ * Returns a reason string on mismatch, null when the target is good.
+ */
+export async function verifyTarget(target: KeeperTarget): Promise<string | null> {
+  const key = `${target.asset}:${target.router}`.toLowerCase();
+  if (verifiedTargets.has(key)) return null;
+
+  const routerAsset = await publicClient.readContract({
+    address: target.router, abi: routerAbi, functionName: 'asset',
+  });
+  if (routerAsset.toLowerCase() !== target.asset.toLowerCase()) {
+    return `router ${target.router} reports asset ${routerAsset}`;
+  }
+  const meta = await getAssetMeta(target.asset);
+  if (target.numeraire && target.numeraire.toLowerCase() !== meta.numeraire.toLowerCase()) {
+    return `numeraire mismatch: db ${target.numeraire}, registry ${meta.numeraire}`;
+  }
+  if (target.poolId && target.poolId.toLowerCase() !== meta.poolId.toLowerCase()) {
+    return `poolId mismatch: db ${target.poolId}, vault ${meta.poolId}`;
+  }
+  verifiedTargets.add(key);
+  return null;
+}
+
+/** Verify a target against the chain, then run its jobs. Mismatched targets are skipped. */
+export async function runTargetJobs(target: KeeperTarget): Promise<void> {
+  const tag = `target:${target.asset.slice(0, 10)}`;
+  let problem: string | null;
+  try {
+    problem = await verifyTarget(target);
+  } catch (e) {
+    logError(tag, 'verify', e);
+    return;
+  }
+  if (problem) {
+    logError(tag, 'verify', `skipped: ${problem}`);
+    return;
+  }
+  await runAssetJobs(target.asset, target.router);
+}
+
 // ── PlatformFeeReceiver ABI (for telegram monitors) ────────────────────────
 
 const pfrAbi = [
@@ -465,6 +516,7 @@ export { pfrAbi, registryAdminAbi };
 export function _resetCadenceForTest(): void {
   lastCollectTime.clear();
   metaCache.clear();
+  verifiedTargets.clear();
 }
 
 export function _setCadenceForTest(beneficiary: string, asset: string, ts: number): void {
