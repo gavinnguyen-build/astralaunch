@@ -355,11 +355,32 @@ Removed in v0.2. DopplerERC20V1 provides vesting with a cliff natively (§4.5).
 ## 7. Launch flow
 
 1. Creator connects (Privy: X/email login + embedded wallet, or external wallet).
-2. Fills: name, symbol, image, description, links. Optional: attach a service now (§8).
-3. Frontend shows fixed economics (fee split, supply, vesting, cliff claim date, balance cap) — not editable.
-4. Frontend builds the SDK params (§6.1), simulates, shows the MON gas estimate (~0.5 MON), sends with gasLimit = estimate × 1.1. The SDK waits for 2 confirmations.
-5. Frontend (or server) calls `AstralaunchRegistry.register(asset)`. On `Registered`: server creates the token record; if a service was configured, it becomes active with `payTo = router`.
-6. Trading opens at the scheduled start time with the 1%-per-wallet balance cap active for ~12 minutes.
+2. Fills: name, symbol, pairing (USDC or MON), image, description, links, optional fee recipient. Optional: attach a service now (§8).
+3. Frontend shows fixed economics (fee split, supply, vesting, cliff claim date, balance cap), the 10 MON launch fee and the MON gas estimate. None of it is editable. The fixed $2,500 initial market cap is not shown.
+4. Frontend builds the SDK params (§6.1) with the startTime recomputed from the latest block. Every transaction is simulated first and sent with gasLimit = estimate × 1.1.
+
+**One-transaction launch (default, D-LH1..D-LH6).** Used when `/api/config` returns `launchHelper`
+(`LaunchHelper` `0xc8D11D55cC5Bee0e01652A6812Fd727501018676`, §23):
+
+5. The SDK encodes `CreateParams` once (its salt is random). The frontend simulates the whole
+   `LaunchHelper.launch(params, creator)` for the confirmation, then sends it as ONE transaction. That
+   transaction runs `Airlock.create` → `AstralaunchRegistry.register(asset, creator)` → forwards the 10 MON fee to
+   the treasury → `LaunchFeePaid(launcher, asset, amount)`.
+   - `msg.value` is 10 MON, or 0 when the wallet already holds an unused fee receipt.
+   - All-or-nothing: any registry mismatch reverts the transaction and no fee is taken.
+   - The helper builds no Doppler encoding itself (rule 11), has no admin and holds no funds.
+6. The server stores the fee receipt from that transaction (`POST /api/launch-fee/verify`). It reads the fee
+   from the helper's own `LaunchFeePaid` log, with launcher = tx sender. The indexer lists the token when it sees
+   `Registered`, which consumes the receipt. The order of verify and indexing does not matter.
+7. The creator signs ONE message (`launchDetailsMessage`) covering the token details and the service. Once the
+   token is listed, `POST /api/tokens/launch-details` saves both in one transaction.
+
+**Multi-transaction launch (fallback, no helper configured):** pay 10 MON to the treasury and verify →
+`createMulticurve` via the SDK → `register(asset, creator)` → wait for listing → sign the metadata and the
+service separately (two messages). A direct launch without the helper remains valid; the fee rules are the same
+(D-LF1..D-LF6).
+
+8. Trading opens at the scheduled start time, with the 1%-per-wallet balance cap active for ~12 minutes.
 
 ## 8. Service attach flow
 
@@ -686,6 +707,27 @@ Source for every row: `packages/contracts/deployments/monad-mainnet.json` (Deplo
 | Guardian (cancel-only) | `0x62c1a140eB643BF43659E7e5134CAfDFeDe17e8b` |
 | Treasury (PlatformFeeReceiver destination) | `0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C` |
 | Deployer | `0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6` |
+
+### LaunchHelper (periphery, deployed 2026-09-26)
+
+One-transaction launch (§7, D-LH1..D-LH6). It is not part of the v2 core deploy. Source: deploy tx
+`0x38adcb5fd5ee199ba7f30afa2383c4d5c6f63f9b60b5ee2b9ac43736c3126b2a`, included in block `108087052`,
+sent by the deployer `0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6`; artifact
+`packages/contracts/deployments/monad-mainnet-launch-helper.json`. Its `blockNumber` field (`108087007`) is the
+script's simulation block, not the inclusion block.
+
+| Contract | Address |
+|---|---|
+| LaunchHelper | `0xc8D11D55cC5Bee0e01652A6812Fd727501018676` |
+
+Checked on-chain (read-only) 2026-09-26:
+- The deploy tx succeeded and created this address.
+- `airlock()` = Doppler Airlock, `registry()` = v2 AstralaunchRegistry, `treasury()` =
+  `0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C`, `launchFee()` = 10 MON.
+- The runtime bytecode (1,686 bytes) is identical to `src/LaunchHelper.sol` at commit `ac83f71`, apart from
+  those immutables.
+
+The server enables it with `LAUNCH_HELPER_ADDRESS`, and re-checks the same values at startup.
 
 ### First v2 tokens (2026-09-25)
 
