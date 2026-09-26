@@ -6,6 +6,7 @@ import {
   START_BLOCK,
   CHUNK_SIZE,
   POLL_INTERVAL_S,
+  SWAP_POLL_INTERVAL_S,
   FINALITY_LAG,
   MAX_RPS,
   REGISTRY_ADDR,
@@ -54,5 +55,5 @@ if (mode === 'backfill') {
   await sql.end();
   process.exit(0);
 } else {
-  await indexer.follow(POLL_INTERVAL_S * 1000);
+  await indexer.follow(POLL_INTERVAL_S * 1000, SWAP_POLL_INTERVAL_S * 1000);
 }

@@ -391,14 +391,36 @@ export class Indexer {
     }
 
     // Market data: swaps / pool inits of registered pools, asset transfers (holders)
-    while (await this.processSwapsChunk()) {
-      didWork = true;
-    }
-    while (await this.processAssetTransfersChunk()) {
-      didWork = true;
-    }
+    if (await this.processMarket()) didWork = true;
 
     return didWork;
+  }
+
+  /**
+   * Market data only (swaps + pool inits, asset transfers): display data, nothing that moves money or
+   * feeds the keeper. Same finality rule (getLatestBlock) as every other set.
+   */
+  async processMarket(): Promise<boolean> {
+    let didWork = false;
+    while (await this.processSwapsChunk()) didWork = true;
+    while (await this.processAssetTransfersChunk()) didWork = true;
+    return didWork;
+  }
+
+  private lastFullMs = -Infinity;
+
+  /**
+   * One follow-mode step: the full cycle (registry, routers, USDC, market) when `intervalMs` has passed
+   * since the last one, otherwise market data only. Sequential, so two cycles never race on a checkpoint.
+   */
+  async tick(nowMs: number, intervalMs: number): Promise<'full' | 'market'> {
+    if (nowMs - this.lastFullMs >= intervalMs) {
+      this.lastFullMs = nowMs;
+      await this.processAll();
+      return 'full';
+    }
+    await this.processMarket();
+    return 'market';
   }
 
   /**
@@ -415,18 +437,19 @@ export class Indexer {
   }
 
   /**
-   * Follow mode: poll for new blocks every intervalMs.
+   * Follow mode: everything every intervalMs; market data (swaps, holders) every marketIntervalMs.
    */
-  async follow(intervalMs: number): Promise<never> {
-    console.log(`[indexer] Follow mode — polling every ${intervalMs / 1000}s`);
+  async follow(intervalMs: number, marketIntervalMs = intervalMs): Promise<never> {
+    const step = Math.min(intervalMs, marketIntervalMs);
+    console.log(`[indexer] Follow mode — polling every ${intervalMs / 1000}s, market data every ${step / 1000}s`);
 
     while (true) {
       try {
-        await this.processAll();
+        await this.tick(Date.now(), intervalMs);
       } catch (err) {
         console.error('[indexer] Error in follow loop:', err);
       }
-      await new Promise(r => setTimeout(r, intervalMs));
+      await new Promise(r => setTimeout(r, step));
     }
   }
 }

@@ -39,10 +39,25 @@ export const PFR_ADDR      = contracts.platformFeeReceiver as `0x${string}`;
 export const START_BLOCK   = BigInt(contracts.blockNumber);
 export const CHAIN_ID      = contracts.chainId;
 
+/** Positive number from env; blank = fallback. */
+function positive(key: string, fallback: number): number {
+  const raw = process.env[key];
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) throw new Error(`${key} must be a positive number of seconds, got "${raw}"`);
+  return n;
+}
+
 export const DATABASE_URL      = need('DATABASE_URL');
 export const MONAD_RPC_URL     = need('MONAD_RPC_URL');
 export const CHUNK_SIZE        = Number(process.env.INDEXER_CHUNK_SIZE ?? 10_000);
-export const POLL_INTERVAL_S   = Number(process.env.INDEXER_POLL_INTERVAL_S ?? 10);
+export const POLL_INTERVAL_S   = positive('INDEXER_POLL_INTERVAL_S', 10);
+/**
+ * Market data (swaps + asset transfers of registered pools) is polled on its own, faster cadence so a
+ * trade shows up within seconds. Same finality rule as every other set; it only moves display data.
+ * Unset = POLL_INTERVAL_S (docker-compose.prod.yml sets 3).
+ */
+export const SWAP_POLL_INTERVAL_S = positive('INDEXER_SWAP_POLL_INTERVAL_S', POLL_INTERVAL_S);
 export const FINALITY_LAG      = Number(process.env.INDEXER_FINALITY_LAG ?? 0);
 export const MAX_RPS           = Number(process.env.INDEXER_MAX_RPS ?? 25);
 export const RPC_TIMEOUT_MS    = Number(process.env.INDEXER_RPC_TIMEOUT_MS ?? 30_000);
