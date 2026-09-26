@@ -68,8 +68,29 @@ export interface CreatorDash {
   recentRequests: { service: string | null; statusCode: number | null; upstreamStatus: number | null; latencyMs: number | null; charged: boolean; amountUsdc: string; errorCode: string | null; settleTxHash: string | null; createdAt: string }[];
 }
 
+/** GET /api/tokens filters (server: services/tokenList.ts) and their chip labels, in display order. */
+export type TokenFilter = 'with-revenue' | 'verified' | 'new' | 'high-ucr' | 'no-service';
+export const TOKEN_FILTERS: { slug: TokenFilter; label: string }[] = [
+  { slug: 'with-revenue', label: 'With revenue' }, { slug: 'verified', label: 'Verified' }, { slug: 'new', label: 'New' },
+  { slug: 'high-ucr', label: 'High UCR' }, { slug: 'no-service', label: 'No service yet' },
+];
+export type TokenSort = 'revenue' | 'price' | 'change24h' | 'mcap' | 'ucr' | 'calls';
+export interface TokenListParams {
+  filter?: TokenFilter | 'all'; sort?: TokenSort; dir?: 'asc' | 'desc'; q?: string; limit?: number; offset?: number; days?: 7 | 30 | 90;
+}
+export interface TokenListPage {
+  tokens: TokenListItem[]; total: number; counts: Record<'all' | TokenFilter, number>; limit: number; offset: number;
+}
+function listQuery(p: TokenListParams): string {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(p)) if (v !== undefined && v !== '') qs.set(k, String(v));
+  return qs.toString();
+}
+
 export const api = {
   tokens:      (days = 30) => get<{ tokens: TokenListItem[] }>(`/api/tokens?sort=clean_revenue_30d&limit=100&days=${days}`),
+  /** Filtered, sorted page of listed tokens with total and per-filter counts. */
+  tokenList:   (p: TokenListParams) => get<TokenListPage>(`/api/tokens?${listQuery(p)}`),
   token:       (a: string) => get<TokenDetail>(`/api/tokens/${a}`),
   candles:     (a: string, tf: string) => get<Candles>(`/api/tokens/${a}/candles?tf=${tf}`),
   trades:      (a: string) => get<{ numeraireSymbol: string; trades: Trade[] }>(`/api/tokens/${a}/trades?limit=50`),
