@@ -78,6 +78,17 @@ export const FACILITATOR_SUBMITTERS: ReadonlyArray<string> = [
  */
 export const LAUNCH_FEE_TREASURY = '0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C';
 
+/**
+ * LaunchHelper: one-transaction launch (Airlock.create + AstralaunchRegistry.register + 10 MON fee to
+ * LAUNCH_FEE_TREASURY; docs/decisions.md D-LH1..D-LH6). Source: deploy tx
+ * 0x38adcb5fd5ee199ba7f30afa2383c4d5c6f63f9b60b5ee2b9ac43736c3126b2a (block 108087052, from the deployer
+ * 0x11e2dD9a4B9062675fD89178a2C9778182Dfcbc6); packages/contracts/deployments/monad-mainnet-launch-helper.json.
+ * Verified on-chain 2026-09-26: tx success and creates this address; airlock / registry / treasury / launchFee
+ * = AIRLOCK / v2 registry / LAUNCH_FEE_TREASURY / 10 MON; runtime bytecode identical to src/LaunchHelper.sol
+ * (commit ac83f71) apart from those immutables. The server enables it via LAUNCH_HELPER_ADDRESS.
+ */
+export const LAUNCH_HELPER = '0xc8D11D55cC5Bee0e01652A6812Fd727501018676';
+
 // ── Block explorer ─────────────────────────────────────────────────────────────
 /** Monad mainnet explorer (paths: /address/<addr>, /tx/<hash>, /token/<asset>). Source: Tun, 2026-09-26. */
 export const MONAD_EXPLORER_URL = 'https://monadscan.com';

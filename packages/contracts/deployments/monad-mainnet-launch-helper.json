@@ -1,0 +1,10 @@
+{
+  "airlock": "0x660eAaEdEBc968f8f3694354FA8EC0b4c5Ba8D12",
+  "blockNumber": 108087007,
+  "chainId": 143,
+  "dryRun": false,
+  "launchFee": 10000000000000000000,
+  "launchHelper": "0xc8D11D55cC5Bee0e01652A6812Fd727501018676",
+  "registry": "0x6B3A79C723AB69f8938C87209E1D9730c739e00c",
+  "treasury": "0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C"
+}
