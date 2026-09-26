@@ -1,5 +1,6 @@
 /** Header + footer shared by every page (markup from docs/design/Home.dc.html / Discover.dc.html). */
 import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { useLocation } from 'react-router-dom';
 import { A } from './A.js';
 import { shortAddr } from '../lib/format.js';
 import { PRIVY_APP_ID } from '../env.js';
@@ -44,7 +45,15 @@ export function useWalletAddress(): string | null {
   return ready && authenticated ? wallets[0]?.address ?? null : null;
 }
 
-export function SiteHeader({ active }: { active: string }) {
+/** The nav item for a path: only its own route (or a sub-path) highlights it; "/" and other pages highlight nothing. */
+export function navKeyFor(pathname: string): string | null {
+  const p = pathname.replace(/\/+$/, '') || '/';
+  return NAV.find((n) => p === n.href || p.startsWith(`${n.href}/`))?.key ?? null;
+}
+
+/** `active` is ignored (kept so the generated design views compile): the highlight follows the current route. */
+export function SiteHeader(_props: { active?: string }) {
+  const active = navKeyFor(useLocation().pathname);
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const { ready, authenticated, login } = HAS_PRIVY ? usePrivy() : noPrivy;
   const addr = useWalletAddress();
