@@ -36,6 +36,32 @@ export function fmtUsd(v: string | number | null | undefined, compactLarge = tru
   return `$${sig(n, 3)}`;
 }
 
+const SUBSCRIPT = '₀₁₂₃₄₅₆₇₈₉';
+/** Leading zeros after "0." from which a price is shown with a subscript zero count. */
+export const PRICE_SUBSCRIPT_FROM = 4;
+
+/**
+ * Token price, compact and never in scientific notation:
+ * 0.0000025 → "$0.0₅25", 0.0000025376 → "$0.0₅254", 0.00254 → "$0.00254", 1.2345 → "$1.2345", 1234.5 → "$1,235".
+ * The subscript is the number of zeros after "0." (DexScreener style). `prefix` is "$" for USD, "" otherwise.
+ */
+export function fmtPrice(v: string | number | null | undefined, prefix = '$'): string {
+  if (v == null || v === '') return '—';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  if (n === 0) return `${prefix}0`;
+  const sign = n < 0 ? '-' : '';
+  const a = Math.abs(n);
+  if (a >= 1) return `${sign}${prefix}${a.toLocaleString('en-US', { maximumFractionDigits: a >= 1000 ? 0 : 4 })}`;
+  // 3 significant digits via the exponent form, then written out without "e".
+  const [mant, exp] = a.toExponential(2).split('e');
+  const zeros = -Number(exp) - 1;
+  const digits = mant!.replace('.', '').replace(/0+$/, '') || '0';
+  if (zeros < PRICE_SUBSCRIPT_FROM) return `${sign}${prefix}0.${'0'.repeat(Math.max(0, zeros))}${digits}`;
+  const sub = String(zeros).split('').map((d) => SUBSCRIPT[Number(d)]).join('');
+  return `${sign}${prefix}0.0${sub}${digits}`;
+}
+
 /** Token / numeraire amounts: 58006.13 → "58.0K", 0.15 → "0.15". */
 export const fmtAmount = (v: string | number | null | undefined) => compact(v);
 

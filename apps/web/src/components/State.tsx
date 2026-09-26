@@ -1,6 +1,6 @@
 /** Loading / empty / error states in the design palette. */
 import type { ReactNode } from 'react';
-import { fmtUsd } from '../lib/format.js';
+import { fmtUsd, fmtPrice } from '../lib/format.js';
 
 const box = { border: '1px solid #25213A', borderRadius: '14px', background: '#13111C', padding: '28px', textAlign: 'center' as const, fontSize: '14px', color: '#A7A2BD' };
 
@@ -30,8 +30,9 @@ export function ErrorBox({ error, retry }: { error: unknown; retry?: () => void 
 }
 
 /** USD value, or the numeraire value with a hint when the USD price is unavailable (stale Chainlink). */
-export function UsdOr({ usd, alt, symbol, compact = false }: { usd: string | null | undefined; alt: string | null | undefined; symbol: string; compact?: boolean }) {
-  if (usd != null) return <>{fmtUsd(usd, compact)}</>;
+/** USD value, or the numeraire value with a note when there is no USD rate. `price`: token price formatting ($0.0₅25). */
+export function UsdOr({ usd, alt, symbol, compact = false, price = false }: { usd: string | null | undefined; alt: string | null | undefined; symbol: string; compact?: boolean; price?: boolean }) {
+  if (usd != null) return <>{price ? fmtPrice(usd) : fmtUsd(usd, compact)}</>;
   if (alt == null) return <>—</>;
   return (
     <span title="USD price unavailable">

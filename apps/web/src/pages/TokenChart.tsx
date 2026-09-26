@@ -11,7 +11,7 @@ import {
 } from 'lightweight-charts';
 import { TokenChartView } from '../design/TokenChartView.js';
 import { api, type Candle, type Trade } from '../lib/api.js';
-import { ago, compact, fmtUsd, serviceLabel, sig } from '../lib/format.js';
+import { ago, compact, fmtUsd, serviceLabel, fmtPrice } from '../lib/format.js';
 import { Empty, ErrorBox, Loading } from '../components/State.js';
 import { PageShell } from './Token.js';
 import { AddrLink, TxLink } from '../components/Explorer.js';
@@ -74,7 +74,7 @@ export default function TokenChart() {
   const supply = Number(candles.data?.supply ?? token.data?.market?.supply ?? 1e9);
   const mult = unit === 'Mcap' ? supply : 1;
   const px = (c: Candle, k: 'open' | 'high' | 'low' | 'close') => Number(usdOk ? c[`${k}Usd` as const] : c[k]) * mult;
-  const fmtPx = (n: number) => (unit === 'Mcap' ? (usdOk ? `$${compact(n)}` : `${compact(n)} ${numSym}`) : usdOk ? fmtUsd(n) : `${sig(n, 4)}`);
+  const fmtPx = (n: number) => (unit === 'Mcap' ? (usdOk ? `$${compact(n)}` : `${compact(n)} ${numSym}`) : usdOk ? fmtPrice(n) : fmtPrice(n, ''));
 
   // ── chart ──
   const chartRef = useRef<HTMLDivElement | null>(null);
@@ -177,7 +177,7 @@ export default function TokenChart() {
         C(x.pending ? <span title="Confirmed on-chain; waiting for the indexer">{kind} · confirming</span> : kind, 'left', { pill: true, plain: false, pillBg: x.pending ? '#1C1A29' : pillBg, pillFg: fg }),
         C(x.valueUsd != null ? Number(x.valueUsd).toFixed(2) : '—', 'right', { fg, weight: 600 }),
         C(compact(x.assetAmount), 'right', { fg }), C(compact(x.numeraireAmount), 'right', { fg }),
-        C(x.priceUsd != null ? fmtUsd(x.priceUsd) : `${sig(Number(x.price), 3)} ${numSym}`, 'right', { fg, weight: 600 }),
+        C(x.priceUsd != null ? fmtPrice(x.priceUsd) : `${fmtPrice(x.price, '')} ${numSym}`, 'right', { fg, weight: 600 }),
         C(x.isBuyback ? <AddrLink a={x.sender} label="Buyback vault" /> : <AddrLink a={x.trader} />, 'right', { fg: '#8C87A3' }),
       ] };
     });
@@ -238,8 +238,8 @@ export default function TokenChart() {
       fg: (tab === l || (tab === 'Holders' && l.startsWith('Holders'))) ? '#FFFFFF' : '#ECEAF4' })),
     cols: cols.map(([label, align]) => ({ label, align })), rows, tableState,
     tagline: serviceLabel(t.name, t.service),
-    priceUsd: m?.priceUsd != null ? fmtUsd(m.priceUsd) : <span>—<span style={{ display: 'block', fontSize: 10, color: '#8C87A3', fontWeight: 400 }}>USD price unavailable</span></span>,
-    priceNum: m?.price ? `${sig(Number(m.price), 3)} ${numSym}` : '—',
+    priceUsd: m?.priceUsd != null ? fmtPrice(m.priceUsd) : <span>—<span style={{ display: 'block', fontSize: 10, color: '#8C87A3', fontWeight: 400 }}>USD price unavailable</span></span>,
+    priceNum: m?.price ? `${fmtPrice(m.price, '')} ${numSym}` : '—',
     keyStats: [
       { label: 'Mkt cap', value: m?.mcapUsd != null ? fmtUsd(m.mcapUsd) : m?.price ? `${compact(Number(m.price) * Number(m.supply))} ${numSym}` : '—' },
       { label: 'FDV', value: m?.priceUsd != null ? fmtUsd(Number(m.priceUsd) * 1e9) : m?.price ? `${compact(Number(m.price) * 1e9)} ${numSym}` : '—' },

@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { TokenView } from '../design/TokenView.js';
 import { api, type TokenDetail } from '../lib/api.js';
-import { ago, avatarFor, compact, daysUntil, fmtDate, fmtTime, fmtUsd, fmtUsdc, schemaShape } from '../lib/format.js';
+import { ago, avatarFor, compact, daysUntil, fmtDate, fmtTime, fmtUsd, fmtUsdc, schemaShape, fmtPrice } from '../lib/format.js';
 import { Empty, ErrorBox, Loading, UsdOr } from '../components/State.js';
 import { SiteFooter, SiteHeader } from '../components/Site.js';
 import { AddrLink, TokenLink, TxLink } from '../components/Explorer.js';
@@ -70,7 +70,7 @@ export default function Token() {
     launched: `${fmtDate(t.launchedAt)} · ${ago(t.launchedAt)} ago`,
     tokenShort: <TokenLink a={t.asset} />, tokenFull: t.asset, routerShort: <AddrLink a={t.router} />, routerFull: t.router,
     poolLabel: `${t.symbol} / ${sym} · 2%`, feeRecipient: <AddrLink a={t.creator} />,
-    price: <UsdOr usd={m?.priceUsd} alt={m?.price ? compact(m.price) : null} symbol={sym} />,
+    price: <UsdOr usd={m?.priceUsd} alt={m?.price ? fmtPrice(m.price, '') : null} symbol={sym} price />,
     mcap: <UsdOr usd={m?.mcapUsd} alt={m?.price ? compact(Number(m.price) * Number(m.supply)) : null} symbol={sym} />,
     vol24: <UsdOr usd={m?.volume24hUsd} alt={m ? compact(m.volume24h) : null} symbol={sym} />,
     holders: t.holders.toLocaleString('en-US'),
