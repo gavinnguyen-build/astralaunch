@@ -3,7 +3,7 @@
  * With a LaunchHelper configured (/api/config): ONE transaction (create + register + fee) → verify →
  * ONE signature (token details + service) → listing → save. Otherwise: launch fee (unless an unused
  * receipt exists) → verify → createMulticurve → register → listing → signed metadata → signed service.
- * Every tx is simulated first; the confirmation shows the transaction and signature counts and gas.
+ * Every tx is simulated first; the confirmation shows the fee and the gas estimate.
  * The fixed initial market cap is not shown.
  */
 import { useMemo, useState } from 'react';
@@ -208,12 +208,6 @@ function Confirm({ plan, input, onCancel, onConfirm }: { plan: LaunchPlan; input
       <R k="Supply">1,000,000,000 · 85% pool · 15% vested</R>
       <R k="Vesting">15% to the fee recipient · 30-day cliff · 1 year</R>
       <R k="Launch fee">{plan.feeTx.needed ? fmtMon(plan.feeTx.valueWei) : `${fmtMon(plan.feeTx.valueWei)} · already paid`}</R>
-      <R k="Wallet steps">
-        {plan.txCount} transaction{plan.txCount === 1 ? '' : 's'}
-        {plan.mode === 'helper' ? ' (create, register and fee together)' : ''}
-        {' · '}{plan.signatureCount} signature{plan.signatureCount === 1 ? '' : 's'}
-        {plan.mode === 'helper' && plan.signatureCount ? ' (token details and service together)' : ''}
-      </R>
       <R k="Gas (est.)">{fmtMon(plan.estimatedMonCost - (plan.feeTx.needed ? plan.feeTx.valueWei : 0n))}{plan.mode === 'classic' ? ' · register estimated' : ''}</R>
       <R k="Estimated total">{fmtMon(plan.estimatedMonCost)} (fee + gas)</R>
       <div style={{ display: 'flex', gap: 10, marginTop: 18, justifyContent: 'flex-end' }}>
