@@ -22,6 +22,7 @@ import { readClient, walletClients, type Clients, type PrivyWallet } from '../li
 import type { ChainConfig } from '../lib/launch.js';
 import { sig } from '../lib/format.js';
 import { Modal } from './Modal.js';
+import { BURST_MS, burstInterval, tradeFromReceipt, type ShownTrade } from '../lib/optimisticTrade.js';
 import { TxLink } from './Explorer.js';
 
 const C = { card: '#14121E', well: '#1C1A29', line: '#2E2A45', text: '#ECEAF4', dim: '#8C87A3', soft: '#C9C5DA', accent: '#8B5CF6',
@@ -74,7 +75,8 @@ export interface SwapPanelProps {
   wallet: PrivyWallet | null; login: (() => void) | null;
   /** USD per 1 numeraire and per 1 token (null when the oracle is stale). */
   usdPerNum: number | null; tokenUsd: number | null;
-  onSwapped?: () => void;
+  /** Called as soon as the swap receipt arrives, with the trade decoded from it (null if not decodable). */
+  onSwapped?: (trade: ShownTrade | null) => void;
 }
 
 export function SwapPanel(p: SwapPanelProps) {
@@ -86,6 +88,7 @@ export function SwapPanel(p: SwapPanelProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [invertRate, setInvertRate] = useState(false);
   const [reviewing, setReviewing] = useState<TradeQuote | null>(null);
+  const [burstUntil, setBurstUntil] = useState(0);
 
   const cfg = p.config;
   const pc = useMemo(() => (cfg ? readClient(cfg) : null), [cfg]);
@@ -110,7 +113,7 @@ export function SwapPanel(p: SwapPanelProps) {
     refetchInterval: QUOTE_REFRESH_MS, placeholderData: (prev) => prev, retry: 1,
   });
   const balances = useQuery({
-    queryKey: ['swapBalances', p.asset, account, p.numSym], enabled: !!pc && !!account && !!cfg, refetchInterval: 15_000,
+    queryKey: ['swapBalances', p.asset, account, p.numSym], enabled: !!pc && !!account && !!cfg, refetchInterval: () => burstInterval(burstUntil, 15_000),
     queryFn: async () => {
       const [num, tok, gasPrice] = await Promise.all([
         p.numSym === 'MON' ? pc!.getBalance({ address: account! }) : pc!.readContract({ address: cfg!.tokens.usdc, abi: erc20, functionName: 'balanceOf', args: [account!] }),
@@ -273,7 +276,12 @@ export function SwapPanel(p: SwapPanelProps) {
       {reviewing && account && cfg && A && pc && p.wallet && (
         <ReviewSwap initial={reviewing} mode={exactApprovals ? 'exact' : 'standard'} A={A} config={cfg} wallet={p.wallet} symbol={p.symbol} numSym={p.numSym} inDec={inDec} outDec={outDec}
           usdIn={usdIn} usdOut={usdOut}
-          onClose={(swapped) => { setReviewing(null); if (swapped) { setAmount(''); balances.refetch(); p.onSwapped?.(); } }} />
+          onReceipt={(receipt, key) => {
+            setBurstUntil(Date.now() + BURST_MS);
+            void balances.refetch();
+            p.onSwapped?.(tradeFromReceipt({ receipt, key, asset: p.asset, numeraireDecimals: numDec, trader: account, usdPerNumeraire: p.usdPerNum }));
+          }}
+          onClose={(swapped) => { setReviewing(null); if (swapped) setAmount(''); }} />
       )}
     </section>
   );
@@ -316,9 +324,10 @@ type StepKey = 'approve' | 'permit' | 'swap';
 type StepState = 'todo' | 'active' | 'done';
 
 /** Review → approve (if needed) → sign permit (if needed) → swap. One wallet action per click. */
-function ReviewSwap({ initial, mode, A, config, wallet, symbol, numSym, inDec, outDec, usdIn, usdOut, onClose }: {
+function ReviewSwap({ initial, mode, A, config, wallet, symbol, numSym, inDec, outDec, usdIn, usdOut, onReceipt, onClose }: {
   initial: TradeQuote; mode: ApprovalMode; A: TradeAddrs; config: ChainConfig; wallet: PrivyWallet; symbol: string; numSym: 'USDC' | 'MON';
-  inDec: number; outDec: number; usdIn: number | null; usdOut: number | null; onClose: (swapped: boolean) => void;
+  inDec: number; outDec: number; usdIn: number | null; usdOut: number | null;
+  onReceipt: (receipt: Awaited<ReturnType<typeof sendTrade>>['receipt'], key: TradeQuote['key']) => void; onClose: (swapped: boolean) => void;
 }) {
   const [accepted, setAccepted] = useState<TradeQuote>(initial);
   const [latest, setLatest] = useState<TradeQuote>(initial);
@@ -413,6 +422,7 @@ function ReviewSwap({ initial, mode, A, config, wallet, symbol, numSym, inDec, o
         : c.publicClient.readContract({ address: outToken, abi: erc20, functionName: 'balanceOf', args: [c.account] });
       const before = await readOut();
       const r = await sendTrade(c.publicClient, c.walletClient, c.account, swapTx, swapTx.gas);
+      onReceipt(r.receipt, accepted.key);
       const after = await readOut();
       const gasPaid = outToken === 'MON' ? r.receipt.gasUsed * r.receipt.effectiveGasPrice : 0n;
       setDone({ hash: r.hash, received: after - before + gasPaid });

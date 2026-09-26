@@ -16,6 +16,7 @@ import { Empty, ErrorBox, Loading } from '../components/State.js';
 import { PageShell } from './Token.js';
 import { AddrLink, TxLink } from '../components/Explorer.js';
 import { SwapPanel } from '../components/SwapPanel.js';
+import { BURST_MS, burstInterval, mergeTrades, type ShownTrade } from '../lib/optimisticTrade.js';
 import { useConnectedWallet, useLogin } from '../components/Site.js';
 import { get } from '../lib/api.js';
 import type { ChainConfig } from '../lib/launch.js';
@@ -52,14 +53,18 @@ export default function TokenChart() {
   const [hover, setHover] = useState<Candle | null>(null);
   const [clock, setClock] = useState(() => new Date());
   const wallet = useConnectedWallet();
+  // After a swap: optimistic "confirming" rows + fast refresh (lib/optimisticTrade.ts).
+  const [pending, setPending] = useState<ShownTrade[]>([]);
+  const [burstUntil, setBurstUntil] = useState(0);
+  const every = (normal: number | false) => () => burstInterval(burstUntil, normal);
   const login = useLogin();
   const cfg = useQuery({ queryKey: ['config'], queryFn: () => get<ChainConfig>('/api/config') });
   const apiTf = TF.find((x) => x[0] === tf)![1]!;
 
   const token = useQuery({ queryKey: ['token', asset], queryFn: () => api.token(asset) });
-  const candles = useQuery({ queryKey: ['candles', asset, apiTf], queryFn: () => api.candles(asset, apiTf), enabled: !!token.data });
-  const trades = useQuery({ queryKey: ['trades', asset], queryFn: () => api.trades(asset), enabled: !!token.data, refetchInterval: 15_000 });
-  const holders = useQuery({ queryKey: ['holders', asset], queryFn: () => api.holders(asset), enabled: !!token.data });
+  const candles = useQuery({ queryKey: ['candles', asset, apiTf], queryFn: () => api.candles(asset, apiTf), enabled: !!token.data, refetchInterval: every(false) });
+  const trades = useQuery({ queryKey: ['trades', asset], queryFn: () => api.trades(asset), enabled: !!token.data, refetchInterval: every(15_000) });
+  const holders = useQuery({ queryKey: ['holders', asset], queryFn: () => api.holders(asset), enabled: !!token.data, refetchInterval: every(false) });
   const list = useQuery({ queryKey: ['tokens', 30], queryFn: () => api.tokens(30) });
 
   useEffect(() => { const id = setInterval(() => setClock(new Date()), 1000); return () => clearInterval(id); }, []);
@@ -127,7 +132,11 @@ export default function TokenChart() {
   }, [data, style, unit, scale, usdOk]);
 
   // ── derived data ──
-  const tradeList = trades.data?.trades ?? [];
+  const merged = mergeTrades(trades.data?.trades ?? [], pending);
+  const tradeList: ShownTrade[] = merged.list;
+  // Drop a pending row once the indexer has returned the same tx hash.
+  useEffect(() => { if (merged.stillPending.length !== pending.length) setPending(merged.stillPending); }, [trades.data, pending]); // eslint-disable-line react-hooks/exhaustive-deps
+  const me = wallet?.address.toLowerCase() ?? null;
   const launch = candles.data?.launchPrice != null ? Number(candles.data.launchPrice) * (usdOk ? Number(candles.data.usdPerNumeraire) : 1) : null;
   const nowS = Math.floor(clock.getTime() / 1000);
   const windows = WINDOWS.map(([k, secs]) => {
@@ -150,20 +159,22 @@ export default function TokenChart() {
   ].map((f) => ({ ...f, a: f.a || (f.b ? 0 : 1), b: f.b || (f.a ? 0 : 1) }));
 
   const holderCount = holders.data?.holderCount ?? token.data?.holders ?? 0;
-  const tabs = ['Transactions', 'Top Traders', `Holders (${holderCount.toLocaleString('en-US')})`];
+  const tabs = ['Transactions', ...(me ? ['My trades'] : []), 'Top Traders', `Holders (${holderCount.toLocaleString('en-US')})`];
   const C = (text: React.ReactNode, align = 'right', extra: Record<string, unknown> = {}) => ({ text, align, fg: '#ECEAF4', weight: 400, plain: true, pill: false, ...extra });
   const sym = token.data?.symbol ?? '';
   let cols: [string, string][] = [];
   let rows: { cells: ReturnType<typeof C>[] }[] = [];
   let tableState: React.ReactNode = null;
-  if (tab === 'Transactions') {
+  if (tab === 'Transactions' || (tab === 'My trades' && me)) {
     cols = [['Date', 'left'], ['Type', 'left'], ['USD', 'right'], [sym, 'right'], [numSym, 'right'], ['Price', 'right'], ['Trader', 'right']];
-    rows = tradeList.map((x) => {
+    const shown = tab === 'My trades' ? tradeList.filter((x) => x.trader.toLowerCase() === me) : tradeList;
+    rows = shown.map((x) => {
       const fg = x.side === 'sell' ? '#FCA5A5' : x.isBuyback ? '#C4B5FD' : '#6EE7B7';
       const pillBg = x.side === 'sell' ? '#3A1623' : x.isBuyback ? '#2E2152' : '#0F2A22';
+      const kind = x.isBuyback ? 'Buyback' : x.side === 'buy' ? 'Buy' : 'Sell';
       return { cells: [
-        C(<TxLink h={x.txHash} label={`${ago(x.timestamp)} ago`} />, 'left', { fg: '#8C87A3' }),
-        C(x.isBuyback ? 'Buyback' : x.side === 'buy' ? 'Buy' : 'Sell', 'left', { pill: true, plain: false, pillBg, pillFg: fg }),
+        C(<TxLink h={x.txHash} label={x.pending ? 'just now' : `${ago(x.timestamp)} ago`} />, 'left', { fg: '#8C87A3' }),
+        C(x.pending ? <span title="Confirmed on-chain; waiting for the indexer">{kind} · confirming</span> : kind, 'left', { pill: true, plain: false, pillBg: x.pending ? '#1C1A29' : pillBg, pillFg: fg }),
         C(x.valueUsd != null ? Number(x.valueUsd).toFixed(2) : '—', 'right', { fg, weight: 600 }),
         C(compact(x.assetAmount), 'right', { fg }), C(compact(x.numeraireAmount), 'right', { fg }),
         C(x.priceUsd != null ? fmtUsd(x.priceUsd) : `${sig(Number(x.price), 3)} ${numSym}`, 'right', { fg, weight: 600 }),
@@ -172,7 +183,7 @@ export default function TokenChart() {
     });
     tableState = trades.isLoading ? <div style={{ padding: 12 }}><Loading rows={3} height={28} /></div>
       : trades.error ? <div style={{ padding: 12 }}><ErrorBox error={trades.error} /></div>
-      : rows.length === 0 ? <div style={{ padding: 16, fontSize: 13, color: '#8C87A3' }}>No trades yet.</div> : null;
+      : rows.length === 0 ? <div style={{ padding: 16, fontSize: 13, color: '#8C87A3' }}>{tab === 'My trades' ? 'You have no trades in this token yet.' : 'No trades yet.'}</div> : null;
   } else if (tab === 'Top Traders') {
     cols = [['Rank', 'left'], ['Trader', 'left'], ['Bought', 'right'], ['Sold', 'right'], ['PnL', 'right'], ['Trades', 'right']];
     tableState = <div style={{ padding: 16, fontSize: 13, color: '#8C87A3' }}>Top traders are coming soon.</div>;
@@ -240,7 +251,11 @@ export default function TokenChart() {
         wallet={wallet} login={login}
         usdPerNum={m?.priceUsd != null && m?.price && Number(m.price) > 0 ? Number(m.priceUsd) / Number(m.price) : null}
         tokenUsd={m?.priceUsd != null ? Number(m.priceUsd) : null}
-        onSwapped={() => { trades.refetch(); candles.refetch(); token.refetch(); holders.refetch(); }} />
+        onSwapped={(tr) => {
+          if (tr) setPending((p) => [tr, ...p.filter((x) => x.txHash !== tr.txHash)]);
+          setBurstUntil(Date.now() + BURST_MS);
+          void trades.refetch(); void candles.refetch(); void token.refetch(); void holders.refetch();
+        }} />
     ),
   };
   return <TokenChartView v={v} />;

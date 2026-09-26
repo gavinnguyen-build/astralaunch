@@ -393,3 +393,26 @@ applies the same rules as the two single-purpose endpoints (on-chain creator, fr
 transaction. The old messages and endpoints are unchanged. The web signs right after the launch tx confirms
 (the token address is only final then) and posts once the token is listed (the listing wait of ≤ 300 s fits
 the 600 s signature window).
+
+## Trade latency after a swap (2026-09-26)
+
+**D-IX1. Market-data poll.** The indexer follow loop runs the full cycle (registry, routers, USDC transfers,
+market) every `INDEXER_POLL_INTERVAL_S`. In between it runs only the market sets (swaps + pool inits, asset
+transfers) every `INDEXER_SWAP_POLL_INTERVAL_S` (unset = same as the full interval; `docker-compose.prod.yml`: 3 s).
+One sequential loop, so two cycles never race on a checkpoint.
+- Every set, market included, still indexes only up to the `finalized` block. Market data moves no money and
+  does not feed the keeper, and on Monad mainnet `finalized` was measured at head − 1 block (2026-09-26), so
+  finality is not the source of the delay; the 10 s poll was.
+- The registry, router and USDC sets, which the keeper and revenue depend on, keep the normal interval.
+
+**D-SW2. Optimistic trade row.** Once the swap receipt arrives, the chart page adds the user's trade to the trades
+table and a new "My trades" tab (connected wallet only). The row is decoded from the receipt's PoolManager
+`Swap` event for the token's pool id, with the same mapping as the server, and labelled "confirming". It is dropped
+as soon as `/trades` returns the same tx hash (or after 10 min). Trades, candles, holders and the panel balances
+then refresh every 2 s for 30 s, then return to their normal intervals (`lib/optimisticTrade.ts`).
+- Fork check (`scripts/swap-harness/chart.html`, the real TokenChart page, fork server + indexer at 10 s / 3 s):
+  - The "confirming" row appeared 1 ms after the receipt, including in My trades.
+  - After finality (64 blocks mined, since Anvil's `finalized` is head − 64), the indexed row replaced it in 2.0 s
+    with identical values and no duplicate.
+  - 0–30 s after the swap: 14 requests each for trades, candles and holders. After that: trades every 15 s;
+    candles and holders stop.
