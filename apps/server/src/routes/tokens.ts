@@ -28,6 +28,7 @@ import {
 import { launchDetailsSchema, tokenMetadataSchema, tokenMetadataMessage, WMON } from '@astralaunch/shared';
 import { authorizeTokenCreator, consumeSignedMessage, ServiceAuthError } from '../services/serviceAuth.js';
 import { applyLaunchDetails, applyTokenMetadata, LaunchDetailsInputError } from '../services/creatorWrites.js';
+import { listTokens, tokenListQuerySchema } from '../services/tokenList.js';
 import { SsrfError } from '../lib/ssrf.js';
 import { RPC_URL, CHAIN_ID, REGISTRY_ADDR, SUBMITTERS } from '../env.js';
 import { isAssetListed, isListedSql } from '../services/launchFee.js';
@@ -159,12 +160,11 @@ app.get('/:asset', requireListed);
 app.get('/:asset/*', requireListed);
 
 // GET /api/tokens?sort=clean_revenue_30d|new&limit=50&offset=0
-app.get('/', async (c) => {
-  const sort   = c.req.query('sort') ?? 'clean_revenue_30d';
-  // Usage window for usage30d (Discover range switch): 7, 30 (default) or 90 days.
-  const days   = [7, 30, 90].includes(Number(c.req.query('days'))) ? BigInt(Number(c.req.query('days'))) : 30n;
-  const limit  = Math.min(Number(c.req.query('limit') ?? 50), 100);
-  const offset = Number(c.req.query('offset') ?? 0);
+// GET /api/tokens — listed tokens with filter / search / sort / paging over the whole set, plus the
+// count per filter (services/tokenList.ts). `days` is the usage window (Discover range: 7, 30, 90).
+app.get('/', zValidator('query', tokenListQuerySchema), async (c) => {
+  const query  = c.req.valid('query');
+  const days   = BigInt(query.days);
 
   const since30 = ago(30);
 
@@ -181,12 +181,11 @@ app.get('/', async (c) => {
 
   const revenueMap = new Map(revenueRows.map(r => [r.asset, { revenue: BigInt(r.revenue), calls: r.calls }]));
 
-  // Only tokens whose launch fee was paid and consumed are public (D-LF4).
+  // Only tokens whose launch fee was paid and consumed are public (D-LF4). All of them are summarised,
+  // so filter counts, sort order and pages are exact across the whole set.
   const allTokens = await db.select().from(tokens)
     .where(isListedSql(tokens.asset))
-    .orderBy(sort === 'new' ? desc(tokens.launchedAt) : desc(tokens.launchedAt))
-    .limit(limit)
-    .offset(offset);
+    .orderBy(desc(tokens.launchedAt));
 
   // Attach active service + revenue metrics
   const results = await Promise.all(allTokens.map(async (t) => {
@@ -227,15 +226,12 @@ app.get('/', async (c) => {
     };
   }));
 
-  // Sort by revenue if requested
-  if (sort === 'clean_revenue_30d') {
-    results.sort((a, b) => {
-      const diff = BigInt(b.metrics.cleanRevenue30d) - BigInt(a.metrics.cleanRevenue30d);
-      return diff > 0n ? 1 : diff < 0n ? -1 : 0;
-    });
-  }
-
-  return c.json({ tokens: results, limit, offset });
+  const page = listTokens(results, query, Date.now());
+  return c.json({
+    tokens: page.tokens, total: page.total, counts: page.counts,
+    filter: query.filter, sort: query.sort, dir: query.dir, q: query.q, days: query.days,
+    limit: query.limit, offset: query.offset,
+  });
 });
 
 // POST /api/tokens — metadata only (image, X handle, website, description), signed by
