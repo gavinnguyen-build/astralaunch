@@ -7,7 +7,7 @@
 //     npx tsx src/mainnet-register-service.ts [--yes]
 //
 // Env:
-//   ASSET, SLUG, UPSTREAM_URL      required
+//   ASSET, SLUG                    required; UPSTREAM_URL required to create, optional on an update
 //   PRICE_USDC                     human USDC (e.g. 0.01), not raw units. Required to create; on an update,
 //                                  omit it to keep the current price
 //   UPSTREAM_URL                   may carry a path prefix (e.g. http://127.0.0.1:4001/sight): the gateway maps
@@ -17,6 +17,9 @@
 //   SCHEMA                         optional request JSON schema: inline JSON or a path to a .json file
 //   RESPONSE_SCHEMA                optional response JSON schema: inline JSON or a path to a .json file
 //   NAME, DESCRIPTION, TIMEOUT_SECONDS   optional (NAME defaults to SLUG)
+//   EXAMPLE_PATH                   optional sample call relative to /s/{slug}, e.g. '/signals?handle=monad'
+//                                  (shown as "Try a sample call" on the token page). On an update, EXAMPLE_PATH=''
+//                                  removes it; unset leaves it unchanged
 //   SERVER_URL                     default http://localhost:3001
 //   ALLOW_HIGH_PRICE=1             allow PRICE_USDC > 100
 //   ALLOW_ANVIL_KEYS=1             local fork only
@@ -28,6 +31,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { formatUnits, getAddress, isAddress, parseUnits } from 'viem';
 import {
   createServiceSchema,
+  examplePathError,
   serviceCreateMessage,
   serviceUpdateMessage,
   updateServiceSchema,
@@ -49,7 +53,7 @@ run(async () => {
   if (!isAddress(assetRaw)) throw new Error(`ASSET is not an address: ${assetRaw}`);
   const asset = assetRaw.toLowerCase() as `0x${string}`;
   const slug = need('SLUG');
-  const upstreamUrl = need('UPSTREAM_URL');
+  const upstreamUrl = process.env.UPSTREAM_URL || undefined;   // required to create; optional on an update
   const priceHuman = process.env.PRICE_USDC || undefined;
   if (priceHuman !== undefined && !/^\d+(\.\d{1,6})?$/.test(priceHuman)) throw new Error('PRICE_USDC must be a decimal USDC amount like 0.01');
   const priceRaw = priceHuman !== undefined ? parseUnits(priceHuman, 6) : undefined;
@@ -61,6 +65,12 @@ run(async () => {
   const responseSchema = loadSchema('RESPONSE_SCHEMA');
   const timeoutSeconds = process.env.TIMEOUT_SECONDS ? Number(process.env.TIMEOUT_SECONDS) : undefined;
   const description = process.env.DESCRIPTION || undefined;
+  // undefined = not set; '' only means "remove" on an update
+  const examplePath = process.env.EXAMPLE_PATH;
+  if (examplePath) {
+    const bad = examplePathError(examplePath);
+    if (bad) throw new Error(`EXAMPLE_PATH: ${bad}`);
+  }
   const account = await accountFromEnv('CREATOR_PRIVATE_KEY');
 
   console.log(`Server:  ${server}`);
@@ -98,12 +108,14 @@ run(async () => {
 
   if (!existing) {
     if (priceRaw === undefined) throw new Error('PRICE_USDC is required to create a service');
+    if (upstreamUrl === undefined) throw new Error('UPSTREAM_URL is required to create a service');
     const fields = {
       asset, slug, name: process.env.NAME || slug, upstreamUrl, priceUsdc: priceRaw.toString(),
       ...(requestSchema !== undefined && { requestSchema }),
       ...(responseSchema !== undefined && { responseSchema }),
       ...(timeoutSeconds !== undefined && { timeoutSeconds }),
       ...(description !== undefined && { description }),
+      ...(examplePath && { examplePath }),
       issuedAt,
     };
     message = serviceCreateMessage(fields);
@@ -115,9 +127,11 @@ run(async () => {
   } else {
     if (process.env.NAME || requestSchema || responseSchema) console.log('\nNOTE: NAME, SCHEMA and RESPONSE_SCHEMA cannot be changed on an existing service; they are ignored.');
     const fields = {
-      ...(priceRaw !== undefined && { priceUsdc: priceRaw.toString() }), upstreamUrl,
+      ...(priceRaw !== undefined && { priceUsdc: priceRaw.toString() }),
+      ...(upstreamUrl !== undefined && { upstreamUrl }),
       ...(timeoutSeconds !== undefined && { timeoutSeconds }),
       ...(description !== undefined && { description }),
+      ...(examplePath !== undefined && { examplePath }),
       issuedAt,
     };
     message = serviceUpdateMessage(existing.id, asset, fields);
@@ -127,7 +141,8 @@ run(async () => {
     url = `${server}/api/services/${existing.id}`;
     const cur = formatUnits(BigInt(existing.payment.amount), 6);
     console.log(`\nAction:  UPDATE service "${slug}" (id ${existing.id}); price ${priceHuman !== undefined ? `${cur} → ${priceHuman}` : `${cur} (unchanged)`} USDC`);
-    console.log(`Upstream: ${upstreamUrl}`);
+    console.log(`Upstream: ${upstreamUrl ?? '(unchanged)'}`);
+    if (examplePath !== undefined) console.log(`Example:  ${examplePath === '' ? '(removed)' : examplePath}`);
   }
 
   if (priceRaw !== undefined) console.log(`Price:   ${priceHuman} USDC per call (${priceRaw} raw, 6 decimals)`);
