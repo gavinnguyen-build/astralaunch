@@ -416,3 +416,32 @@ then refresh every 2 s for 30 s, then return to their normal intervals (`lib/opt
     with identical values and no duplicate.
   - 0–30 s after the swap: 14 requests each for trades, candles and holders. After that: trades every 15 s;
     candles and holders stop.
+
+## Service example call (2026-09-29)
+
+**D-SV2. `examplePath`.** A service may carry one sample request relative to its gateway path, e.g.
+`/signals?handle=monad` (migration 0011, `services.example_path`).
+- It is part of the signed service create, update and launch-details messages.
+  - The key sits before `issuedAt`, or at the end of the service object in launch details. `canonical()` drops
+    unset fields, so a message without it is byte-for-byte the old one, and earlier signatures stay valid
+    (test pins the old strings).
+  - On an update, `""` removes it.
+- Validation (`examplePathError`, shared):
+  - it starts with `/`;
+  - no whitespace, `#`, backslash or encoded slash;
+  - no dot segments, including percent-encoded ones.
+  So it can only address the service's own endpoints behind the gateway prefix (D-GW4).
+- It is exposed in the token list and token detail `service`, and in the manifest.
+- The web uses it for "Try a sample call" on the token page and the Home cards. The button is hidden when the
+  service has none. There is one confirm card (query params as `name: value`, price, "no gas · not charged if it
+  fails"), then the existing x402 flow. The result shows Done + the settlement tx, or one plain sentence; the
+  response body is not shown.
+- The agent link shown is always the gateway (`VITE_API_BASE` + `/s/{slug}/`), never the upstream URL.
+
+**D-SV3. Fork servers never reach the real facilitator.** During the D-SV2 fork check, the fork server used the
+default `X402_FACILITATOR_URL` (the Monad mainnet facilitator), and one test authorization was sent there for
+verification.
+- It was from a public Anvil account, to a fork-only router, and not settled (upstream down → 502), so there was
+  no mainnet transaction and no funds moved; it expired after 60 s.
+- Now `fork-prepare.sh` writes a local facilitator URL, and the server refuses to start when `MONAD_RPC_URL` is
+  local but the facilitator is not (`lib/forkGuard.ts`).

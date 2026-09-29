@@ -121,7 +121,7 @@ export function HomeView({ v }: { v: any }) {
 <div style={{ marginTop: 'auto', paddingTop: '12px', borderTop: '1px solid #25213A', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
 <span style={{ fontSize: '11px', color: '#8C87A3' }}>by <span style={{ color: '#C9C5DA' }}>{c.by}</span> · {c.age}</span>
 <div style={{ display: 'flex', gap: '6px' }}>
-<A href={c.tryHref} aria-disabled={!c.hasService} style={{ height: '32px', boxSizing: 'border-box', padding: '0 10px', borderRadius: '999px', border: '1px solid #3A3456', background: 'transparent', color: c.hasService ? '#ECEAF4' : '#5F5A78', fontSize: '12px', display: 'flex', alignItems: 'center', textDecoration: 'none', pointerEvents: c.hasService ? 'auto' : 'none' }}>Try API</A>
+{c.onTry ? (<><button type="button" onClick={c.onTry} disabled={c.tryDisabled} title={c.tryTitle} style={{ height: '32px', boxSizing: 'border-box', padding: '0 10px', borderRadius: '999px', border: '1px solid #3A3456', background: 'transparent', color: '#ECEAF4', fontFamily: 'inherit', fontSize: '12px', display: 'flex', alignItems: 'center', cursor: 'pointer', whiteSpace: 'nowrap' }}>Try a sample call</button></>) : null}
 <A href={c.chartHref} style={{ height: '32px', boxSizing: 'border-box', padding: '0 12px', borderRadius: '999px', background: '#2A2640', color: '#ECEAF4', fontSize: '12px', fontWeight: '700', display: 'flex', alignItems: 'center', textDecoration: 'none' }}>Trade</A>
 </div>
 </div>
@@ -154,6 +154,7 @@ export function HomeView({ v }: { v: any }) {
 </div>
 </section>
 </main>
+{v.modal}
 <SiteFooter />
 </div>
   );

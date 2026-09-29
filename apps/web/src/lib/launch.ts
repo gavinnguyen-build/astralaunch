@@ -49,7 +49,7 @@ export interface LaunchInput {
   xHandle?: string;
   website?: string;
   description?: string;
-  service?: { slug: string; name: string; upstreamUrl: string; priceUsdc: bigint; description?: string };
+  service?: { slug: string; name: string; upstreamUrl: string; priceUsdc: bigint; description?: string; examplePath?: string };
 }
 
 export interface Ctx {
@@ -396,6 +396,7 @@ export async function executeLaunch(ctx: Ctx, input: LaunchInput, plan: LaunchPl
     const svc = {
       asset, slug: input.service.slug, name: input.service.name, upstreamUrl: input.service.upstreamUrl,
       priceUsdc: input.service.priceUsdc.toString(), ...(input.service.description ? { description: input.service.description } : {}),
+      ...(input.service.examplePath ? { examplePath: input.service.examplePath } : {}),
       issuedAt: Math.floor(Date.now() / 1000),
     };
     const signature = await ctx.walletClient.signMessage({ account: ctx.account, message: serviceCreateMessage(svc) });
@@ -472,6 +473,7 @@ async function executeHelperLaunch(ctx: Ctx, input: LaunchInput, plan: LaunchPla
     ...(input.service ? { service: {
       slug: input.service.slug, name: input.service.name, upstreamUrl: input.service.upstreamUrl,
       priceUsdc: input.service.priceUsdc.toString(), ...(input.service.description ? { description: input.service.description } : {}),
+      ...(input.service.examplePath ? { examplePath: input.service.examplePath } : {}),
     } } : {}),
   };
   const wants = hasMetadata(input) || !!input.service;

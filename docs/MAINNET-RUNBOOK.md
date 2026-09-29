@@ -412,6 +412,23 @@ unset CREATOR_KEYSTORE
 ```
 
 Public paths after the change: `/s/nullsight/signals?handle=…` and `/s/nullfeed/digest?topic=…`.
+
+**Example calls (2026-09-29, D-SV2).** "Try a sample call" on the token page runs the service's signed
+`examplePath`. Deploy the server with migration 0011 first (an older server drops the unknown field and the
+signature check fails), then, signed by the on-chain creator, with price and upstream unchanged:
+
+```bash
+cd astralaunch-anvil
+export SERVER_URL=https://api.astralaunch.xyz CREATOR_KEYSTORE=astralaunch-deployer
+unset PRICE_USDC UPSTREAM_URL
+ASSET=0x30Ae380593A04C14aBFa994969B718a78A6105aD SLUG=nullsight EXAMPLE_PATH='/signals?handle=monad' \
+  npx tsx src/mainnet-register-service.ts
+ASSET=0x2686619d5569AEbcdfeC774e8a2167dE78376dDf SLUG=nullfeed EXAMPLE_PATH='/digest?topic=agent%20payments' \
+  npx tsx src/mainnet-register-service.ts
+unset CREATOR_KEYSTORE
+curl -s https://api.astralaunch.xyz/api/services/nullsight/manifest | grep -o '"examplePath":"[^"]*"'
+```
+`EXAMPLE_PATH=''` removes it.
 The old `/s/nullsight/sight/signals` now reaches `…/sight/sight/signals` (404 upstream → 502, not charged).
 In containers use the internal origin instead: `http://demo-services:4001/sight` and `…/feed`.
 

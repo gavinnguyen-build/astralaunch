@@ -16,6 +16,9 @@ export default defineConfig({
   },
   server: {
     port: 3020, strictPort: true, fs: { allow: [resolve(__dirname, '../../../..')] },
-    proxy: { '/api': { target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:3101', changeOrigin: true } },
+    proxy: {
+      '/api': { target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:3101', changeOrigin: true },
+      '^/s/': { target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:3101', changeOrigin: true },
+    },
   },
 });

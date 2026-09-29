@@ -7,8 +7,8 @@ import { ago, avatarFor, compact, daysUntil, fmtDate, fmtTime, fmtUsd, fmtUsdc, 
 import { Empty, ErrorBox, Loading, UsdOr } from '../components/State.js';
 import { SiteFooter, SiteHeader } from '../components/Site.js';
 import { AddrLink, TokenLink, TxLink } from '../components/Explorer.js';
-import { TryApiModal } from '../components/TryApiModal.js';
-import { PRIVY_ENABLED, useConnectedWallet } from '../components/Site.js';
+import { SampleCall, agentLink, priceLabel } from '../components/SampleCall.js';
+import { PRIVY_ENABLED, useConnectedWallet, useLogin } from '../components/Site.js';
 import { get } from '../lib/api.js';
 import type { ChainConfig } from '../lib/launch.js';
 import { useState } from 'react';
@@ -36,6 +36,7 @@ export default function Token() {
   const token = useQuery({ queryKey: ['token', asset], queryFn: () => api.token(asset) });
   const payments = useQuery({ queryKey: ['payments', asset], queryFn: () => api.payments(asset), enabled: !!token.data });
   const wallet = useConnectedWallet();
+  const login = useLogin();
   const cfg = useQuery({ queryKey: ['config'], queryFn: () => get<ChainConfig>('/api/config') });
   const [trying, setTrying] = useState(false);
 
@@ -58,7 +59,6 @@ export default function Token() {
   const vest = t.creatorSummary.vesting;
   const unlocked = esc ? Math.min(Number(esc.usdcAccrued), (Number(esc.recordedRevenue) * 0.2)) : 0;
   const health = t.serviceHealth;
-  const origin = window.location.origin;
 
   const v = {
     initial: t.symbol.charAt(0), avatar: avatarFor(t.asset), sym: `$${t.symbol}`, name: t.name,
@@ -86,8 +86,10 @@ export default function Token() {
       { label: 'CLEAN PAYERS', value: String(t.usageAll?.cleanPayers ?? 0), note: 'distinct wallets, all time' },
     ],
     svcStatus: !svc ? 'No service' : health?.uptime7d == null ? 'Live' : health.uptime7d >= 0.95 ? 'Live' : 'Degraded',
-    endpoint: svc ? `${origin}${svc.endpoint}` : 'No service registered yet',
-    copyEndpoint: () => svc && navigator.clipboard?.writeText(`${origin}${svc.endpoint}`),
+    // Always the gateway link (VITE_API_BASE), never the creator's upstream URL.
+    endpoint: svc ? <>{agentLink(svc.slug)}<span style={{ color: '#5F5A78' }}>…</span></> : 'No service registered yet',
+    copyEndpoint: () => svc && navigator.clipboard?.writeText(agentLink(svc.slug)),
+    agentLine: svc && priceUsdc ? `Give this link to your agent. Each call charges ${priceLabel(svc.priceUsdc)} USDC on Monad automatically.` : null,
     svc: [
       { label: 'Price per call', value: priceUsdc ? `${priceUsdc} USDC` : '—' },
       { label: 'Success rate', value: health?.successRate == null ? '—' : `${(health.successRate * 100).toFixed(1)}%` },
@@ -97,7 +99,8 @@ export default function Token() {
     ],
     schema: schemaShape(svc?.responseSchema ?? svc?.requestSchema ?? null),
     payNote: priceUsdc ? `Agents pay ${priceUsdc} USDC per call over x402. Calls that fail or return an invalid response are never charged.` : 'This token has no paid service yet.',
-    tryLabel: priceUsdc ? `Try API · ${priceUsdc} USDC` : 'Try API',
+    tryLabel: svc ? `Try a sample call · ${priceLabel(svc.priceUsdc)} USDC` : '',
+    tryShow: !!svc?.examplePath,
     payments: (payments.data?.payments ?? []).map((p) => {
       const [tag, color] = TAGS[p.class];
       const who = p.class === 'creator' ? 'creator' : p.payerServices > 0 ? `pays ${p.payerServices} service${p.payerServices === 1 ? '' : 's'}` : 'direct transfer';
@@ -113,11 +116,12 @@ export default function Token() {
     escrowClaimed: esc ? `${fmtUsdc(esc.usdcClaimed)} ${esc.symbol}` : '—',
     escrowExpires: esc ? (esc.forfeited ? 'forfeited' : `in ${daysUntil(esc.forfeitAt)} days`) : '—',
     lastChange: t.serviceUpdatedAt ? `Updated · ${ago(t.serviceUpdatedAt)} ago` : '—',
-    onTry: () => setTrying(true),
-    tryDisabled: !svc || !wallet || !cfg.data,
-    tryTitle: !svc ? 'This token has no service yet' : !PRIVY_ENABLED ? 'Set VITE_PRIVY_APP_ID to connect a wallet' : !wallet ? 'Connect a wallet to pay for a call' : 'Pay one call from your wallet',
-    modal: trying && svc && wallet && cfg.data ? (
-      <TryApiModal asset={t.asset as `0x${string}`} slug={svc.slug} wallet={wallet} config={cfg.data} onClose={() => { setTrying(false); payments.refetch(); }} />
+    onTry: () => (wallet ? setTrying(true) : login?.()),
+    tryDisabled: !svc?.examplePath || !cfg.data || (!wallet && !login),
+    tryTitle: !PRIVY_ENABLED ? 'Set VITE_PRIVY_APP_ID to connect a wallet' : !wallet ? 'Connect a wallet to run a paid sample call' : `Runs ${svc?.examplePath ?? ''} once, paid from your wallet`,
+    modal: trying && svc?.examplePath && wallet && cfg.data ? (
+      <SampleCall asset={t.asset as `0x${string}`} slug={svc.slug} examplePath={svc.examplePath} priceUsdc={svc.priceUsdc} wallet={wallet} config={cfg.data}
+        onClose={() => setTrying(false)} onPaid={() => { void payments.refetch(); }} />
     ) : null,
   };
   return <TokenView v={v} />;
