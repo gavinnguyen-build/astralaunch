@@ -20,21 +20,28 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
-import { PORT, RPC_URL, PAYMENT_TIMEOUT_S, CORS_ORIGINS, verifyContracts } from './env.js';
+import { PORT, RPC_URL, PAYMENT_TIMEOUT_S, CORS_ORIGINS, FACILITATOR_URL, verifyContracts } from './env.js';
 import { corsFor } from './lib/cors.js';
+import { forkFacilitatorError, isLocalUrl } from './lib/forkGuard.js';
 
 // Refuse to start with a dangerously wide payment window on a non-local RPC.
 // PAYMENT_TIMEOUT_SECONDS > 300 is only safe on a local Anvil fork where block
 // time may have been warped past wall-clock time.  On mainnet it would allow
 // replay of stale authorizations.
 {
-  const isLocalRpc = /^https?:\/\/(127\.|localhost|0\.0\.0\.0)/.test(RPC_URL);
+  const isLocalRpc = isLocalUrl(RPC_URL);
   if (PAYMENT_TIMEOUT_S > 300 && !isLocalRpc) {
     console.error(
       `FATAL: PAYMENT_TIMEOUT_SECONDS=${PAYMENT_TIMEOUT_S} exceeds 300 s but ` +
       `MONAD_RPC_URL is not localhost (${RPC_URL}). ` +
       `This setting is only permitted on a local Anvil fork.`
     );
+    process.exit(1);
+  }
+  // A local fork must never reach the real facilitator (lib/forkGuard.ts).
+  const forkErr = forkFacilitatorError(RPC_URL, FACILITATOR_URL);
+  if (forkErr) {
+    console.error(`FATAL: ${forkErr}`);
     process.exit(1);
   }
 }

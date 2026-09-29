@@ -45,6 +45,7 @@ GATEWAY_HMAC_MASTER_KEY={secrets.token_hex(32)}
 ALLOW_LOCAL_UPSTREAMS=true
 PROBES_DISABLED=true
 PORT=3101
+X402_FACILITATOR_URL=http://127.0.0.1:4021
 INDEXER_POLL_INTERVAL_S=2
 """)
 print(f"wrote {state}/forktest.env")
