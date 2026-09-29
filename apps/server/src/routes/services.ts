@@ -73,6 +73,7 @@ app.patch('/:id', zValidator('json', updateServiceSchema), async (c) => {
         ...(body.upstreamUrl    !== undefined && { upstreamUrl:    body.upstreamUrl }),
         ...(body.timeoutSeconds !== undefined && { timeoutSeconds: body.timeoutSeconds }),
         ...(body.description    !== undefined && { description:    body.description }),
+        ...(body.examplePath    !== undefined && { examplePath:    body.examplePath || null }),   // "" removes it
         authSignedAt: BigInt(body.issuedAt),
         updatedAt:    new Date(),
       })
@@ -112,6 +113,7 @@ app.get('/:slug/manifest', async (c) => {
       extra: { name: 'USDC', version: '2' },
     },
     endpoint: `/s/${svc.slug}`,
+    examplePath: svc.examplePath,
   });
 });
 

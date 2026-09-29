@@ -43,6 +43,7 @@ export const services = pgTable('services', {
   timeoutSeconds: integer('timeout_seconds').notNull().default(20),
   requestSchema:  text('request_schema'),
   responseSchema: text('response_schema'),
+  examplePath:    text('example_path'),       // sample call relative to /s/{slug} (0011)
   description:    text('description'),
   active:         boolean('active').notNull().default(true),
   authSignedAt:   bigint('auth_signed_at', { mode: 'bigint' }), // issuedAt of last accepted signed request (0007)

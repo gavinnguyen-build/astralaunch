@@ -18,6 +18,25 @@ export const bytes32Schema = z
 /** Max clock skew / age for a signed service request, in seconds. */
 export const SERVICE_AUTH_MAX_AGE_S = 600;
 
+/**
+ * Why a service's example call path is unusable (null = ok). It is one real request relative to the
+ * gateway (/s/{slug}), e.g. "/signals?handle=monad": starts with "/", no whitespace, fragment, backslash,
+ * encoded slash or dot segment, so it can only address the service's own endpoints.
+ */
+export function examplePathError(p: string): string | null {
+  if (!/^\/[^\s#\\]*$/.test(p) || p.startsWith('//')) return 'examplePath must start with "/" and contain no spaces, "#" or "\\"';
+  if (/%2f|%5c/i.test(p)) return 'examplePath must not contain encoded slashes';
+  const segs = p.split('?')[0]!.split('/');
+  let decoded: string[];
+  try { decoded = segs.map((s) => decodeURIComponent(s)); } catch { return 'examplePath has invalid percent-encoding'; }
+  if (decoded.some((s) => s === '.' || s === '..')) return 'examplePath must not contain "." or ".." segments';
+  return null;
+}
+const examplePathSchema = z.string().max(300).superRefine((p, ctx) => {
+  const e = examplePathError(p);
+  if (e) ctx.addIssue({ code: z.ZodIssueCode.custom, message: e });
+});
+
 const serviceFields = {
   /** URL-safe slug (3–32 chars). Used as /s/{slug}/* base path. */
   slug:           z.string().min(3).max(32).regex(/^[a-z0-9-]+$/),
@@ -35,6 +54,8 @@ const serviceFields = {
   timeoutSeconds: z.number().int().min(1).max(60).optional(),
   /** Description shown to agents in the manifest. */
   description:    z.string().max(500).optional(),
+  /** Optional sample request relative to /s/{slug}, e.g. "/signals?handle=monad" (the page's "Try a sample call"). */
+  examplePath:    examplePathSchema.optional(),
 };
 
 const signedFields = {
@@ -58,9 +79,12 @@ export const updateServiceSchema = z.object({
   upstreamUrl:    serviceFields.upstreamUrl.optional(),
   timeoutSeconds: serviceFields.timeoutSeconds,
   description:    serviceFields.description,
+  /** New example call path; "" removes it. */
+  examplePath:    z.union([z.literal(''), examplePathSchema]).optional(),
   ...signedFields,
 }).refine(
-  d => d.priceUsdc !== undefined || d.upstreamUrl !== undefined || d.timeoutSeconds !== undefined || d.description !== undefined,
+  d => d.priceUsdc !== undefined || d.upstreamUrl !== undefined || d.timeoutSeconds !== undefined || d.description !== undefined
+    || d.examplePath !== undefined,
   'at least one field required',
 );
 
@@ -73,10 +97,12 @@ function canonical(obj: Record<string, unknown>, keys: readonly string[]): strin
   return JSON.stringify(out);
 }
 
+// examplePath was added later: a message without it is byte-for-byte the same as before (canonical()
+// omits undefined fields), so earlier signed messages stay valid.
 const CREATE_KEYS = ['asset', 'slug', 'name', 'upstreamUrl', 'priceUsdc', 'requestSchema',
-  'responseSchema', 'timeoutSeconds', 'description', 'issuedAt'] as const;
+  'responseSchema', 'timeoutSeconds', 'description', 'examplePath', 'issuedAt'] as const;
 const UPDATE_KEYS = ['serviceId', 'asset', 'priceUsdc', 'upstreamUrl', 'timeoutSeconds',
-  'description', 'issuedAt'] as const;
+  'description', 'examplePath', 'issuedAt'] as const;
 
 /** Message the token creator signs to register a service. */
 export function serviceCreateMessage(m: Omit<CreateServiceInput, 'signature'>): string {
@@ -152,7 +178,7 @@ export type LaunchDetailsInput = z.infer<typeof launchDetailsSchema>;
 
 const LAUNCH_DETAILS_KEYS = ['asset', 'imageUrl', 'xHandle', 'website', 'description', 'service', 'issuedAt'] as const;
 const LAUNCH_SERVICE_KEYS = ['slug', 'name', 'upstreamUrl', 'priceUsdc', 'requestSchema',
-  'responseSchema', 'timeoutSeconds', 'description'] as const;
+  'responseSchema', 'timeoutSeconds', 'description', 'examplePath'] as const;
 
 /** Message the token creator signs once for metadata + service: header + canonical JSON (nested service canonical too). */
 export function launchDetailsMessage(m: Omit<LaunchDetailsInput, 'signature'>): string {

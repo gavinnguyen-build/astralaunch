@@ -1,0 +1,15 @@
+{
+  "id": "0011_service_example_path",
+  "prevId": "0010_hidden_tokens",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {},
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

@@ -210,6 +210,7 @@ app.get('/', zValidator('query', tokenListQuerySchema), async (c) => {
         name:        svc.name,
         description: svc.description,
         priceUsdc:   svc.priceUsdc,
+        examplePath: svc.examplePath,
         endpoint:    `/s/${svc.slug}`,
       } : null,
       metrics: {
@@ -366,6 +367,7 @@ app.get('/:asset', async (c) => {
       priceUsdc:     svc.priceUsdc,
       requestSchema: svc.requestSchema,
       responseSchema:svc.responseSchema,
+      examplePath:   svc.examplePath,
       endpoint:      `/s/${svc.slug}`,
     } : null,
     metrics: {

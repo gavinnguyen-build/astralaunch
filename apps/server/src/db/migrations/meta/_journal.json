@@ -71,6 +71,13 @@
       "when": 1727827200000,
       "tag": "0010_hidden_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1727913600000,
+      "tag": "0011_service_example_path",
+      "breakpoints": true
     }
   ]
 }

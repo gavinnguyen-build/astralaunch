@@ -46,6 +46,7 @@ export async function insertService(tx: Db, token: Token, s: ServiceFields, issu
     requestSchema:  s.requestSchema,
     responseSchema: s.responseSchema,
     description:    s.description,
+    examplePath:    s.examplePath,
     authSignedAt:   BigInt(issuedAt),
   }).returning();
   return row!;
