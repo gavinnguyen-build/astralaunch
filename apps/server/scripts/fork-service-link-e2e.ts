@@ -4,20 +4,23 @@
  * started with this scratch DB, ALLOW_LOCAL_UPSTREAMS=true and PROBES_DISABLED=true (the probe is run here).
  *
  * Scenarios: JSON GET, JSON POST, SSE stream, multipart upload with a binary response, a session header round-trip,
- * an upstream error that must not be charged, and a direct call flagged by the protection probe. Each paid call is
+ * an upstream error that must not be charged, a direct call flagged by the protection probe, and a POST-only JSON API
+ * (launch allowed without a sample; with a POST sample the check and the paid "Try a sample call" both work, using
+ * the web's own x402 call code). Each paid call is
  * checked on-chain: the agent's USDC goes down by exactly the price and the token's router goes up by it (or neither).
  *
  *   ANVIL_RPC=http://127.0.0.1:8546 API=http://127.0.0.1:3103 FACILITATOR=http://127.0.0.1:4022 DATABASE_URL=… \
  *     node_modules/.bin/tsx scripts/fork-service-link-e2e.ts
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { createPublicClient, createTestClient, defineChain, encodeAbiParameters, http, keccak256, parseUnits, type Address, type Hex } from 'viem';
+import { createPublicClient, createTestClient, createWalletClient, defineChain, encodeAbiParameters, http, keccak256, parseUnits, type Address, type Hex } from 'viem';
 import { mnemonicToAccount } from 'viem/accounts';
 import { x402Client, x402HTTPClient } from '@x402/core/client';
 import { toClientEvmSigner } from '@x402/evm';
 import { registerExactEvmScheme } from '@x402/evm/exact/client';
 import { eq } from 'drizzle-orm';
-import { MONAD_NETWORK, USDC, serviceCreateMessage, serviceSettingsMessage, PROTECT_HEADER } from '@astralaunch/shared';
+import { MONAD_NETWORK, USDC, serviceCreateMessage, serviceSettingsMessage, serviceUpdateMessage, PROTECT_HEADER } from '@astralaunch/shared';
+import { prepareCall, payAndCall } from '../../web/src/lib/x402.js';
 
 const RPC = process.env.ANVIL_RPC ?? 'http://127.0.0.1:8546';
 const API = process.env.API ?? 'http://127.0.0.1:3103';
@@ -73,6 +76,12 @@ async function upstream(req: IncomingMessage, res: ServerResponse) {
     return j(200, { turn: req.headers['x-session-id'] ? 2 : 1, sid }, { 'x-session-id': sid });
   }
   if (url.pathname === '/v1/fail') return j(500, { error: 'model overloaded at http://127.0.0.1:4031/v1' });
+  if (url.pathname === '/v1/complete') {   // POST-only JSON API
+    if (req.method !== 'POST') return j(405, { error: 'method not allowed' }, { allow: 'POST' });
+    let m: { message?: string } = {};
+    try { m = JSON.parse(body.toString() || '{}'); } catch { /* 422 */ }
+    return m.message ? j(200, { reply: `you said ${m.message}` }) : j(422, { error: 'message required' });
+  }
   j(404, { error: 'not found' });
 }
 
@@ -112,6 +121,17 @@ async function main() {
   const { upsertTokenFromRegistration } = await import('../src/services/tokenSync.js');
   const { adminListAsset } = await import('../src/services/launchFee.js');
   const { probeService } = await import('../src/lib/probes.js');
+  // Scratch DB only: start clean (services from earlier runs of this script on these two tokens).
+  const { gatewayRequests, serviceProbes } = await import('../src/db/schema.js');
+  const { inArray } = await import('drizzle-orm');
+  const TEST_ASSETS = [ASSET, '0x2686619d5569aebcdfec774e8a2167de78376ddf'];
+  const old = await db.select({ id: services.id }).from(services).where(inArray(services.asset, TEST_ASSETS));
+  if (old.length) {
+    const ids = old.map((o) => o.id);
+    await db.delete(gatewayRequests).where(inArray(gatewayRequests.serviceId, ids));
+    await db.delete(serviceProbes).where(inArray(serviceProbes.serviceId, ids));
+    await db.delete(services).where(inArray(services.id, ids));
+  }
   const reg = { chainId: 143, txHash: `0x${'e2'.repeat(32)}`, logIndex: 0, asset: ASSET, creator: creator.address.toLowerCase(), router: ROUTER.toLowerCase(),
     poolId: '0x00', numeraire: USDC.toLowerCase(), initializer: '', launcher: creator.address.toLowerCase(), blockNumber: 1n, timestamp: BigInt(Math.floor(Date.now() / 1000)) };
   await db.insert(idxRegistrations).values(reg).onConflictDoNothing();
@@ -191,6 +211,43 @@ async function main() {
   check((await st()).protection.status === 'protected', 'after requiring the secret → protected');
   const again = await paidCall(`${S}/ask?q=still`, {}, (r) => r.json());
   check(again.res.status === 200 && again.charged === PRICE, 'paid calls through the gateway still work once protected');
+
+  // 8. POST-only JSON API (GET → 405) on a second real v2 token (FEED + its router)
+  requireSecret = null;
+  const FEED = '0x2686619d5569aebcdfec774e8a2167de78376ddf', FEED_ROUTER = '0xdba0705ce9217b9e3db296af6a1810eb0467fd3a' as Address;
+  const reg2 = { ...reg, txHash: `0x${'e3'.repeat(32)}`, asset: FEED, router: FEED_ROUTER.toLowerCase() };
+  await db.insert(idxRegistrations).values(reg2).onConflictDoNothing();
+  await upsertTokenFromRegistration(db, reg2, { name: 'nullfeed', symbol: 'FEED', decimals: 18 });
+  await adminListAsset(db, FEED, 143, 'fork e2e').catch(() => {});
+  const CHAT = 'http://127.0.0.1:4031/v1/complete';
+  const chk = await (await fetch(`${API}/api/services/check`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apiLink: CHAT }) })).json() as { ok: boolean; kind: string | null; status: number; noSample?: string };
+  check(chk.ok && chk.kind === null && chk.status === 405, `POST-only link: check passes without a sample (GET → ${chk.status}, launch allowed)`);
+  const CSLUG = `chat-${Date.now() % 1_000_000}`;
+  const cm = { asset: FEED, slug: CSLUG, name: 'Chat', priceUsdc: PRICE.toString(), apiLink: CHAT, issuedAt: Math.floor(Date.now() / 1000) };
+  const cr = await fetch(`${API}/api/services`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...cm, signature: await creator.signMessage({ message: serviceCreateMessage(cm) }) }) });
+  const cid = (await cr.json() as { id: string }).id;
+  const d1 = await (await fetch(`${API}/api/tokens/${FEED}`)).json() as { service: { endpoint: string; sample: unknown } };
+  check(cr.status === 201 && d1.service.sample === null && d1.service.endpoint === `/s/${CSLUG}`, `attached without a sample: token page sample ${JSON.stringify(d1.service.sample)} (Try hidden, agent link kept)`);
+  const feedUsdc = () => usdc(FEED_ROUTER);
+  const f0 = await feedUsdc();
+  const cp = await paidCall(`/s/${CSLUG}/complete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'hi agent' }) }, (r) => r.json());
+  check(cp.res.status === 200 && JSON.stringify(cp.body) === '{"reply":"you said hi agent"}' && cp.charged === PRICE && (await feedUsdc()) - f0 === PRICE,
+    `agent POST through the gateway → ${JSON.stringify(cp.body)}, charged ${cp.charged}`);
+  const um = { sampleMethod: 'POST' as const, sampleBody: '{"message":"hello"}', issuedAt: Math.floor(Date.now() / 1000) + 1 };
+  const ur = await fetch(`${API}/api/services/${cid}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...um, signature: await creator.signMessage({ message: serviceUpdateMessage(cid, FEED, um) }) }) });
+  const d2 = await (await fetch(`${API}/api/tokens/${FEED}`)).json() as { service: { sample: { method: 'GET' | 'POST'; path: string; body: string | null } | null; response: { kind: string; sample: string } | null } };
+  check(ur.status === 200 && d2.service.sample?.method === 'POST' && d2.service.response?.kind === 'json' && JSON.parse(d2.service.response.sample).reply === 'you said hello',
+    `POST sample added and checked with it: response ${d2.service.response?.sample.replace(/\s+/g, ' ')}`);
+  // "Try a sample call": the web's own prepareCall / payAndCall with the service's sample.
+  const wc = createWalletClient({ account: agent, chain, transport: http(RPC) });
+  const s = d2.service.sample!;
+  const a0 = await usdc(agent.address);
+  const plan = await prepareCall(pc as never, agent.address, `${API}/s/${CSLUG}${s.path}`, FEED as Address, (await (await fetch(`${API}/api/config`)).json() as { contracts: { registry: Address } }).contracts.registry,
+    USDC as Address, { method: s.method, body: s.body });
+  if ('free' in plan) throw new Error('sample call was not a paid 402');
+  const out = await payAndCall(pc as never, wc as never, agent.address, plan);
+  check(out.status === 200 && JSON.parse(out.body).reply === 'you said hello' && !!out.settleTx && a0 - (await usdc(agent.address)) === PRICE,
+    `paid sample call (web x402 code, POST body): ${out.status} ${out.body}, settle ${out.settleTx?.slice(0, 10)}…`);
 
   up.close();
   log(failures ? `${failures} check(s) FAILED` : 'ALL CHECKS PASSED');

@@ -71,3 +71,31 @@ The server has 191 tests (47 new). The indexer has 85, the keeper 90, demo-servi
 
 **Not verified:** a deploy to production, and the Privy wallet UI in a browser for the Launch / Creator / token
 page changes (typechecked and built only).
+
+## POST-only APIs and the sample request (D-SL10)
+
+The same fork stack and script, with scenario 8: a POST-only JSON API (`/v1/complete`: GET gets 405, a POST without
+`message` gets 422) on a second real v2 token (FEED and its router).
+
+```
+PASS POST-only link: check passes without a sample (GET → 405, launch allowed)
+PASS attached without a sample: token page sample null (Try hidden, agent link kept)
+PASS agent POST through the gateway → {"reply":"you said hi agent"}, charged 20000
+PASS POST sample added and checked with it: response { "reply": "you said hello" }
+PASS paid sample call (web x402 code, POST body): 200 {"reply":"you said hello"}, settle 0x9d43765b…
+ALL CHECKS PASSED   (27 checks: the 22 above plus these 5)
+```
+
+The paid sample call uses the web's own `prepareCall` / `payAndCall` (`apps/web/src/lib/x402.ts`) with the sample's
+method and body, which is exactly what "Try a sample call" runs.
+
+Unit tests (`service-sample.test.ts`, 10 tests) cover:
+- the check: a 405, then a 404 followed by a POST `{}` answered 422, are reachable; a 404 on both is refused; a POST
+  sample is sent with its JSON body; a failing sample is refused;
+- the schema rules: valid JSON, 16 KB counted in UTF-8 bytes, a body only with POST, a sample needs `apiLink`;
+- old signed messages unchanged;
+- create without a sample, where the detail and manifest return `sample: null`;
+- a PATCH that adds and then removes a sample;
+- the probe rules without a sample, and a sample refused on a legacy service.
+
+Suites: server 201, indexer 85, keeper 90, demo-services 7. Typecheck passes for every package, and the web build passes.
