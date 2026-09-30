@@ -97,7 +97,16 @@ export default function Token() {
       { label: 'Latency p95', value: health?.latencyP95Ms == null ? '—' : health.latencyP95Ms >= 1000 ? `${(health.latencyP95Ms / 1000).toFixed(1)} s` : `${health.latencyP95Ms} ms` },
       { label: 'Uptime 7d', value: health?.uptime7d == null ? '—' : `${(health.uptime7d * 100).toFixed(1)}%` },
     ],
-    schema: schemaShape(svc?.responseSchema ?? svc?.requestSchema ?? null),
+    // Example request (the creator's pasted link, as the gateway URL) and the response seen by the attach check.
+    exampleRequest: svc?.examplePath ? agentLink(svc.slug) + svc.examplePath.replace(/^\//, '') : null,
+    copyExample: () => svc?.examplePath && navigator.clipboard?.writeText(agentLink(svc.slug) + svc.examplePath.replace(/^\//, '')),
+    schema: (() => {
+      const r = svc?.response;
+      if (r?.kind === 'json' && r.sample) return r.sample;
+      if (r?.kind === 'stream') return r.contentType?.startsWith('text/event-stream') ? 'Streams events (text/event-stream)' : `Streams text${r.contentType ? ` (${r.contentType.split(';')[0]})` : ''}`;
+      if (r?.kind === 'file') return `Returns a file${r.contentType ? ` (${r.contentType.split(';')[0]})` : ''}`;
+      return schemaShape(svc?.responseSchema ?? svc?.requestSchema ?? null);
+    })(),
     payNote: priceUsdc ? `Agents pay ${priceUsdc} USDC per call over x402. Calls that fail or return an invalid response are never charged.` : 'This token has no paid service yet.',
     tryLabel: svc ? `Try a sample call · ${priceLabel(svc.priceUsdc)} USDC` : '',
     tryShow: !!svc?.examplePath,
