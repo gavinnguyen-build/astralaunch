@@ -21,7 +21,9 @@
 //   CREATOR_KEYSTORE               Foundry keystore name/path of the token's on-chain creator (hidden password
 //                                  prompt, or CREATOR_KEYSTORE_PASSWORD_FILE); or CREATOR_PRIVATE_KEY
 //   SCHEMA                         optional request JSON schema: inline JSON or a path to a .json file
-//   RESPONSE_SCHEMA                optional response JSON schema: inline JSON or a path to a .json file
+//   RESPONSE_SCHEMA                optional response JSON schema: inline JSON or a path to a .json file. On an
+//                                  update it replaces the stored schema (D-SV4)
+//   REMOVE_SCHEMA=1                update only: remove the stored response schema (responses no longer checked)
 //   NAME, DESCRIPTION, TIMEOUT_SECONDS   optional (NAME defaults to SLUG)
 //   EXAMPLE_PATH                   optional sample call relative to /s/{slug}, e.g. '/signals?handle=monad'
 //                                  (shown as "Try a sample call" on the token page). On an update, EXAMPLE_PATH=''
@@ -30,8 +32,8 @@
 //   ALLOW_HIGH_PRICE=1             allow PRICE_USDC > 100
 //   ALLOW_ANVIL_KEYS=1             local fork only
 //
-// If SLUG already exists for ASSET, a signed PATCH updates price / upstream / description / timeout
-// (name and schema cannot be changed by PATCH).
+// If SLUG already exists for ASSET, a signed PATCH updates price / upstream / description / timeout / response schema
+// (name and request schema cannot be changed by PATCH).
 
 import { existsSync, readFileSync } from 'node:fs';
 import { formatUnits, getAddress, isAddress, parseUnits } from 'viem';
@@ -83,6 +85,8 @@ run(async () => {
   }
   const requestSchema = loadSchema('SCHEMA');
   const responseSchema = loadSchema('RESPONSE_SCHEMA');
+  const removeSchema = process.env.REMOVE_SCHEMA === '1';
+  if (removeSchema && responseSchema !== undefined) throw new Error('Set RESPONSE_SCHEMA or REMOVE_SCHEMA=1, not both');
   const timeoutSeconds = process.env.TIMEOUT_SECONDS ? Number(process.env.TIMEOUT_SECONDS) : undefined;
   const description = process.env.DESCRIPTION || undefined;
   // undefined = not set; '' only means "remove" on an update
@@ -127,6 +131,7 @@ run(async () => {
   let body: Record<string, unknown>;
 
   if (!existing) {
+    if (removeSchema) throw new Error('REMOVE_SCHEMA=1 only applies to an existing service');
     if (priceRaw === undefined) throw new Error('PRICE_USDC is required to create a service');
     if (upstreamUrl === undefined && apiLink === undefined) throw new Error('API_LINK is required to create a service');
     const fields = {
@@ -147,7 +152,7 @@ run(async () => {
     url = `${server}/api/services`;
     console.log(`\nAction:  CREATE service "${slug}"`);
   } else {
-    if (process.env.NAME || requestSchema || responseSchema) console.log('\nNOTE: NAME, SCHEMA and RESPONSE_SCHEMA cannot be changed on an existing service; they are ignored.');
+    if (process.env.NAME || requestSchema) console.log('\nNOTE: NAME and SCHEMA cannot be changed on an existing service; they are ignored.');
     const fields = {
       ...(priceRaw !== undefined && { priceUsdc: priceRaw.toString() }),
       ...(upstreamUrl !== undefined && { upstreamUrl }),
@@ -157,6 +162,8 @@ run(async () => {
       ...(apiLink !== undefined && { apiLink }),
       ...(wholeDomain && { wholeDomain }),
       ...keyFields,
+      ...(responseSchema !== undefined && { responseSchema }),
+      ...(removeSchema && { responseSchema: '' }),
       issuedAt,
     };
     message = serviceUpdateMessage(existing.id, asset, fields);
@@ -169,6 +176,8 @@ run(async () => {
     console.log(`Link:     ${apiLink ?? upstreamUrl ?? '(unchanged)'}${wholeDomain ? '  (whole domain)' : ''}`);
     if (apiKeyHeader !== undefined) console.log(`API key:  ${apiKeyHeader === '' ? '(removed)' : `${apiKeyHeader}: ***`}`);
     if (examplePath !== undefined) console.log(`Example:  ${examplePath === '' ? '(removed)' : examplePath}`);
+    if (removeSchema) console.log('Schema:   (removed; responses are no longer checked)');
+    else if (responseSchema !== undefined) console.log(`Schema:   replaced (${responseSchema.length} chars)`);
   }
 
   if (priceRaw !== undefined) console.log(`Price:   ${priceHuman} USDC per call (${priceRaw} raw, 6 decimals)`);

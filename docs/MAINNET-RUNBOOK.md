@@ -428,6 +428,24 @@ ASSET=0x2686619d5569AEbcdfeC774e8a2167dE78376dDf SLUG=nullfeed EXAMPLE_PATH='/di
 unset CREATOR_KEYSTORE
 curl -s https://api.astralaunch.xyz/api/services/nullsight/manifest | grep -o '"examplePath":"[^"]*"'
 ```
+
+**Response schema update (2026-10-01, D-SV4, D-DS2).** nullfeed stores the old feed-digest schema, where `source`
+has a single allowed value. Its fallback answer (`"source": "fallback sample"`) would fail the gateway check: a 502,
+not charged. Deploy the server with migration 0014 and the demo-services change first. An older server drops the
+unknown field, and the signature check fails. Then, signed by the on-chain creator, with everything else unchanged:
+
+```bash
+cd astralaunch-anvil
+export SERVER_URL=https://api.astralaunch.xyz CREATOR_KEYSTORE=astralaunch-deployer
+unset PRICE_USDC UPSTREAM_URL API_LINK EXAMPLE_PATH DESCRIPTION TIMEOUT_SECONDS REMOVE_SCHEMA
+ASSET=0x2686619d5569AEbcdfeC774e8a2167dE78376dDf SLUG=nullfeed \
+  RESPONSE_SCHEMA=../apps/demo-services/schemas/feed-digest.json npx tsx src/mainnet-register-service.ts
+unset CREATOR_KEYSTORE
+```
+
+The script prints `Schema: replaced (N chars)` and the signed message, then asks before sending. Check it:
+`POST /api/services/<id>/settings` (Creator page, "Show my settings") shows the new schema and 0 mismatches.
+To stop checking responses instead, use `REMOVE_SCHEMA=1` in place of `RESPONSE_SCHEMA=…`.
 `EXAMPLE_PATH=''` removes it.
 The old `/s/nullsight/sight/signals` now reaches `…/sight/sight/signals` (404 upstream → 502, not charged).
 In containers use the internal origin instead: `http://demo-services:4001/sight` and `…/feed`.
