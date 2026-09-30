@@ -87,9 +87,8 @@ export default function Token() {
     ],
     svcStatus: !svc ? 'No service' : health?.uptime7d == null ? 'Live' : health.uptime7d >= 0.95 ? 'Live' : 'Degraded',
     // Always the gateway link (VITE_API_BASE), never the creator's upstream URL.
-    endpoint: svc ? <>{agentLink(svc.slug)}<span style={{ color: '#5F5A78' }}>…</span></> : 'No service registered yet',
+    endpoint: svc ? agentLink(svc.slug) : 'No service registered yet',
     copyEndpoint: () => svc && navigator.clipboard?.writeText(agentLink(svc.slug)),
-    agentLine: svc && priceUsdc ? `Give this link to your agent. Each call charges ${priceLabel(svc.priceUsdc)} USDC on Monad automatically.` : null,
     svc: [
       { label: 'Price per call', value: priceUsdc ? `${priceUsdc} USDC` : '—' },
       { label: 'Success rate', value: health?.successRate == null ? '—' : `${(health.successRate * 100).toFixed(1)}%` },
@@ -108,7 +107,6 @@ export default function Token() {
       if (r?.kind === 'file') return `Returns a file${r.contentType ? ` (${r.contentType.split(';')[0]})` : ''}`;
       return schemaShape(svc?.responseSchema ?? svc?.requestSchema ?? null);
     })(),
-    payNote: priceUsdc ? `Agents pay ${priceUsdc} USDC per call over x402. Calls that fail or return an invalid response are never charged.` : 'This token has no paid service yet.',
     tryLabel: svc ? `Try a sample call · ${priceLabel(svc.priceUsdc)} USDC` : '',
     tryShow: !!svc?.sample,
     payments: (payments.data?.payments ?? []).map((p) => {
