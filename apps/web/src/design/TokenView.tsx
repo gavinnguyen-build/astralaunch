@@ -38,7 +38,7 @@ export function TokenView({ v }: { v: any }) {
 <div style={{ display: 'flex', justifyContent: 'space-between' }}><dt style={{ color: '#8C87A3' }}>Token</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}><span title={v.tokenFull}>{v.tokenShort}</span></dd></div>
 <div style={{ display: 'flex', justifyContent: 'space-between' }}><dt style={{ color: '#8C87A3' }}>Revenue router</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}><span title={v.routerFull}>{v.routerShort}</span></dd></div>
 <div style={{ display: 'flex', justifyContent: 'space-between' }}><dt style={{ color: '#8C87A3' }}>Pool</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.poolLabel}</dd></div>
-<div style={{ display: 'flex', justifyContent: 'space-between' }}><dt style={{ color: '#8C87A3' }}>Fee recipient</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.feeRecipient}</dd></div>
+<div style={{ display: 'flex', justifyContent: 'space-between' }}><dt style={{ color: '#8C87A3' }}>Creator</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.feeRecipient}</dd></div>
 </dl></section>
 <section style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}><h2 style={{ margin: '0', fontSize: '18px', fontWeight: '700' }}>Market</h2>
 <dl style={{ margin: '0', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px' }}>

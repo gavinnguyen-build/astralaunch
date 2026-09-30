@@ -208,7 +208,7 @@ function Confirm({ plan, input, onCancel, onConfirm }: { plan: LaunchPlan; input
       <h2 style={{ margin: '0 0 6px', fontSize: '20px' }}>Confirm launch</h2>
       <R k="Token">{input.name} ({input.symbol})</R>
       <R k="Pairing">{plan.numeraireSymbol}</R>
-      <R k="Fee recipient"><AddrLink a={plan.creator} /></R>
+      <R k="Your wallet"><AddrLink a={plan.creator} /></R>
       <R k="Supply">1,000,000,000 · 85% pool · 15% vested</R>
       <R k="Vesting">15% to your wallet · 30-day cliff · 1 year</R>
       <R k="Launch fee">{plan.feeTx.needed ? fmtMon(plan.feeTx.valueWei) : `${fmtMon(plan.feeTx.valueWei)} · already paid`}</R>
