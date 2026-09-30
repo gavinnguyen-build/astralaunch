@@ -2,7 +2,7 @@
  * "One API link" service form, shared by the Launch page and the Creator page Service card:
  * "Your API link" + "Price per call (USDC)", everything else in a collapsed "Advanced" section.
  */
-import { parseApiLink, agentExampleUrl, sampleBodyError } from '@astralaunch/shared';
+import { parseApiLink, sampleBodyError } from '@astralaunch/shared';
 import { parseUnits } from 'viem';
 import type { LinkCheckResult, ServiceInput } from '../lib/launch.js';
 
@@ -11,7 +11,7 @@ export interface ServiceLinkValue { apiLink: string; price: string; wholeDomain:
 
 export const emptyServiceLink = (price = '0.02'): ServiceLinkValue => ({ apiLink: '', price, wholeDomain: false, keyHeader: '', keyValue: '', sampleMethod: '', sampleBody: '' });
 
-export const SERVICE_HELP = 'Your API must answer within one request. Streaming is fine.';
+export const SERVICE_HELP = 'Your API must answer within one request.';
 
 /** Form errors (empty = OK). `keyOptional`: an existing key is kept when both key fields are empty. */
 export function serviceLinkErrors(v: ServiceLinkValue): string[] {
@@ -48,20 +48,18 @@ export function checkSummary(c: LinkCheckResult): string {
   return `Your API answered ${c.status} with ${what}.`;
 }
 
-export function ServiceLinkForm({ value, onChange, slug, agentBase, check, keySet, disabled }: {
+export function ServiceLinkForm({ value, onChange, check, keySet, disabled }: {
   value: ServiceLinkValue;
   onChange: (v: ServiceLinkValue) => void;
-  /** Service slug, for the agent-link preview. */
+  /** Not shown any more (the agent-link preview was removed); still accepted from the pages. */
   slug?: string;
-  /** Public API base (e.g. https://api.astralaunch.xyz). */
-  agentBase: string;
+  agentBase?: string;
   check?: LinkCheckResult | null;
   /** An API key is already stored (leave both key fields empty to keep it). */
   keySet?: { header: string } | null;
   disabled?: boolean;
 }) {
   const set = (patch: Partial<ServiceLinkValue>) => onChange({ ...value, ...patch });
-  const parsed = value.apiLink.trim() ? parseApiLink(value.apiLink, { wholeDomain: value.wholeDomain }) : null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 180px', gap: '14px' }}>
@@ -74,11 +72,6 @@ export function ServiceLinkForm({ value, onChange, slug, agentBase, check, keySe
         </label>
       </div>
       <span style={hint}>The link you already use to call your API. {SERVICE_HELP}</span>
-      {parsed?.ok && slug ? (
-        <span style={{ ...hint, fontFamily: "'JetBrains Mono', monospace", fontSize: '12px', wordBreak: 'break-all' }}>
-          Agents will call {agentExampleUrl(agentBase, slug, parsed.link.examplePath)}
-        </span>
-      ) : null}
       {check ? (
         <span role="status" style={{ fontSize: '13px', color: check.ok ? '#34D399' : '#FCA5A5' }}>{checkSummary(check)}</span>
       ) : null}
@@ -101,30 +94,21 @@ export function ServiceLinkForm({ value, onChange, slug, agentBase, check, keySe
             Open the whole domain
           </label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '4px', borderTop: '1px solid #25213A' }}>
-            <span style={{ fontSize: '14px', fontWeight: 600, marginTop: '8px' }}>Sample request</span>
-            <div style={{ display: 'grid', gridTemplateColumns: '140px minmax(0,1fr)', gap: '14px', alignItems: 'start' }}>
-              <label style={label}>Method
-                <select value={value.sampleMethod} disabled={disabled} onChange={(e) => set({ sampleMethod: e.target.value as ServiceLinkValue['sampleMethod'] })} style={input}>
-                  <option value="">Not set</option><option value="GET">GET</option><option value="POST">POST</option>
-                </select>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', fontWeight: 600, marginTop: '8px' }}>Sample request method
+              <select value={value.sampleMethod} disabled={disabled} onChange={(e) => set({ sampleMethod: e.target.value as ServiceLinkValue['sampleMethod'] })} style={{ ...input, width: '140px' }}>
+                <option value="">Not set</option><option value="GET">GET</option><option value="POST">POST</option>
+              </select>
+              {value.sampleMethod === 'GET' ? <span style={hint}>Your link is called with GET.</span> : null}
+            </label>
+            {value.sampleMethod === 'POST' ? (
+              <label style={label}>JSON body
+                <textarea value={value.sampleBody} disabled={disabled} onChange={(e) => set({ sampleBody: e.target.value })} rows={4}
+                  placeholder='{"message": "hello"}' spellCheck={false}
+                  style={{ ...mono, height: 'auto', padding: '10px 14px', resize: 'vertical', fontSize: '13px' }} />
               </label>
-              {value.sampleMethod === 'POST' ? (
-                <label style={label}>JSON body
-                  <textarea value={value.sampleBody} disabled={disabled} onChange={(e) => set({ sampleBody: e.target.value })} rows={4}
-                    placeholder='{"message": "hello"}' spellCheck={false}
-                    style={{ ...mono, height: 'auto', padding: '10px 14px', resize: 'vertical', fontSize: '13px' }} />
-                </label>
-              ) : <span style={{ ...hint, paddingTop: '30px' }}>{value.sampleMethod === 'GET' ? 'Your link is called with GET.' : 'Optional.'}</span>}
-            </div>
+            ) : null}
             <span style={hint}>The call made to check your API and by &quot;Try a sample call&quot; on your token page. Set it if your API needs a POST body (max 16 KB).</span>
           </div>
-          <span style={hint}>
-            {parsed?.ok
-              ? value.wholeDomain
-                ? `Agents may call any path on ${parsed.link.origin}.`
-                : `Agents may call paths under ${parsed.link.origin}${parsed.link.prefix} only. Tick this to allow every path on the domain.`
-              : 'By default agents may only call paths under your link\'s directory.'}
-          </span>
         </div>
       </details>
     </div>
