@@ -11,7 +11,7 @@ import { buildUpstreamUrl } from '../lib/upstream.js';
 import { gatewayLimits } from '../lib/proxy.js';
 import { upstreamPolicy } from '../lib/ssrf.js';
 import { decryptSecret, encryptSecret } from '../lib/secretBox.js';
-import { checkLink, type LinkCheck } from './linkCheck.js';
+import { checkLink, type LinkCheck, type SampleRequest } from './linkCheck.js';
 import type { Db } from './launchFee.js';
 
 /** A link or its check was refused: 400 = malformed input, 422 = the API did not pass the check. */
@@ -19,14 +19,20 @@ export class ServiceLinkError extends Error {
   constructor(readonly status: 400 | 422, message: string, readonly check?: LinkCheck) { super(message); }
 }
 
-export interface LinkInput { apiLink: string; wholeDomain?: boolean; apiKeyHeader?: string; apiKeyValue?: string }
+export interface LinkInput {
+  apiLink: string; wholeDomain?: boolean; apiKeyHeader?: string; apiKeyValue?: string;
+  /** Sample request (Advanced); absent = plain GET on the link. */
+  sampleMethod?: 'GET' | 'POST'; sampleBody?: string;
+}
 
 /** Columns written for a service whose link passed the check. `id` is fixed up front so the API key can be bound to it. */
 export interface PreparedLink {
   id: string;
   upstreamUrl: string; examplePath: string; apiLink: string; wholeDomain: boolean;
   apiKeyHeader: string | null; apiKeyEnc: string | null;
-  responseKind: string; responseContentType: string | null; responseSample: string | null; linkCheckedAt: Date;
+  /** null = no sample call (the link is reachable but needs a request body we do not know). */
+  responseKind: string | null; responseContentType: string | null; responseSample: string | null; linkCheckedAt: Date;
+  sampleMethod: 'GET' | 'POST' | null; sampleBody: string | null;
   check: Extract<LinkCheck, { ok: true }>;
 }
 
@@ -69,7 +75,8 @@ export async function prepareServiceLink(
   if (existing) Object.assign(headers, gatewayHeaders({ upstreamSecret: existing.upstreamSecret, protectSecret: existing.protectSecret }, Buffer.alloc(0)));
   if (apiKey) headers[apiKey.header.toLowerCase()] = apiKey.value;
 
-  const check = await checkLink(target, headers, gatewayLimits().timeoutS);
+  const sample: SampleRequest | null = input.sampleMethod ? { method: input.sampleMethod, body: input.sampleMethod === 'POST' ? input.sampleBody ?? null : null } : null;
+  const check = await checkLink(target, headers, gatewayLimits().timeoutS, sample);
   if (!check.ok) throw new ServiceLinkError(422, check.error, check);
 
   const newKey = input.apiKeyHeader && input.apiKeyValue;
@@ -79,8 +86,21 @@ export async function prepareServiceLink(
     apiKeyHeader: newKey ? input.apiKeyHeader! : existing?.apiKeyHeader ?? null,
     apiKeyEnc: newKey ? encryptSecret(input.apiKeyValue!, id) : existing?.apiKeyEnc ?? null,
     responseKind: check.kind, responseContentType: check.contentType, responseSample: check.sample, linkCheckedAt: new Date(),
+    sampleMethod: sample?.method ?? null, sampleBody: sample?.body ?? null,
     check,
   };
+}
+
+/**
+ * The public sample call for a service ("Try a sample call", manifest), or null when there is none:
+ * link services need a checked response (null kind = reachable but no sample); legacy services keep a GET examplePath.
+ */
+export function publicSample(svc: Pick<Service, 'apiLink' | 'examplePath' | 'responseKind' | 'sampleMethod' | 'sampleBody'>):
+  { method: 'GET' | 'POST'; path: string; body: string | null } | null {
+  if (!svc.examplePath) return null;
+  if (svc.apiLink && !svc.responseKind) return null;
+  const method = svc.sampleMethod === 'POST' ? 'POST' : 'GET';
+  return { method, path: svc.examplePath, body: method === 'POST' ? svc.sampleBody ?? null : null };
 }
 
 /** Headers the gateway adds on every forwarded call: the plain shared secret and the HMAC signature (legacy). */

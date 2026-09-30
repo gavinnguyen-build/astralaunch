@@ -42,7 +42,7 @@ export async function insertService(tx: Db, token: Token, s: ServiceFields, issu
     ...(link ? {
       id: link.id, apiLink: link.apiLink, wholeDomain: link.wholeDomain, apiKeyHeader: link.apiKeyHeader, apiKeyEnc: link.apiKeyEnc,
       responseKind: link.responseKind, responseContentType: link.responseContentType, responseSample: link.responseSample,
-      linkCheckedAt: link.linkCheckedAt,
+      linkCheckedAt: link.linkCheckedAt, sampleMethod: link.sampleMethod, sampleBody: link.sampleBody,
     } : {}),
     protectSecret:  newProtectSecret(),
     slug:           s.slug,
@@ -111,7 +111,10 @@ export async function applyLaunchDetails(db: Db, body: LaunchDetailsInput, nowS:
   });
   // New model: call the pasted link once (must answer 2xx) before anything is written. Legacy: SSRF check only.
   const s = body.service;
-  const link = s?.apiLink ? await prepareServiceLink({ apiLink: s.apiLink, wholeDomain: s.wholeDomain, apiKeyHeader: s.apiKeyHeader, apiKeyValue: s.apiKeyValue }) : null;
+  const link = s?.apiLink ? await prepareServiceLink({
+    apiLink: s.apiLink, wholeDomain: s.wholeDomain, apiKeyHeader: s.apiKeyHeader, apiKeyValue: s.apiKeyValue,
+    sampleMethod: s.sampleMethod, sampleBody: s.sampleBody,
+  }) : null;
   if (s && !s.apiLink && s.upstreamUrl) await assertSafeUpstream(s.upstreamUrl);
 
   return db.transaction(async (tx) => {

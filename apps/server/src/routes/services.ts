@@ -15,7 +15,7 @@ import { authorizeTokenCreator, consumeSignedMessage, ServiceAuthError } from '.
 import { insertService, serviceInputError } from '../services/creatorWrites.js';
 import { checkLink } from '../services/linkCheck.js';
 import {
-  ensureProtectSecret, exampleTarget, parseLinkOrThrow, prepareServiceLink, ServiceLinkError, type PreparedLink,
+  ensureProtectSecret, exampleTarget, parseLinkOrThrow, prepareServiceLink, publicSample, ServiceLinkError, type PreparedLink,
 } from '../services/serviceLinks.js';
 import { encryptSecret } from '../lib/secretBox.js';
 import { USDC_ADDR, PAYMENT_TIMEOUT_S } from '../env.js';
@@ -38,11 +38,12 @@ export function publicService(s: Service) {
     id: s.id, asset: s.asset, slug: s.slug, name: s.name, router: s.router, creator: s.creator, priceUsdc: s.priceUsdc,
     description: s.description, examplePath: s.examplePath, timeoutSeconds: s.timeoutSeconds, active: s.active,
     responseKind: s.responseKind, responseContentType: s.responseContentType, updatedAt: s.updatedAt,
+    sample: publicSample(s),
   };
 }
 
-const linkInput = (b: { apiLink?: string; wholeDomain?: boolean; apiKeyHeader?: string; apiKeyValue?: string }) =>
-  ({ apiLink: b.apiLink!, wholeDomain: b.wholeDomain, apiKeyHeader: b.apiKeyHeader || undefined, apiKeyValue: b.apiKeyValue });
+const linkInput = (b: { apiLink?: string; wholeDomain?: boolean; apiKeyHeader?: string; apiKeyValue?: string; sampleMethod?: 'GET' | 'POST'; sampleBody?: string }) =>
+  ({ apiLink: b.apiLink!, wholeDomain: b.wholeDomain, apiKeyHeader: b.apiKeyHeader || undefined, apiKeyValue: b.apiKeyValue, sampleMethod: b.sampleMethod, sampleBody: b.sampleBody });
 
 // POST /api/services — register a service. Signed by the token's on-chain creator (D-SV1).
 // New model: `apiLink` (+ optional key); the link must answer 2xx once before anything is stored.
@@ -92,7 +93,8 @@ app.post('/check', zValidator('json', linkCheckSchema), async (c) => {
     const target = exampleTarget(link.upstreamUrl, link.examplePath);
     if (!target) return c.json({ ok: false, error: 'The link path is not usable.' }, 400);
     const headers = body.apiKeyHeader && body.apiKeyValue ? { [body.apiKeyHeader.toLowerCase()]: body.apiKeyValue } : {};
-    const check = await checkLink(target, headers, gatewayLimits().timeoutS);
+    const sample = body.sampleMethod ? { method: body.sampleMethod, body: body.sampleMethod === 'POST' ? body.sampleBody ?? null : null } : null;
+    const check = await checkLink(target, headers, gatewayLimits().timeoutS, sample);
     const derived = { prefix: link.prefix, examplePath: link.examplePath };
     if (!check.ok) return c.json({ ...derived, ...check }, 422);
     return c.json({ ...derived, ...check });
@@ -124,6 +126,7 @@ app.post('/:id/settings', zValidator('json', serviceSettingsSchema), async (c) =
       protection: { status: svc.protectionStatus, checkedAt: svc.protectionCheckedAt },
       responseSample: svc.responseSample,
       linkCheckedAt: svc.linkCheckedAt,
+      sampleRequest: svc.sampleMethod ? { method: svc.sampleMethod, body: svc.sampleBody } : null,
       legacyUpstream: !svc.apiLink,
     });
   } catch (e) {
@@ -151,12 +154,17 @@ app.patch('/:id', zValidator('json', updateServiceSchema), async (c) => {
     });
     if (body.upstreamUrl) await assertSafeUpstream(body.upstreamUrl);
 
-    // A new link, or a new key on a link-based service: re-run the check (with the service's own headers).
+    // A new link, key or sample request on a link-based service: re-run the check (with the service's own headers).
+    // Sample: sent → use it; "" → remove it (plain GET); absent → keep the stored one.
     const newKey = body.apiKeyHeader && body.apiKeyValue ? { apiKeyHeader: body.apiKeyHeader, apiKeyValue: body.apiKeyValue } : null;
+    const sampleChanged = body.sampleMethod !== undefined;
+    const sample = body.sampleMethod === '' ? {} : body.sampleMethod ? { sampleMethod: body.sampleMethod, sampleBody: body.sampleBody }
+      : svc.sampleMethod ? { sampleMethod: svc.sampleMethod as 'GET' | 'POST', sampleBody: svc.sampleBody ?? undefined } : {};
+    if (sampleChanged && !body.apiLink && !svc.apiLink) throw new ServiceLinkError(400, 'A sample request needs an API link. Paste your API link first.');
     let link: PreparedLink | null = null;
-    if (body.apiLink || (newKey && svc.apiLink)) {
+    if (body.apiLink || ((newKey || sampleChanged) && svc.apiLink)) {
       link = await prepareServiceLink({
-        apiLink: body.apiLink ?? svc.apiLink!, wholeDomain: body.apiLink ? body.wholeDomain : svc.wholeDomain, ...(newKey ?? {}),
+        apiLink: body.apiLink ?? svc.apiLink!, wholeDomain: body.apiLink ? body.wholeDomain : svc.wholeDomain, ...(newKey ?? {}), ...sample,
       }, body.apiKeyHeader === '' ? { ...svc, apiKeyHeader: null, apiKeyEnc: null } : svc);
     }
 
@@ -172,6 +180,7 @@ app.patch('/:id', zValidator('json', updateServiceSchema), async (c) => {
           apiLink: link.apiLink, wholeDomain: link.wholeDomain, upstreamUrl: link.upstreamUrl, examplePath: link.examplePath,
           responseKind: link.responseKind, responseContentType: link.responseContentType, responseSample: link.responseSample,
           linkCheckedAt: link.linkCheckedAt, apiKeyHeader: link.apiKeyHeader, apiKeyEnc: link.apiKeyEnc,
+          sampleMethod: link.sampleMethod, sampleBody: link.sampleBody,
           ...(svc.apiLink ? {} : { timeoutSeconds: body.timeoutSeconds ?? 120 }),   // moving to the new model
           protectionStatus: null, protectionCheckedAt: null,
         }),
@@ -217,6 +226,7 @@ app.get('/:slug/manifest', async (c) => {
     },
     endpoint: `/s/${svc.slug}`,
     examplePath: svc.examplePath,
+    sample: publicSample(svc),
     response: svc.responseKind ? { kind: svc.responseKind, contentType: svc.responseContentType } : null,
   });
 });

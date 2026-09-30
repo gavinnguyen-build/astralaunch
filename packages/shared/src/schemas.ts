@@ -43,6 +43,20 @@ const apiKeyHeaderSchema = z.string().max(64).regex(/^[A-Za-z0-9-]+$/, 'header n
   .refine((h) => !RESERVED_HEADER_RE.test(h), 'this header name is reserved by the gateway');
 
 /** "One API link" fields (packages/shared/src/serviceLink.ts). The API key value is stored encrypted and never returned. */
+/** Max size of a sample request's JSON body (UTF-8 bytes). */
+export const SAMPLE_BODY_MAX_BYTES = 16 * 1024;
+
+/** Why a sample request body is unusable (null = ok): valid JSON, at most 16 KB. */
+export function sampleBodyError(body: string): string | null {
+  if (new TextEncoder().encode(body).byteLength > SAMPLE_BODY_MAX_BYTES) return `The sample body is larger than ${SAMPLE_BODY_MAX_BYTES / 1024} KB.`;
+  try { JSON.parse(body); } catch { return 'The sample body must be valid JSON.'; }
+  return null;
+}
+const sampleBodySchema = z.string().min(1).superRefine((b, ctx) => {
+  const e = sampleBodyError(b);
+  if (e) ctx.addIssue({ code: z.ZodIssueCode.custom, message: e });
+});
+
 const linkFields = {
   /** The link the creator already uses to call their API; upstream origin, prefix and examplePath are derived from it. */
   apiLink:      z.string().url().max(2000).optional(),
@@ -51,6 +65,12 @@ const linkFields = {
   /** Optional API key the gateway adds to every forwarded call: header name + value. */
   apiKeyHeader: apiKeyHeaderSchema.optional(),
   apiKeyValue:  z.string().min(1).max(2000).optional(),
+  /**
+   * Optional sample request (Advanced): method and, for POST, a JSON body. Used by the link check and by the token
+   * page's "Try a sample call" on the pasted link's path. Without it the link is checked with a plain GET.
+   */
+  sampleMethod: z.enum(['GET', 'POST']).optional(),
+  sampleBody:   sampleBodySchema.optional(),
 };
 
 const serviceFields = {
@@ -84,7 +104,11 @@ const serviceRefinements = <T extends z.ZodTypeAny>(schema: T) => schema
   .refine((d: { apiLink?: string; examplePath?: string }) => d.apiLink === undefined || d.examplePath === undefined,
     'examplePath is derived from apiLink; do not send both')
   .refine((d: { apiKeyHeader?: string; apiKeyValue?: string }) => (d.apiKeyHeader === undefined) === (d.apiKeyValue === undefined),
-    'apiKeyHeader and apiKeyValue go together');
+    'apiKeyHeader and apiKeyValue go together')
+  .refine((d: { apiLink?: string; sampleMethod?: string }) => d.sampleMethod === undefined || d.apiLink !== undefined,
+    'a sample request needs apiLink')
+  .refine((d: { sampleMethod?: string; sampleBody?: string }) => d.sampleBody === undefined || d.sampleMethod === 'POST',
+    'a sample body needs sampleMethod POST');
 
 const signedFields = {
   /** Unix seconds when signed; must be recent. Each signed message is accepted once. */
@@ -115,16 +139,21 @@ export const updateServiceSchema = z.object({
   /** New API key header + value; apiKeyHeader "" removes the key. */
   apiKeyHeader:   z.union([z.literal(''), apiKeyHeaderSchema]).optional(),
   apiKeyValue:    linkFields.apiKeyValue,
+  /** New sample request; sampleMethod "" removes it (the link is checked with a plain GET again). */
+  sampleMethod:   z.union([z.literal(''), z.enum(['GET', 'POST'])]).optional(),
+  sampleBody:     linkFields.sampleBody,
   ...signedFields,
 }).refine(
   d => d.priceUsdc !== undefined || d.upstreamUrl !== undefined || d.timeoutSeconds !== undefined || d.description !== undefined
-    || d.examplePath !== undefined || d.apiLink !== undefined || d.wholeDomain !== undefined || d.apiKeyHeader !== undefined,
+    || d.examplePath !== undefined || d.apiLink !== undefined || d.wholeDomain !== undefined || d.apiKeyHeader !== undefined
+    || d.sampleMethod !== undefined,
   'at least one field required',
 ).refine(d => !(d.apiLink !== undefined && d.upstreamUrl !== undefined), 'send either apiLink or upstreamUrl')
   .refine(d => !(d.apiLink !== undefined && d.examplePath !== undefined), 'examplePath is derived from apiLink; do not send both')
   .refine(d => d.wholeDomain === undefined || d.apiLink !== undefined, 'wholeDomain needs apiLink')
   .refine(d => (d.apiKeyHeader === undefined || d.apiKeyHeader === '') === (d.apiKeyValue === undefined),
-    'apiKeyHeader and apiKeyValue go together ("" header removes the key)');
+    'apiKeyHeader and apiKeyValue go together ("" header removes the key)')
+  .refine(d => d.sampleBody === undefined || d.sampleMethod === 'POST', 'a sample body needs sampleMethod POST');
 
 export type UpdateServiceInput = z.infer<typeof updateServiceSchema>;
 
@@ -139,9 +168,9 @@ function canonical(obj: Record<string, unknown>, keys: readonly string[]): strin
 // omits undefined fields), so earlier signed messages stay valid.
 // apiLink / wholeDomain / apiKeyHeader / apiKeyValue ("one API link" model) likewise: absent → identical message.
 const CREATE_KEYS = ['asset', 'slug', 'name', 'upstreamUrl', 'priceUsdc', 'requestSchema',
-  'responseSchema', 'timeoutSeconds', 'description', 'examplePath', 'apiLink', 'wholeDomain', 'apiKeyHeader', 'apiKeyValue', 'issuedAt'] as const;
+  'responseSchema', 'timeoutSeconds', 'description', 'examplePath', 'apiLink', 'wholeDomain', 'apiKeyHeader', 'apiKeyValue', 'sampleMethod', 'sampleBody', 'issuedAt'] as const;
 const UPDATE_KEYS = ['serviceId', 'asset', 'priceUsdc', 'upstreamUrl', 'timeoutSeconds',
-  'description', 'examplePath', 'apiLink', 'wholeDomain', 'apiKeyHeader', 'apiKeyValue', 'issuedAt'] as const;
+  'description', 'examplePath', 'apiLink', 'wholeDomain', 'apiKeyHeader', 'apiKeyValue', 'sampleMethod', 'sampleBody', 'issuedAt'] as const;
 
 /** Message the token creator signs to register a service. */
 export function serviceCreateMessage(m: Omit<CreateServiceInput, 'signature'>): string {
@@ -174,7 +203,10 @@ export const linkCheckSchema = z.object({
   wholeDomain:  z.boolean().optional(),
   apiKeyHeader: apiKeyHeaderSchema.optional(),
   apiKeyValue:  z.string().min(1).max(2000).optional(),
-}).refine((d) => (d.apiKeyHeader === undefined) === (d.apiKeyValue === undefined), 'apiKeyHeader and apiKeyValue go together');
+  sampleMethod: z.enum(['GET', 'POST']).optional(),
+  sampleBody:   sampleBodySchema.optional(),
+}).refine((d) => (d.apiKeyHeader === undefined) === (d.apiKeyValue === undefined), 'apiKeyHeader and apiKeyValue go together')
+  .refine((d) => d.sampleBody === undefined || d.sampleMethod === 'POST', 'a sample body needs sampleMethod POST');
 
 // ── Token metadata (POST /api/tokens) ──────────────────────────────────────────
 // Tokens themselves come from the indexer (on-chain Registered event). This only
@@ -238,7 +270,7 @@ export type LaunchDetailsInput = z.infer<typeof launchDetailsSchema>;
 
 const LAUNCH_DETAILS_KEYS = ['asset', 'imageUrl', 'xHandle', 'website', 'description', 'service', 'issuedAt'] as const;
 const LAUNCH_SERVICE_KEYS = ['slug', 'name', 'upstreamUrl', 'priceUsdc', 'requestSchema',
-  'responseSchema', 'timeoutSeconds', 'description', 'examplePath', 'apiLink', 'wholeDomain', 'apiKeyHeader', 'apiKeyValue'] as const;
+  'responseSchema', 'timeoutSeconds', 'description', 'examplePath', 'apiLink', 'wholeDomain', 'apiKeyHeader', 'apiKeyValue', 'sampleMethod', 'sampleBody'] as const;
 
 /** Message the token creator signs once for metadata + service: header + canonical JSON (nested service canonical too). */
 export function launchDetailsMessage(m: Omit<LaunchDetailsInput, 'signature'>): string {

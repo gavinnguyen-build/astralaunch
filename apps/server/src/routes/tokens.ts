@@ -29,7 +29,7 @@ import { launchDetailsSchema, tokenMetadataSchema, tokenMetadataMessage, WMON } 
 import { authorizeTokenCreator, consumeSignedMessage, ServiceAuthError } from '../services/serviceAuth.js';
 import { applyLaunchDetails, applyTokenMetadata, LaunchDetailsInputError } from '../services/creatorWrites.js';
 import { listTokens, tokenListQuerySchema } from '../services/tokenList.js';
-import { ServiceLinkError } from '../services/serviceLinks.js';
+import { publicSample, ServiceLinkError } from '../services/serviceLinks.js';
 import { SsrfError } from '../lib/ssrf.js';
 import { RPC_URL, CHAIN_ID, REGISTRY_ADDR, SUBMITTERS } from '../env.js';
 import { isAssetListed, isListedSql } from '../services/launchFee.js';
@@ -373,6 +373,8 @@ app.get('/:asset', async (c) => {
       endpoint:      `/s/${svc.slug}`,
       // From the attach check: what a call returns. The sample is the API's public output (JSON only, ≤ 4 KB).
       response: svc.responseKind ? { kind: svc.responseKind, contentType: svc.responseContentType, sample: svc.responseSample } : null,
+      // What "Try a sample call" sends; null = no sample call (hide the button, keep the agent link).
+      sample: publicSample(svc),
     } : null,
     metrics: {
       cleanRevenue24h:  rev24.toString(),

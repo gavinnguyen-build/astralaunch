@@ -56,6 +56,9 @@ export const services = pgTable('services', {
   linkCheckedAt:       timestamp('link_checked_at', { withTimezone: true }),
   protectionStatus:    text('protection_status'),    // 'protected' | 'unprotected' | null (not probed yet)
   protectionCheckedAt: timestamp('protection_checked_at', { withTimezone: true }),
+  // Optional sample request (0013): NULL = plain GET on the link. POST carries a JSON body (<= 16 KB).
+  sampleMethod:        text('sample_method'),        // 'GET' | 'POST' | null
+  sampleBody:          text('sample_body'),
   description:    text('description'),
   active:         boolean('active').notNull().default(true),
   authSignedAt:   bigint('auth_signed_at', { mode: 'bigint' }), // issuedAt of last accepted signed request (0007)

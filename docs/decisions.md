@@ -523,3 +523,29 @@ and allows 10 per minute per client address.
 **D-SL9. Signed messages.** `apiLink`, `wholeDomain`, `apiKeyHeader` and `apiKeyValue` are appended to the
 create / update / launch-details canonical keys, just before `issuedAt`. A message without them is byte-identical,
 so earlier signatures stay valid. A create carries exactly one of `apiLink` (new) or `upstreamUrl` (legacy).
+
+**D-SL10. POST-only APIs and the sample request (2026-09-30).** Many agent APIs answer only POST with a JSON body
+(e.g. `POST /v1/chat`). A plain GET on their link gets 405, which blocked launch even though the gateway forwards
+POST fine.
+
+Without a sample request, the check GETs the link:
+- a 2xx is recorded as before;
+- a **405** means the link is **reachable**: launch/attach is allowed, with "no sample call" (`response_kind` NULL);
+- a **400/404** leads to one POST with the body `{}`. If that does not come back 404/405 (or a redirect), the path
+  exists and the result is the same. Otherwise the original error stands.
+
+That extra POST is the one side effect of the check. It sends an empty JSON object, which most APIs reject with
+400/422.
+
+The optional **sample request** (Advanced: GET or POST, and for POST a JSON body of ≤ 16 KB) makes the check send
+exactly that request, which must return 2xx. It also drives "Try a sample call". The fields are `sampleMethod` and
+`sampleBody`, appended to the signed create / update / launch-details keys before `issuedAt`, so old messages are
+unchanged. On an update, `sampleMethod: ""` removes the sample. Migration 0013 is registered in the journal.
+
+`publicSample` sets what the token page and the manifest expose:
+- no sample call → `null`, and the page hides "Try a sample call" (the agent link and its copy button stay);
+- legacy services keep their GET example path.
+
+Probes without a sample use a plain GET. Health counts any answer below 500 as up. Protection counts 401/403 as
+protected and 2xx as unprotected, and leaves the status unchanged for anything else: without a sample, a 405 cannot
+show whether the secret is enforced.
