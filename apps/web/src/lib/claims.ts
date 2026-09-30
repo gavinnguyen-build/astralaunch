@@ -63,6 +63,8 @@ export async function saveService(wc: WalletClient, account: Address, apiBase: s
   priceUsdc?: bigint; apiLink?: string; wholeDomain?: boolean; apiKey?: { header: string; value: string };
   /** Sample request: GET/POST (+ JSON body for POST); '' removes a stored one (updates only). */
   sampleMethod?: '' | 'GET' | 'POST'; sampleBody?: string;
+  /** Response JSON schema (compact JSON); '' removes the stored one (updates only). */
+  responseSchema?: string;
 }) {
   const issuedAt = Math.floor(Date.now() / 1000);
   const link = s.apiLink ? { apiLink: s.apiLink, ...(s.wholeDomain ? { wholeDomain: true } : {}) } : {};
@@ -71,8 +73,9 @@ export async function saveService(wc: WalletClient, account: Address, apiBase: s
     : { sampleMethod: s.sampleMethod, ...(s.sampleMethod === 'POST' && s.sampleBody ? { sampleBody: s.sampleBody } : {}) };
   let url: string, method: 'POST' | 'PATCH', body: Record<string, unknown>;
   if (s.existingId) {
-    const fields = { ...(s.priceUsdc !== undefined ? { priceUsdc: s.priceUsdc.toString() } : {}), ...link, ...key, ...sample, issuedAt };
-    if (Object.keys(fields).length === 1) throw new Error('Nothing to save: change the link, the price, the API key or the sample request.');
+    const schema = s.responseSchema !== undefined ? { responseSchema: s.responseSchema } : {};
+    const fields = { ...(s.priceUsdc !== undefined ? { priceUsdc: s.priceUsdc.toString() } : {}), ...link, ...key, ...sample, ...schema, issuedAt };
+    if (Object.keys(fields).length === 1) throw new Error('Nothing to save: change the link, the price, the API key, the sample request or the response schema.');
     const signature = await wc.signMessage({ account, message: serviceUpdateMessage(s.existingId, s.asset, fields) });
     url = `${apiBase}/api/services/${s.existingId}`; method = 'PATCH'; body = { ...fields, signature };
   } else {
@@ -96,6 +99,10 @@ export interface ServiceSettings {
   protection: { status: 'protected' | 'unprotected' | null; checkedAt: string | null };
   responseKind: string | null; responseContentType: string | null;
   sampleRequest: { method: 'GET' | 'POST'; body: string | null } | null;
+  /** Stored response JSON schema (null = responses are not checked). */
+  responseSchema: string | null;
+  /** Responses that failed the schema in the last 7 days (not charged). Creator-only. */
+  schemaMismatches: { count7d: number; latest: { at: string; path: string | null; code: string; detail: string | null } | null };
 }
 
 export async function loadServiceSettings(wc: WalletClient, account: Address, apiBase: string, serviceId: string, asset: Address): Promise<ServiceSettings> {

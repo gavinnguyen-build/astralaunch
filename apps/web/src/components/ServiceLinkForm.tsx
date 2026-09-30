@@ -4,6 +4,7 @@
  */
 import { parseApiLink, sampleBodyError } from '@astralaunch/shared';
 import { parseUnits } from 'viem';
+import type { ReactNode } from 'react';
 import type { LinkCheckResult, ServiceInput } from '../lib/launch.js';
 
 /** sampleMethod '' = no sample request (the link is checked with a plain GET). */
@@ -48,7 +49,7 @@ export function checkSummary(c: LinkCheckResult): string {
   return `Your API answered ${c.status} with ${what}.`;
 }
 
-export function ServiceLinkForm({ value, onChange, check, keySet, disabled }: {
+export function ServiceLinkForm({ value, onChange, check, keySet, disabled, advancedExtra }: {
   value: ServiceLinkValue;
   onChange: (v: ServiceLinkValue) => void;
   /** Not shown any more (the agent-link preview was removed); still accepted from the pages. */
@@ -58,6 +59,8 @@ export function ServiceLinkForm({ value, onChange, check, keySet, disabled }: {
   /** An API key is already stored (leave both key fields empty to keep it). */
   keySet?: { header: string } | null;
   disabled?: boolean;
+  /** Extra fields at the end of Advanced (the Creator page's response schema). */
+  advancedExtra?: ReactNode;
 }) {
   const set = (patch: Partial<ServiceLinkValue>) => onChange({ ...value, ...patch });
   return (
@@ -109,6 +112,7 @@ export function ServiceLinkForm({ value, onChange, check, keySet, disabled }: {
             ) : null}
             <span style={hint}>The call made to check your API and by &quot;Try a sample call&quot; on your token page. Set it if your API needs a POST body (max 16 KB).</span>
           </div>
+          {advancedExtra}
         </div>
       </details>
     </div>

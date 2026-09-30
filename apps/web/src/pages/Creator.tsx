@@ -18,6 +18,7 @@ import type { ChainConfig } from '../lib/launch.js';
 import { loadServiceSettings, prepareCollectFees, prepareEscrowClaim, prepareRelease, saveService, type PreparedTx, type ServiceSettings } from '../lib/claims.js';
 import { ServiceLinkForm, emptyServiceLink, serviceLinkErrors, toServiceLink, type ServiceLinkValue } from '../components/ServiceLinkForm.js';
 import { ProtectApiCard } from '../components/ProtectApiCard.js';
+import { ResponseSchemaField, SchemaMismatchNotice, compactSchema, prettySchema, responseSchemaError } from '../components/ResponseSchema.js';
 import { errMsg, walletClients } from '../lib/wallet.js';
 import { API_BASE } from '../env.js';
 import { PageShell } from './Token.js';
@@ -37,6 +38,7 @@ export default function Creator() {
   const [action, setAction] = useState<{ stage: 'preparing' | 'confirm' | 'sending' | 'done' | 'error'; title: string; tx?: PreparedTx; hash?: string; err?: string; sign?: boolean } | null>(null);
   const [svcLink, setSvcLink] = useState<ServiceLinkValue>(emptyServiceLink());
   const [settings, setSettings] = useState<ServiceSettings | null>(null);
+  const [schemaText, setSchemaText] = useState('');
   const [revealing, setRevealing] = useState(false);
   const wallet = (params.get('wallet') ?? connected ?? '').toLowerCase();
   const valid = /^0x[0-9a-f]{40}$/.test(wallet);
@@ -51,6 +53,7 @@ export default function Creator() {
     const s0 = dash.data?.services.find((x) => x.asset === tok?.asset);
     setSvcLink(emptyServiceLink(s0 ? formatUnits(BigInt(s0.priceUsdc), 6) : '0.02'));
     setSettings(null);
+    setSchemaText('');
   }, [tok?.asset, dash.data]);
 
   if (!valid) return <CreatorEmptyView v={{}} />;
@@ -91,6 +94,7 @@ export default function Creator() {
       const c = await walletClients(walletObj!, cfg.data!);
       const st = await loadServiceSettings(c.walletClient, c.account, API_BASE, svc.id, tok!.asset as Address);
       setSettings(st);
+      setSchemaText(prettySchema(st.responseSchema));
       setSvcLink((v) => ({ ...v, apiLink: st.apiLink ?? '', wholeDomain: st.wholeDomain,
         sampleMethod: st.sampleRequest?.method ?? '', sampleBody: st.sampleRequest?.body ?? '' }));
     } catch (e) { setAction({ stage: 'error', title: 'Service settings', err: errMsg(e), sign: true }); }
@@ -102,6 +106,10 @@ export default function Creator() {
       // A new service needs the link; an update may change only the price or the key (empty link = keep it).
       const errs = serviceLinkErrors(svcLink).filter((e) => svc && !svcLink.apiLink.trim() ? !/link|https|Paste/i.test(e) : true);
       if (errs.length) throw new Error(errs[0]);
+      const schemaErr = responseSchemaError(schemaText);
+      if (schemaErr) throw new Error(`Response schema: ${schemaErr}`);
+      // Response schema: known only once the settings are shown; send it when it differs ('' removes it).
+      const schemaChanged = !!settings && compactSchema(schemaText) !== compactSchema(settings.responseSchema ?? '');
       const c = await walletClients(walletObj!, cfg.data!);
       const f = toServiceLink(svcLink);
       const linkChanged = !!f.apiLink && (!settings || f.apiLink !== settings.apiLink || !!f.wholeDomain !== settings.wholeDomain);
@@ -117,6 +125,7 @@ export default function Creator() {
         ...(linkChanged || !svc ? { apiLink: f.apiLink, wholeDomain: f.wholeDomain } : {}),
         ...(f.apiKey ? { apiKey: f.apiKey } : {}),
         ...(!svc || sampleChanged ? { sampleMethod: svcLink.sampleMethod, sampleBody: svcLink.sampleBody.trim() || undefined } : {}),
+        ...(svc && schemaChanged ? { responseSchema: compactSchema(schemaText) } : {}),
       });
       setAction({ stage: 'done', title: svc ? 'Service settings saved' : 'API attached', sign: true });
       setSettings(null); dash.refetch();
@@ -182,11 +191,13 @@ export default function Creator() {
               style={{ height: '32px', padding: '0 14px', borderRadius: '999px', border: '1px solid #3A3456', background: 'transparent', color: '#ECEAF4', fontFamily: 'inherit', fontSize: '12px', cursor: 'pointer' }}>
               {revealing ? 'Waiting for your signature…' : 'Show my settings'}
             </button>
-            <span style={{ color: '#8C87A3' }}>or paste a new link below to replace it.</span>
+            <span style={{ color: '#8C87A3' }}>or paste a new link below to replace it. Signing also shows responses that failed your schema.</span>
           </div>
         ) : null}
+        <SchemaMismatchNotice settings={settings} />
         <ServiceLinkForm value={svcLink} onChange={setSvcLink} slug={svc?.slug ?? slugFor(tok.symbol)} agentBase={API_BASE || window.location.origin}
-          keySet={settings?.apiKey ?? null} disabled={!isOwner} />
+          keySet={settings?.apiKey ?? null} disabled={!isOwner}
+          advancedExtra={svc ? <ResponseSchemaField value={schemaText} onChange={setSchemaText} settings={settings} disabled={!isOwner} /> : null} />
       </div>
     ),
     protectCard: svc ? (
