@@ -445,3 +445,81 @@ verification.
   no mainnet transaction and no funds moved; it expired after 60 s.
 - Now `fork-prepare.sh` writes a local facilitator URL, and the server refuses to start when `MONAD_RPC_URL` is
   local but the facilitator is not (`lib/forkGuard.ts`).
+
+## One API link services (2026-09-30)
+
+**D-SL1. The creator pastes one link.** From the link they already use to call their API (e.g.
+`https://myagent.ai/v1/ask?q=hello`) the server derives:
+- the upstream origin;
+- the allowed prefix, which is the directory of the pasted path (`/v1/`; `/` for `https://api.myagent.ai/ask`,
+  or with "Open the whole domain");
+- `examplePath`, the rest of the path plus its query (`/ask?q=hello`).
+
+Agents call `https://api.astralaunch.xyz/s/<slug>/<path under the prefix>`. `upstream_url` keeps its meaning
+(origin + prefix) and `lib/upstream.ts` still confines every call to it. One price for every call.
+Supported: request/response of any content type, streaming (SSE / chunked), file upload and file responses, and
+sessions through headers or ids. Not supported: async jobs that need polling, WebSocket/WebRTC, MCP/A2A.
+
+**D-SL2. Forwarding and limits.** Any method, path under the prefix, query and body (≤ 25 MB) is forwarded, with the
+agent's safe headers. Dropped: hop-by-hop, cookie, payment, `x-forwarded-*`, `cf-*` and gateway-owned headers.
+Limits are env-configurable: `GATEWAY_MAX_REQUEST_BYTES` 25 MB, `GATEWAY_MAX_RESPONSE_BYTES` 25 MB (non-streamed),
+`GATEWAY_TIMEOUT_S` 120 (non-streamed total, and time to headers for a stream), `GATEWAY_STREAM_IDLE_S` 60.
+Upstream calls use `node:http`/`https` (`lib/upstreamClient.ts`):
+- public https only, except UPSTREAM_ALLOWLIST / ALLOW_LOCAL_UPSTREAMS;
+- DNS is checked inside the socket's lookup at connect time, so no DNS-rebinding window;
+- private IP literals are refused;
+- redirects are never followed;
+- bodies are not decompressed, so bytes pass through as sent.
+
+**D-SL3. Charge rule** (`lib/proxy.ts settlementFor`, supersedes the "schema always" part of D-GW3):
+- A non-2xx answer (including redirects) or a connection error is never charged.
+- **Streamed** responses (`text/event-stream`, or chunked non-JSON) are charged when the upstream's 2xx headers
+  arrive, before the body streams. The bytes then pass through unbuffered.
+- **Buffered** responses are charged after the full 2xx body is read, and after the schema check only when the
+  service declared one.
+
+A stream that breaks after the headers is still charged. The agent paid for the call, and the API accepted it.
+
+**D-SL4. Payment window.** The authorization must still be valid when the gateway settles, which can be up to the
+120 s upstream timeout after the agent signed. So `maxTimeoutSeconds = max(PAYMENT_TIMEOUT_SECONDS, timeout + 30)`,
+capped at 300 s (the server's replay guard), which gives 150 s by default. Streams settle at the headers, well inside it.
+Verified on 2026-09-30 against the official facilitator (`https://x402-facilitator.molandak.org`), verify only,
+using a random wallet with 0 USDC so nothing could settle:
+- 60 s, 150 s and 300 s windows all returned `insufficient_funds`, so they passed every time check;
+- the control (a 1 s window, verified 7 s later) returned `invalid_payment_expired`.
+
+The SDK facilitator (`@x402/evm` 2.26) only requires `validBefore ≥ now + 6 s` at verify and at settle.
+
+**D-SL5. The upstream is never revealed.**
+- Stripped from responses: `Server`, `X-Powered-By`, `Via`, cloud/CDN ids, `Set-Cookie`, the upstream's CORS,
+  trace ids and similar headers.
+- `Location` inside the prefix is rewritten to the gateway URL. The same origin outside the prefix is dropped.
+  Another https origin (e.g. a signed file URL) is kept.
+- Our errors never contain the upstream host. Upstream error bodies are shown only as ≤ 2 KB of text, with the host
+  replaced by `<upstream>`.
+- No public endpoint returns the link, the key or any secret. The public creator dashboard and the PATCH response
+  used to return `upstreamUrl`; that is fixed. The only way to read them is the signed
+  `POST /api/services/:id/settings`. That read is not single-use: it may be re-sent within the 600 s window.
+
+**D-SL6. The API key is encrypted at rest.** `services.api_key_enc` holds AES-256-GCM with a random nonce. The key
+is HKDF-SHA256(`GATEWAY_HMAC_MASTER_KEY`, "astralaunch/service-api-key/v1"), and the service id is the AAD.
+Rotating the master key makes stored API keys unreadable, so creators would have to re-enter them. Only the header
+name is ever returned.
+
+**D-SL7. Protect your API.** Each service has a random shared secret (`protect_secret`, generated on first use for
+older services). The gateway sends it as `X-Astralaunch-Secret` on every forwarded call, next to the existing HMAC
+`X-Astralaunch-Signature`. Snippets for Node/Express, Python/FastAPI and Cloudflare Workers reject calls without it.
+Every 5 minutes a probe makes the example call directly, without the secret or the key. A 2xx marks the service
+`unprotected` (creator-only); a network error leaves the status unchanged.
+
+**D-SL8. Attach check.** Create, a link change, and launch-details all call the pasted link once through the same
+client, with the gateway's headers when the service already exists. A 2xx is required within the timeout.
+The result records the kind (`json` / `stream` / `file`), the content type and, for JSON only, a ≤ 4 KB sample.
+Errors are human-readable ("We could not reach this link", "It answered with an error (404)",
+"It took longer than 120 seconds to answer").
+`POST /api/services/check` runs the same check before a launch. It needs no auth, because no token exists yet,
+and allows 10 per minute per client address.
+
+**D-SL9. Signed messages.** `apiLink`, `wholeDomain`, `apiKeyHeader` and `apiKeyValue` are appended to the
+create / update / launch-details canonical keys, just before `issuedAt`. A message without them is byte-identical,
+so earlier signatures stay valid. A create carries exactly one of `apiLink` (new) or `upstreamUrl` (legacy).
