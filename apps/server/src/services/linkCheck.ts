@@ -51,9 +51,9 @@ function send(url: URL, headers: Record<string, string>, timeoutS: number, metho
 /**
  * Call the pasted link once with the gateway's headers (secret / API key), within `timeoutS`.
  * - With a sample request: exactly that request; a 2xx is required and its response is recorded.
- * - Without: a plain GET. A 2xx is recorded as the sample. A 405, or a 400/404 on GET where a POST with an empty
- *   JSON body `{}` does NOT come back 404/405, means the endpoint exists but needs a request body: the link is
- *   reachable, launch/attach is allowed, and there is no sample call (kind null).
+ * - Without: a plain GET, and nothing else: the check never sends a request the creator did not write (a real API may
+ *   act on it). A 2xx is recorded as the sample. 405 or 400 means the endpoint exists but needs another method or a
+ *   body: the link is reachable, launch/attach is allowed, there is no sample call (kind null). 404 = nothing there.
  */
 export async function checkLink(url: URL, headers: Record<string, string>, timeoutS: number, sample?: SampleRequest | null): Promise<LinkCheck> {
   const start = Date.now();
@@ -69,13 +69,14 @@ export async function checkLink(url: URL, headers: Record<string, string>, timeo
   if (status < 200 || status >= 300) {
     body.destroy();
     if (!sample) {
-      const reachable = status === 405 || ((status === 400 || status === 404) && await answersPost(url, headers, timeoutS));
-      if (reachable) {
+      // 405 / 400 to a plain GET: the endpoint exists but wants another method or a body. Never guess that request.
+      if (status === 405 || status === 400) {
         return {
           ok: true, status, kind: null, contentType: null, sample: null, sampleTruncated: false, ms: Date.now() - start,
-          noSample: `Your API is reachable (it answered ${status} to a plain GET, so it probably needs a POST body). No sample call: add a Sample request under Advanced to show one.`,
+          noSample: 'Your API is reachable. To show a sample call, add a Sample request under Advanced.',
         };
       }
+      if (status === 404) return { ok: false, code: 'status', status, error: 'Nothing found at this link.' };
     }
     return { ok: false, code: 'status', status, error: sample ? `Your sample request got an error (${status}).` : `It answered with an error (${status}).` };
   }
@@ -91,13 +92,4 @@ export async function checkLink(url: URL, headers: Record<string, string>, timeo
     try { text = JSON.stringify(JSON.parse(text), null, 2); if (text.length > SAMPLE_BYTES) text = text.slice(0, SAMPLE_BYTES); } catch { /* keep raw */ }
   }
   return { ok: true, status, kind, contentType, sample: text, sampleTruncated: truncated || text.length >= SAMPLE_BYTES, ms: Date.now() - start };
-}
-
-/** Does the path exist for POST? (a POST with `{}` that does not come back 404 / 405; errors count as no) */
-async function answersPost(url: URL, headers: Record<string, string>, timeoutS: number): Promise<boolean> {
-  try {
-    const r = await send(url, headers, timeoutS, 'POST', '{}');
-    r.body.destroy();
-    return r.status !== 404 && r.status !== 405 && !(r.status >= 300 && r.status < 400);
-  } catch { return false; }
 }

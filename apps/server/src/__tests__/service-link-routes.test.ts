@@ -86,7 +86,9 @@ describe('one API link: service routes', () => {
     });
     it('human-readable failures: error status, redirect, unreachable, timeout, bad link', async () => {
       up.set(json({ e: 1 }, 404));
-      expect(await (await post('/api/services/check', { apiLink: `${up.url}/x` })).json()).toMatchObject({ ok: false, error: 'It answered with an error (404).' });
+      expect(await (await post('/api/services/check', { apiLink: `${up.url}/x` })).json()).toMatchObject({ ok: false, error: 'Nothing found at this link.' });
+      up.set(json({ e: 1 }, 500));
+      expect(await (await post('/api/services/check', { apiLink: `${up.url}/x` })).json()).toMatchObject({ ok: false, error: 'It answered with an error (500).' });
       up.set((_q, r) => { r.writeHead(302, { location: '/y' }); r.end(); });
       expect((await (await post('/api/services/check', { apiLink: `${up.url}/x` })).json() as { error: string }).error).toMatch(/redirected/);
       expect((await (await post('/api/services/check', { apiLink: 'http://127.0.0.1:9/x' })).json() as { error: string }).error).toBe('We could not reach this link. Check the address and that your API is online.');

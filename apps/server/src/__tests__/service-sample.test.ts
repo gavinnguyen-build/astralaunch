@@ -94,22 +94,31 @@ describe('POST-only API', () => {
   afterAll(async () => { await up.close(); await close(); });
   beforeEach(() => up.reset());
 
-  it('check: GET 405 → reachable, no sample call (launch allowed)', async () => {
+  it('check: GET 405 → reachable, no sample call (launch allowed), with the short hint; only the GET is sent', async () => {
     const res = await post('/api/services/check', { apiLink: `${up.url}/v1/chat` });
     expect(res.status).toBe(200);
     const b = await res.json() as { ok: boolean; kind: string | null; noSample: string };
     expect(b).toMatchObject({ ok: true, kind: null, status: 405 });
-    expect(b.noSample).toMatch(/No sample call/);
+    expect(b.noSample).toBe('Your API is reachable. To show a sample call, add a Sample request under Advanced.');
+    expect(up.calls.map((c) => c.method)).toEqual(['GET']);
   });
 
-  it('check: GET 404 but the path answers POST (422) → reachable; 404 on both → refused', async () => {
-    up.set((req, res, body) => req.method === 'GET' ? (res.writeHead(404), res.end()) : postOnly(req, res, body));
-    expect(await (await post('/api/services/check', { apiLink: `${up.url}/v1/chat` })).json()).toMatchObject({ ok: true, kind: null, status: 404 });
-    expect(up.calls.map((c) => `${c.method} ${c.body.toString()}`)).toEqual(['GET ', 'POST {}']);
+  it('check: GET 400 → reachable (no sample); never a request the creator did not write', async () => {
+    up.set((_q, res) => { res.writeHead(400, { 'content-type': 'application/json' }); res.end('{"error":"missing body"}'); });
+    expect(await (await post('/api/services/check', { apiLink: `${up.url}/v1/chat` })).json()).toMatchObject({ ok: true, kind: null, status: 400 });
+    expect(up.calls.map((c) => `${c.method} ${c.body.toString()}`)).toEqual(['GET ']);   // no POST {} probe
+  });
+
+  it('check: GET 404 → "Nothing found at this link" (one GET, nothing else); other errors unchanged', async () => {
     up.set((_q, res) => { res.writeHead(404); res.end(); });
     const r = await post('/api/services/check', { apiLink: `${up.url}/v1/nothing` });
     expect(r.status).toBe(422);
-    expect((await r.json() as { error: string }).error).toBe('It answered with an error (404).');
+    expect((await r.json() as { error: string }).error).toBe('Nothing found at this link.');
+    expect(up.calls.map((c) => c.method)).toEqual(['GET']);
+    up.set((_q, res) => { res.writeHead(503); res.end(); });
+    expect((await (await post('/api/services/check', { apiLink: `${up.url}/v1/chat` })).json() as { error: string }).error).toBe('It answered with an error (503).');
+    up.set((_q, res) => { res.writeHead(401); res.end(); });
+    expect((await (await post('/api/services/check', { apiLink: `${up.url}/v1/chat` })).json() as { error: string }).error).toBe('It answered with an error (401).');
   });
 
   it('check with a POST sample: the body is sent as JSON and the response recorded; a failing sample is refused', async () => {

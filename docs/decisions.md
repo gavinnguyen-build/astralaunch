@@ -528,14 +528,16 @@ so earlier signatures stay valid. A create carries exactly one of `apiLink` (new
 (e.g. `POST /v1/chat`). A plain GET on their link gets 405, which blocked launch even though the gateway forwards
 POST fine.
 
-Without a sample request, the check GETs the link:
+Without a sample request, the check sends one plain GET to the link and nothing else. It never sends a request the
+creator did not write, because a real API may act on it (an earlier draft probed with `POST {}`; removed 2026-09-30).
 - a 2xx is recorded as before;
-- a **405** means the link is **reachable**: launch/attach is allowed, with "no sample call" (`response_kind` NULL);
-- a **400/404** leads to one POST with the body `{}`. If that does not come back 404/405 (or a redirect), the path
-  exists and the result is the same. Otherwise the original error stands.
+- a **405 or 400** means the endpoint exists but wants another method or a body: the link is **reachable**,
+  launch/attach is allowed, "no sample call" is saved (`response_kind` NULL) and the hint "Your API is reachable. To
+  show a sample call, add a Sample request under Advanced." is shown;
+- a **404** is refused with "Nothing found at this link.";
+- anything else is refused as before ("It answered with an error (N).").
 
-That extra POST is the one side effect of the check. It sends an empty JSON object, which most APIs reject with
-400/422.
+The check has no side effects beyond that GET.
 
 The optional **sample request** (Advanced: GET or POST, and for POST a JSON body of ≤ 16 KB) makes the check send
 exactly that request, which must return 2xx. It also drives "Try a sample call". The fields are `sampleMethod` and
