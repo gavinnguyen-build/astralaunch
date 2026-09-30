@@ -123,6 +123,7 @@ describe('feed digest cache (stale-while-revalidate)', () => {
     expect(body).toMatchObject({ topic: 'zk rollups', source: FALLBACK_SOURCE, fetchedAt: FALLBACK_FETCHED_AT });
     expect(body.papers).toEqual(FALLBACK_PAPERS);
     expect(FALLBACK_PAPERS).toHaveLength(5);
+    expect(FALLBACK_FETCHED_AT).toBe('2026-09-30T17:26:57.000Z');   // real capture time of the bundled set
     for (const p of FALLBACK_PAPERS) expect(p.link).toMatch(/^https:\/\/arxiv\.org\/abs\/\d{4}\.\d{5}v\d$/);
     expect(validFeed(body), JSON.stringify(validFeed.errors)).toBe(true);
 

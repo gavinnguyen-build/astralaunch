@@ -2,11 +2,12 @@
  * Bundled fallback for /feed/digest when there is no cached result and arXiv fails or times out: 5 real arXiv papers
  * on agent payments, copied verbatim (parseArxivAtom output) from
  *   https://export.arxiv.org/api/query?search_query=all:%22agent%20payments%22&sortBy=relevance&max_results=10
- * on 2026-10-01. Served with "source": "fallback sample", never as live data.
+ * at 2026-09-30T17:26:57Z (the saved response's timestamp). Served with "source": "fallback sample", never as live data.
  */
 import type { Paper } from './arxiv.js';
 
-export const FALLBACK_FETCHED_AT = '2026-10-01T00:00:00.000Z';
+/** When the set was fetched from arXiv. */
+export const FALLBACK_FETCHED_AT = '2026-09-30T17:26:57.000Z';
 
 export const FALLBACK_PAPERS: readonly Paper[] = [
   {
