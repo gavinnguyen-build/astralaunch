@@ -6,7 +6,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { AddressInfo } from 'node:net';
 
 export interface RecordedCall { method: string; path: string; headers: IncomingMessage['headers']; body: Buffer }
-export type Handler = (req: IncomingMessage, res: ServerResponse, body: Buffer) => void | Promise<void>;
+export type Handler = (req: IncomingMessage, res: ServerResponse, body: Buffer) => unknown;   // return value ignored
 
 export async function startTestUpstream(initial: Handler) {
   let handler = initial;

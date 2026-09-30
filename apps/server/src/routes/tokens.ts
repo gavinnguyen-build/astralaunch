@@ -213,6 +213,7 @@ app.get('/', zValidator('query', tokenListQuerySchema), async (c) => {
         priceUsdc:   svc.priceUsdc,
         examplePath: svc.examplePath,
         endpoint:    `/s/${svc.slug}`,
+        sample:      publicSample(svc),   // "Try a sample call" on Home; null = none
       } : null,
       metrics: {
         cleanRevenue30d: metrics.revenue.toString(),
