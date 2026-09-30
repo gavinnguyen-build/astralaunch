@@ -78,6 +78,9 @@ export async function checkLink(url: URL, headers: Record<string, string>, timeo
       }
       if (status === 404) return { ok: false, code: 'status', status, error: 'Nothing found at this link.' };
     }
+    if (status === 401 || status === 403) {
+      return { ok: false, code: 'status', status, error: `Your API refused the request (${status}). If it needs an API key, add it under Advanced.` };
+    }
     return { ok: false, code: 'status', status, error: sample ? `Your sample request got an error (${status}).` : `It answered with an error (${status}).` };
   }
   const kind = kindOf(h);

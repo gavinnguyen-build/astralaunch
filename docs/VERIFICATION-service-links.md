@@ -105,3 +105,34 @@ Unit tests (`service-sample.test.ts`, 11 tests) cover:
 - the probe rules without a sample, and a sample refused on a legacy service.
 
 Suites: server 202, indexer 85, keeper 90, demo-services 7. Typecheck passes for every package, and the web build passes.
+
+## Public APIs, Host/SNI and the default User-Agent (2026-09-30)
+
+Report: the link check failed on `https://httpbin.org/json` (502) and `https://api.coingecko.com/api/v3/ping` (403),
+while curl got 200. Reproduced from a local server (real policy, no `ALLOW_LOCAL_UPSTREAMS`) with
+`POST /api/services/check`:
+- **coingecko: 403 every time.** Its body says `Please add a descriptive User-Agent`. Our client sent no User-Agent
+  (curl does), and Cloudflare refuses that. This was not a TLS or SNI problem.
+- **httpbin: 200 every time**, in 5 route checks, 6 `checkLink` calls and 12 curl calls. The 502 did not reproduce.
+  The check route never makes a 502 itself: it would show an upstream 502 as "It answered with an error (502).", so the
+  reported 502 was most likely httpbin's own intermittent 502.
+- **Host/SNI hypothesis: ruled out.** Node already derives Host and the TLS servername from the URL when a custom
+  `lookup` is used. It is now explicit and tested.
+
+Fix (`lib/upstreamClient.ts`, used by the gateway, the check and the probes):
+- `servername` = the link's hostname (none for an IP literal), `host` from the URL, `rejectUnauthorized: true`;
+- a default `User-Agent: Astralaunch-Gateway/1.0 (+https://astralaunch.xyz)` and `Accept: application/json, */*`
+  when the caller sent none. An agent's own User-Agent/Accept pass through unchanged. The check keeps its own Accept
+  (JSON, event-stream) and the probes keep `*/*`;
+- 401/403 on the check: "Your API refused the request (403). If it needs an API key, add it under Advanced."
+
+After the fix, the same route calls: httpbin 200 json ×3, coingecko 200 json `{"gecko_says": "(V3) To the Moon!"}` ×3.
+
+`upstream-tls.test.ts` runs the production connect path (guardedLookup; DNS for `*.astra.test` → 127.0.0.1) against
+a local https upstream whose certificate covers only `api.astra.test`:
+- the upstream sees `Host: api.astra.test:<port>`, SNI `api.astra.test` and the default User-Agent/Accept;
+- a caller's User-Agent/Accept win;
+- `other.astra.test` (same IP, not in the certificate) is refused, and no request is sent.
+
+A deliberate wrong SNI makes the test fail, so it checks the SNI for real. Fork e2e rerun: ALL CHECKS PASSED
+(30 checks).

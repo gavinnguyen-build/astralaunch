@@ -5,11 +5,15 @@
  *   address that is used (no DNS-rebinding window); private IP literals are refused before connecting.
  * - Redirects are never followed (the gateway rewrites or refuses them); bodies are not decompressed, so bytes
  *   pass through exactly as the upstream sent them.
+ * - Connecting to the checked address never changes who we talk to: Host and the TLS servername (SNI) stay the link's
+ *   hostname, and the certificate is verified against that hostname.
+ * - A default User-Agent / Accept is sent when the caller did not send one (some APIs, e.g. behind Cloudflare, refuse
+ *   requests without a User-Agent).
  */
 import { request as httpRequest, type IncomingMessage } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { lookup as dnsLookup, type LookupAddress } from 'node:dns';
-import type { LookupFunction } from 'node:net';
+import { isIP, type LookupFunction } from 'node:net';
 import type { Readable } from 'node:stream';
 import { blockIpLiteral, isBlockedAddress, SsrfError, upstreamPolicy } from './ssrf.js';
 
@@ -27,6 +31,15 @@ export interface UpstreamResponse {
   status: number;
   headers: Headers;
   body: Readable;
+}
+
+export const DEFAULT_USER_AGENT = 'Astralaunch-Gateway/1.0 (+https://astralaunch.xyz)';
+export const DEFAULT_ACCEPT = 'application/json, */*';
+
+/** The caller's headers plus a User-Agent / Accept when missing (names compared case-insensitively). */
+export function withDefaultHeaders(headers: Record<string, string>): Record<string, string> {
+  const has = (name: string) => Object.keys(headers).some((k) => k.toLowerCase() === name);
+  return { ...(has('user-agent') ? {} : { 'user-agent': DEFAULT_USER_AGENT }), ...(has('accept') ? {} : { accept: DEFAULT_ACCEPT }), ...headers };
 }
 
 export type UpstreamErrorKind = 'unsafe' | 'timeout' | 'unreachable' | 'aborted';
@@ -64,10 +77,15 @@ export function upstreamRequest(req: UpstreamRequest): Promise<UpstreamResponse>
     try { blockIpLiteral(url.hostname.replace(/^\[|\]$/g, '')); } catch { return Promise.reject(new UpstreamError('unsafe', 'private address')); }
   }
   return new Promise((resolve, reject) => {
-    const send = url.protocol === 'https:' ? httpsRequest : httpRequest;
+    const https = url.protocol === 'https:';
+    const send = https ? httpsRequest : httpRequest;
+    const hostname = url.hostname.replace(/^\[|\]$/g, '');
     const r = send(url, {
       method: req.method,
-      headers: { ...req.headers, ...(req.body ? { 'content-length': String(req.body.byteLength) } : {}) },
+      // Host: from the URL (callers never pass one; the gateway strips the agent's). SNI: the hostname, not the IP
+      // we connect to (an IP literal gets none, as TLS requires); the certificate is checked against it.
+      headers: { ...withDefaultHeaders(req.headers), host: url.host, ...(req.body ? { 'content-length': String(req.body.byteLength) } : {}) },
+      ...(https ? { rejectUnauthorized: true, ...(isIP(hostname) ? {} : { servername: hostname }) } : {}),
       ...(policy.allowPrivate ? {} : { lookup: guardedLookup }),
       signal: req.signal,
     }, (res) => {

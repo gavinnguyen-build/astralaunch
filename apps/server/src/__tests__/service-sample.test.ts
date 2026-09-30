@@ -117,8 +117,11 @@ describe('POST-only API', () => {
     expect(up.calls.map((c) => c.method)).toEqual(['GET']);
     up.set((_q, res) => { res.writeHead(503); res.end(); });
     expect((await (await post('/api/services/check', { apiLink: `${up.url}/v1/chat` })).json() as { error: string }).error).toBe('It answered with an error (503).');
-    up.set((_q, res) => { res.writeHead(401); res.end(); });
-    expect((await (await post('/api/services/check', { apiLink: `${up.url}/v1/chat` })).json() as { error: string }).error).toBe('It answered with an error (401).');
+    for (const code of [401, 403]) {
+      up.set((_q, res) => { res.writeHead(code); res.end(); });
+      expect((await (await post('/api/services/check', { apiLink: `${up.url}/v1/chat` })).json() as { error: string }).error)
+        .toBe(`Your API refused the request (${code}). If it needs an API key, add it under Advanced.`);
+    }
   });
 
   it('check with a POST sample: the body is sent as JSON and the response recorded; a failing sample is refused', async () => {
