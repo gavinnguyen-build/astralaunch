@@ -115,7 +115,7 @@ TIMESTAMP column; migration 0008 converts it (`AT TIME ZONE 'UTC'`, idempotent).
 runs under TZ=Asia/Ho_Chi_Minh and checks every column in both drizzle and SQL.
 
 **D-DS1: Demo services + upstream allowlist.** `apps/demo-services` (port 4001, no secrets):
-`/feed/digest` (real arXiv Atom API, cached 10 min per topic) and `/sight/signals` (bundled sample data,
+`/feed/digest` (real arXiv Atom API, served from cache, see D-DS2) and `/sight/signals` (bundled sample data,
 labeled "sample data", deterministic per handle), with JSON schemas in `apps/demo-services/schemas/`. It does
 not verify `X-Astralaunch-Signature`: nothing secret is served, and payment is enforced by the gateway.
 The SSRF guard blocks loopback upstreams, so `UPSTREAM_ALLOWLIST` (exact origins, empty by default) lets an
@@ -551,3 +551,24 @@ unchanged. On an update, `sampleMethod: ""` removes the sample. Migration 0013 i
 Probes without a sample use a plain GET. Health counts any answer below 500 as up. Protection counts 401/403 as
 protected and 2xx as unprotected, and leaves the status unchanged for anything else: without a sample, a 405 cannot
 show whether the secret is enforced.
+
+**D-DS2. Feed digest served from cache; fallback sample when arXiv is down (2026-10-01).** From the VPS, arXiv takes
+about 16 s to answer. It also returns 429 when polled often; this was seen from a dev machine on 2026-10-01. The old
+8 s timeout turned that into 502 `arXiv unavailable`.
+- **Serving:** `/feed/digest` is now stale-while-revalidate per topic (case-insensitive). A cached result is returned
+  at once with `cached: true` and its `fetchedAt`. When it is 10 min old or more, one background refresh starts.
+- **Refresh limits:** at most one refresh is in flight per topic, and at most one attempt per topic every 10 min,
+  failed attempts included, so a slow or rate-limiting arXiv is not retried in a loop.
+- **arXiv request:** timeout 30 s, User-Agent `Astralaunch-demo-services/1.0 (+https://astralaunch.xyz; …)`.
+- **Persistence:** the cache is kept in `FEED_CACHE_FILE`, written atomically (tmp + rename), in the
+  `demo_feed_cache` volume at `/data` in production. It is loaded at start, and "agent payments" is warmed in the
+  background.
+- **Fallback:** with no cached result, a request waits for arXiv, up to 30 s (the gateway allows 120 s). If that fails,
+  it gets 5 real arXiv papers on agent payments, bundled in `src/fallback.ts`. That answer has
+  `"source": "fallback sample"`, `cached: true` and `fetchedAt` = the day they were copied. arXiv never causes a 5xx;
+  only an invalid topic gets an error (400).
+- **Schema:** the published schema (`schemas/feed-digest.json`) now allows
+  `source ∈ {"arXiv API (export.arxiv.org)", "fallback sample"}`. Services registered before this change keep the old
+  copy (`services.response_schema`, `source` const). There, the gateway refuses a fallback answer as a schema mismatch,
+  so it returns 502 and does not charge. The creator must update the stored schema with a signed settings update to
+  serve the fallback.

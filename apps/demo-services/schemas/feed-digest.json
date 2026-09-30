@@ -7,7 +7,7 @@
   "required": ["topic", "source", "fetchedAt", "cached", "papers"],
   "properties": {
     "topic":     { "type": "string", "minLength": 1, "maxLength": 64 },
-    "source":    { "const": "arXiv API (export.arxiv.org)" },
+    "source":    { "enum": ["arXiv API (export.arxiv.org)", "fallback sample"] },
     "fetchedAt": { "type": "string", "format": "date-time" },
     "cached":    { "type": "boolean" },
     "papers": {

@@ -1,10 +1,16 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import feedDigestSchema from '../../schemas/feed-digest.json' with { type: 'json' };
 import sightSignalsSchema from '../../schemas/sight-signals.json' with { type: 'json' };
 import { createApp } from '../app.js';
-import { clearArxivCache, digest, oneLine, parseArxivAtom, CACHE_TTL_MS } from '../arxiv.js';
+import {
+  createFeed, fetchPapers, oneLine, parseArxivAtom, FALLBACK_SOURCE, FETCH_TIMEOUT_MS, LIVE_SOURCE, REFRESH_EVERY_MS, USER_AGENT,
+} from '../arxiv.js';
+import { FALLBACK_FETCHED_AT, FALLBACK_PAPERS } from '../fallback.js';
 import { signalsFor } from '../signals.js';
 
 const ajv = new Ajv2020({ allErrors: true, strict: true });
@@ -33,7 +39,6 @@ function fakeFetch(body = ATOM, status = 200) {
 }
 
 describe('arXiv feed digest', () => {
-  beforeEach(() => clearArxivCache());
 
   it('parses title, authors, https link, one-line summary; max 5', () => {
     const papers = parseArxivAtom(ATOM);
@@ -48,37 +53,129 @@ describe('arXiv feed digest', () => {
     expect(oneLine('x'.repeat(500))).toHaveLength(240);
   });
 
-  it('queries arXiv for the latest 5 by submission date, then serves from cache for 10 min', async () => {
+  it('queries arXiv for the latest 5 by submission date, with a descriptive User-Agent and a 30 s timeout', async () => {
     const f = fakeFetch();
-    const t0 = 1_800_000_000_000;
-    const a = await digest('llm agents', f as unknown as typeof fetch, t0);
-    const url = new URL(String(f.mock.calls[0]![0]));
+    const papers = await fetchPapers('llm agents', f as unknown as typeof fetch);
+    const [u, init] = f.mock.calls[0]! as unknown as [string, RequestInit];
+    const url = new URL(u);
     expect(url.origin + url.pathname).toBe('https://export.arxiv.org/api/query');
     expect(Object.fromEntries(url.searchParams)).toMatchObject({
       search_query: 'all:"llm agents"', sortBy: 'submittedDate', sortOrder: 'descending', max_results: '5',
     });
-    expect(a.cached).toBe(false);
+    expect((init.headers as Record<string, string>)['User-Agent']).toBe(USER_AGENT);
+    expect(USER_AGENT).toMatch(/^Astralaunch-demo-services\/1\.0 \(\+https:\/\/astralaunch\.xyz/);
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(FETCH_TIMEOUT_MS).toBe(30_000);
+    expect(papers).toHaveLength(5);
+  });
+});
 
-    const b = await digest('LLM Agents', f as unknown as typeof fetch, t0 + CACHE_TTL_MS - 1);
-    expect(b.cached).toBe(true);
-    expect(f).toHaveBeenCalledTimes(1);
+/** A fetch that never answers until its signal aborts (the timeout), like arXiv on a bad day. */
+const hangingFetch = () => vi.fn((_u: string | URL | Request, init?: RequestInit) =>
+  new Promise<Response>((_res, rej) => init!.signal!.addEventListener('abort', () => rej(init!.signal!.reason))));
+const quiet = () => {};
 
-    await digest('llm agents', f as unknown as typeof fetch, t0 + CACHE_TTL_MS);
-    expect(f).toHaveBeenCalledTimes(2);
-    expect(validFeed(a), JSON.stringify(validFeed.errors)).toBe(true);
-    expect(validFeed(b), JSON.stringify(validFeed.errors)).toBe(true);
+describe('feed digest cache (stale-while-revalidate)', () => {
+  let dir = '';
+  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'feed-cache-')); });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('cache hit returns immediately with cached: true and its fetchedAt, while arXiv hangs', async () => {
+    let t = 1_800_000_000_000;
+    const f = vi.fn(fakeFetch());
+    const feed = createFeed({ fetchImpl: f as unknown as typeof fetch, now: () => t, log: quiet });
+    const first = await feed.digest('Agent Payments');
+    expect(first).toMatchObject({ source: LIVE_SOURCE, cached: false, fetchedAt: new Date(t).toISOString() });
+
+    t += REFRESH_EVERY_MS + 1;   // stale: a background refresh starts, but the answer does not wait for it
+    f.mockImplementation(hangingFetch());
+    const started = performance.now();
+    const res = await createApp(feed).request('/feed/digest?topic=agent%20payments');
+    expect(performance.now() - started).toBeLessThan(200);
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ cached: true, source: LIVE_SOURCE, fetchedAt: first.fetchedAt, papers: first.papers });
+    expect(validFeed(body), JSON.stringify(validFeed.errors)).toBe(true);
   });
 
-  it('GET /feed/digest: 200 matches the schema; 400 on bad topic; 502 when arXiv fails', async () => {
-    const ok = await createApp(fakeFetch() as unknown as typeof fetch).request('/feed/digest?topic=monad');
-    expect(ok.status).toBe(200);
-    const body = await ok.json();
+  it('timeout with a cached result → the cached result (200), cache unchanged', async () => {
+    let t = 1_800_000_000_000;
+    const f = vi.fn(fakeFetch());
+    const feed = createFeed({ fetchImpl: f as unknown as typeof fetch, now: () => t, timeoutMs: 30, log: quiet });
+    const first = await feed.digest('monad');
+    t += REFRESH_EVERY_MS;
+    f.mockImplementation(hangingFetch());
+    const res = await createApp(feed).request('/feed/digest?topic=monad');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ cached: true, fetchedAt: first.fetchedAt, source: LIVE_SOURCE });
+    await feed.idle();                                            // the background refresh timed out
+    expect(f).toHaveBeenCalledTimes(2);
+    expect(await feed.digest('monad')).toMatchObject({ cached: true, fetchedAt: first.fetchedAt });
+    expect(f).toHaveBeenCalledTimes(2);                           // failed attempt counts: no retry within 10 min
+  });
+
+  it('timeout without a cached result → the labelled fallback sample (200, schema-valid, 5 real arXiv papers)', async () => {
+    const f = hangingFetch();
+    const feed = createFeed({ fetchImpl: f as unknown as typeof fetch, timeoutMs: 30, log: quiet });
+    const res = await createApp(feed).request('/feed/digest?topic=zk%20rollups');
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ topic: 'zk rollups', source: FALLBACK_SOURCE, fetchedAt: FALLBACK_FETCHED_AT });
+    expect(body.papers).toEqual(FALLBACK_PAPERS);
+    expect(FALLBACK_PAPERS).toHaveLength(5);
+    for (const p of FALLBACK_PAPERS) expect(p.link).toMatch(/^https:\/\/arxiv\.org\/abs\/\d{4}\.\d{5}v\d$/);
     expect(validFeed(body), JSON.stringify(validFeed.errors)).toBe(true);
 
+    // arXiv errors (non-2xx, network) are never a 5xx either; invalid requests still are a 400.
+    for (const bad of [fakeFetch('down', 503), vi.fn(async () => { throw new TypeError('fetch failed'); })]) {
+      const r = await createApp(createFeed({ fetchImpl: bad as unknown as typeof fetch, log: quiet })).request('/feed/digest?topic=monad');
+      expect(r.status).toBe(200);
+      expect((await r.json()).source).toBe(FALLBACK_SOURCE);
+    }
+    expect((await createApp(feed).request('/feed/digest')).status).toBe(400);
+  });
+
+  it('background refresh updates the cache and the file; the file survives a restart', async () => {
+    let t = 1_800_000_000_000;
+    const file = join(dir, 'sub', 'feed-cache.json');
+    const f = vi.fn(fakeFetch());
+    const feed = createFeed({ fetchImpl: f as unknown as typeof fetch, now: () => t, cacheFile: file, log: quiet });
+    const old = await feed.digest('agent payments');
+
+    t += REFRESH_EVERY_MS;
+    const NEW = ATOM.replaceAll('Agent Payments &amp; Micro-Fees', 'Refreshed Paper');
+    f.mockImplementation(fakeFetch(NEW));
+    expect((await feed.digest('agent payments')).papers).toEqual(old.papers);   // stale answer first
+    await feed.idle();
+    const fresh = await feed.digest('agent payments');
+    expect(fresh).toMatchObject({ cached: true, fetchedAt: new Date(t).toISOString() });
+    expect(fresh.papers[0]!.title).toBe('Refreshed Paper, Part 1');
+
+    const saved = JSON.parse(readFileSync(file, 'utf8'));
+    expect(saved.entries[0].papers[0].title).toBe('Refreshed Paper, Part 1');
+    const restarted = createFeed({ fetchImpl: hangingFetch() as unknown as typeof fetch, now: () => t, cacheFile: file, log: quiet });
+    expect(await restarted.load()).toBe(1);
+    expect(await restarted.digest('Agent Payments')).toMatchObject({ cached: true, papers: fresh.papers });
+  });
+
+  it('one refresh in flight per topic; a broken cache file is ignored; warm() fills the cache', async () => {
+    const f = vi.fn(fakeFetch());
+    const feed = createFeed({ fetchImpl: f as unknown as typeof fetch, log: quiet });
+    const [a, b] = await Promise.all([feed.digest('monad'), feed.digest('MONAD')]);
+    expect(f).toHaveBeenCalledTimes(1);
+    expect(a.papers).toEqual(b.papers);
+
+    const file = join(dir, 'feed-cache.json');
+    writeFileSync(file, '{not json');
+    const warmFeed = createFeed({ fetchImpl: f as unknown as typeof fetch, cacheFile: file, log: quiet });
+    expect(await warmFeed.load()).toBe(0);
+    await warmFeed.warm('agent payments');
+    expect(await warmFeed.digest('agent payments')).toMatchObject({ cached: true, source: LIVE_SOURCE });
+  });
+
+  it('GET /feed/digest: 400 on a bad topic', async () => {
     expect((await createApp().request('/feed/digest')).status).toBe(400);
     expect((await createApp().request('/feed/digest?topic=' + encodeURIComponent('<script>'))).status).toBe(400);
-    clearArxivCache();
-    expect((await createApp(fakeFetch('down', 503) as unknown as typeof fetch).request('/feed/digest?topic=monad')).status).toBe(502);
   });
 });
 
@@ -110,7 +207,7 @@ describe('sight signals (sample data)', () => {
   });
 
   it('health is served at the root and under each service prefix (gateway probes {upstreamUrl}/health)', async () => {
-    const app = createApp(fakeFetch() as unknown as typeof fetch);
+    const app = createApp(createFeed({ fetchImpl: fakeFetch() as unknown as typeof fetch }));
     for (const p of ['/health', '/sight/health', '/feed/health']) expect((await app.request(p)).status).toBe(200);
   });
 });
