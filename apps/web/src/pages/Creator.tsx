@@ -9,7 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CreatorView } from '../design/CreatorView.js';
 import { CreatorEmptyView } from '../design/CreatorEmptyView.js';
 import { api, type CreatorDash } from '../lib/api.js';
-import { avatarFor, compact, fmtDate, fmtTime, fmtUsdc, shortAddr } from '../lib/format.js';
+import { avatarFor, compact, fmtDate, fmtTime, fmtUsdc } from '../lib/format.js';
 import { ErrorBox, Loading } from '../components/State.js';
 import { PRIVY_ENABLED, useConnectedWallet } from '../components/Site.js';
 import { Actions, ErrorLine, Modal, Row, btnStyle } from '../components/Modal.js';
@@ -139,7 +139,7 @@ export default function Creator() {
     ],
     svcStatus: !svc ? 'No service registered' : !svc.active ? 'Paused'
       : health?.uptime7d != null ? `Live · ${(health.uptime7d * 100).toFixed(1)}% uptime, 7d` : 'Live',
-    formKey: tok.asset, upstream, price, payout: shortAddr(wallet),
+    formKey: tok.asset, upstream, price,
     onUpstream: (e: React.ChangeEvent<HTMLInputElement>) => setUpstream(e.target.value),
     onPrice: (e: React.ChangeEvent<HTMLInputElement>) => setPrice(e.target.value),
     formDisabled: !isOwner,
