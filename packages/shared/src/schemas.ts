@@ -37,26 +37,54 @@ const examplePathSchema = z.string().max(300).superRefine((p, ctx) => {
   if (e) ctx.addIssue({ code: z.ZodIssueCode.custom, message: e });
 });
 
+/** Header names the creator's API key may NOT use (the gateway owns them). */
+const RESERVED_HEADER_RE = /^(host|content-length|content-type|transfer-encoding|connection|cookie|x-astralaunch-.*|payment-.*|x-payment.*|x-forwarded-.*|forwarded)$/i;
+const apiKeyHeaderSchema = z.string().max(64).regex(/^[A-Za-z0-9-]+$/, 'header name: letters, digits and "-"')
+  .refine((h) => !RESERVED_HEADER_RE.test(h), 'this header name is reserved by the gateway');
+
+/** "One API link" fields (packages/shared/src/serviceLink.ts). The API key value is stored encrypted and never returned. */
+const linkFields = {
+  /** The link the creator already uses to call their API; upstream origin, prefix and examplePath are derived from it. */
+  apiLink:      z.string().url().max(2000).optional(),
+  /** Allow every path of the link's domain (prefix "/") instead of the link's directory. */
+  wholeDomain:  z.boolean().optional(),
+  /** Optional API key the gateway adds to every forwarded call: header name + value. */
+  apiKeyHeader: apiKeyHeaderSchema.optional(),
+  apiKeyValue:  z.string().min(1).max(2000).optional(),
+};
+
 const serviceFields = {
   /** URL-safe slug (3–32 chars). Used as /s/{slug}/* base path. */
   slug:           z.string().min(3).max(32).regex(/^[a-z0-9-]+$/),
   /** Human-readable service name. */
   name:           z.string().min(1).max(80),
-  /** Upstream base URL — SSRF checked at registration/update time. */
-  upstreamUrl:    z.string().url().max(500),
+  /** Upstream base URL (legacy; new services send apiLink instead). SSRF checked at registration/update time. */
+  upstreamUrl:    z.string().url().max(500).optional(),
   /** Price per call in USDC (raw bigint string, 6 dec). */
   priceUsdc:      z.string().regex(/^\d+$/, 'must be a raw bigint string'),
   /** Optional JSON schema for request body validation (stringified). */
   requestSchema:  z.string().max(20_000).optional(),
   /** Optional JSON schema for response body validation (stringified). */
   responseSchema: z.string().max(20_000).optional(),
-  /** Optional gateway upstream timeout in seconds (1–60). */
-  timeoutSeconds: z.number().int().min(1).max(60).optional(),
+  /** Optional gateway upstream timeout in seconds (1–120). */
+  timeoutSeconds: z.number().int().min(1).max(120).optional(),
   /** Description shown to agents in the manifest. */
   description:    z.string().max(500).optional(),
   /** Optional sample request relative to /s/{slug}, e.g. "/signals?handle=monad" (the page's "Try a sample call"). */
   examplePath:    examplePathSchema.optional(),
+  ...linkFields,
 };
+
+/** Create / launch-details service: exactly one of apiLink (new) or upstreamUrl (legacy); key header and value together. */
+const serviceRefinements = <T extends z.ZodTypeAny>(schema: T) => schema
+  .refine((d: { apiLink?: string; upstreamUrl?: string }) => (d.apiLink === undefined) !== (d.upstreamUrl === undefined),
+    'send either apiLink or upstreamUrl')
+  .refine((d: { apiLink?: string; examplePath?: string; wholeDomain?: boolean }) => d.apiLink !== undefined || d.wholeDomain === undefined,
+    'wholeDomain needs apiLink')
+  .refine((d: { apiLink?: string; examplePath?: string }) => d.apiLink === undefined || d.examplePath === undefined,
+    'examplePath is derived from apiLink; do not send both')
+  .refine((d: { apiKeyHeader?: string; apiKeyValue?: string }) => (d.apiKeyHeader === undefined) === (d.apiKeyValue === undefined),
+    'apiKeyHeader and apiKeyValue go together');
 
 const signedFields = {
   /** Unix seconds when signed; must be recent. Each signed message is accepted once. */
@@ -65,12 +93,12 @@ const signedFields = {
   signature: z.string().regex(/^0x[0-9a-fA-F]+$/, 'hex signature'),
 };
 
-export const createServiceSchema = z.object({
+export const createServiceSchema = serviceRefinements(z.object({
   /** Token address (must be registered on-chain, indexed, and listed). */
   asset: addressSchema,
   ...serviceFields,
   ...signedFields,
-});
+}));
 
 export type CreateServiceInput = z.infer<typeof createServiceSchema>;
 
@@ -81,12 +109,22 @@ export const updateServiceSchema = z.object({
   description:    serviceFields.description,
   /** New example call path; "" removes it. */
   examplePath:    z.union([z.literal(''), examplePathSchema]).optional(),
+  /** New API link (re-derives upstream, prefix and examplePath; re-runs the link check). */
+  apiLink:        linkFields.apiLink,
+  wholeDomain:    linkFields.wholeDomain,
+  /** New API key header + value; apiKeyHeader "" removes the key. */
+  apiKeyHeader:   z.union([z.literal(''), apiKeyHeaderSchema]).optional(),
+  apiKeyValue:    linkFields.apiKeyValue,
   ...signedFields,
 }).refine(
   d => d.priceUsdc !== undefined || d.upstreamUrl !== undefined || d.timeoutSeconds !== undefined || d.description !== undefined
-    || d.examplePath !== undefined,
+    || d.examplePath !== undefined || d.apiLink !== undefined || d.wholeDomain !== undefined || d.apiKeyHeader !== undefined,
   'at least one field required',
-);
+).refine(d => !(d.apiLink !== undefined && d.upstreamUrl !== undefined), 'send either apiLink or upstreamUrl')
+  .refine(d => !(d.apiLink !== undefined && d.examplePath !== undefined), 'examplePath is derived from apiLink; do not send both')
+  .refine(d => d.wholeDomain === undefined || d.apiLink !== undefined, 'wholeDomain needs apiLink')
+  .refine(d => (d.apiKeyHeader === undefined || d.apiKeyHeader === '') === (d.apiKeyValue === undefined),
+    'apiKeyHeader and apiKeyValue go together ("" header removes the key)');
 
 export type UpdateServiceInput = z.infer<typeof updateServiceSchema>;
 
@@ -99,10 +137,11 @@ function canonical(obj: Record<string, unknown>, keys: readonly string[]): strin
 
 // examplePath was added later: a message without it is byte-for-byte the same as before (canonical()
 // omits undefined fields), so earlier signed messages stay valid.
+// apiLink / wholeDomain / apiKeyHeader / apiKeyValue ("one API link" model) likewise: absent → identical message.
 const CREATE_KEYS = ['asset', 'slug', 'name', 'upstreamUrl', 'priceUsdc', 'requestSchema',
-  'responseSchema', 'timeoutSeconds', 'description', 'examplePath', 'issuedAt'] as const;
+  'responseSchema', 'timeoutSeconds', 'description', 'examplePath', 'apiLink', 'wholeDomain', 'apiKeyHeader', 'apiKeyValue', 'issuedAt'] as const;
 const UPDATE_KEYS = ['serviceId', 'asset', 'priceUsdc', 'upstreamUrl', 'timeoutSeconds',
-  'description', 'examplePath', 'issuedAt'] as const;
+  'description', 'examplePath', 'apiLink', 'wholeDomain', 'apiKeyHeader', 'apiKeyValue', 'issuedAt'] as const;
 
 /** Message the token creator signs to register a service. */
 export function serviceCreateMessage(m: Omit<CreateServiceInput, 'signature'>): string {
@@ -115,6 +154,27 @@ export function serviceUpdateMessage(
 ): string {
   return `Astralaunch: update service\n${canonical({ ...m, serviceId, asset: asset.toLowerCase() }, UPDATE_KEYS)}`;
 }
+
+// ── Service settings (POST /api/services/:id/settings) ────────────────────────
+// Creator-only READ of the private service settings (the pasted link, the protect secret, the protection status).
+// Signed like the writes so that no public endpoint returns the upstream link or any secret. Not single-use:
+// it may be re-sent within SERVICE_AUTH_MAX_AGE_S.
+
+export const serviceSettingsSchema = z.object({ ...signedFields });
+export type ServiceSettingsInput = z.infer<typeof serviceSettingsSchema>;
+
+/** Message the token creator signs to view service `serviceId`'s private settings. */
+export function serviceSettingsMessage(serviceId: string, asset: string, issuedAt: number): string {
+  return `Astralaunch: view service settings\n${JSON.stringify({ serviceId, asset: asset.toLowerCase(), issuedAt })}`;
+}
+
+// ── Link check (POST /api/services/check) ────────────────────────────────────
+export const linkCheckSchema = z.object({
+  apiLink:      z.string().min(1).max(2000),
+  wholeDomain:  z.boolean().optional(),
+  apiKeyHeader: apiKeyHeaderSchema.optional(),
+  apiKeyValue:  z.string().min(1).max(2000).optional(),
+}).refine((d) => (d.apiKeyHeader === undefined) === (d.apiKeyValue === undefined), 'apiKeyHeader and apiKeyValue go together');
 
 // ── Token metadata (POST /api/tokens) ──────────────────────────────────────────
 // Tokens themselves come from the indexer (on-chain Registered event). This only
@@ -157,7 +217,7 @@ export function tokenMetadataMessage(m: Omit<TokenMetadataInput, 'signature'>): 
 // launch flow needs a single signature. The single-purpose messages above
 // (tokenMetadataMessage, serviceCreateMessage) remain valid and unchanged.
 
-const launchServiceSchema = z.object(serviceFields);
+const launchServiceSchema = serviceRefinements(z.object(serviceFields));
 
 export const launchDetailsSchema = z.object({
   asset:       addressSchema,
@@ -178,7 +238,7 @@ export type LaunchDetailsInput = z.infer<typeof launchDetailsSchema>;
 
 const LAUNCH_DETAILS_KEYS = ['asset', 'imageUrl', 'xHandle', 'website', 'description', 'service', 'issuedAt'] as const;
 const LAUNCH_SERVICE_KEYS = ['slug', 'name', 'upstreamUrl', 'priceUsdc', 'requestSchema',
-  'responseSchema', 'timeoutSeconds', 'description', 'examplePath'] as const;
+  'responseSchema', 'timeoutSeconds', 'description', 'examplePath', 'apiLink', 'wholeDomain', 'apiKeyHeader', 'apiKeyValue'] as const;
 
 /** Message the token creator signs once for metadata + service: header + canonical JSON (nested service canonical too). */
 export function launchDetailsMessage(m: Omit<LaunchDetailsInput, 'signature'>): string {
