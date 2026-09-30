@@ -17,6 +17,9 @@ COPY apps/demo-services apps/demo-services
 FROM base AS runtime
 # The app defaults to 127.0.0.1; bind all interfaces so the server container can reach it.
 ENV NODE_ENV=production DEMO_SERVICES_HOST=0.0.0.0 DEMO_SERVICES_PORT=4001
+# arXiv cache, kept across restarts. Mount a volume here; a new named volume copies this dir's node ownership.
+ENV FEED_CACHE_FILE=/data/feed-cache.json
+RUN mkdir -p /data && chown node:node /data
 COPY --from=build --chown=node:node /repo /repo
 USER node
 WORKDIR /repo/apps/demo-services

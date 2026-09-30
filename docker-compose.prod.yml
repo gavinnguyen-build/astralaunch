@@ -149,6 +149,9 @@ services:
     environment:
       DEMO_SERVICES_HOST: 0.0.0.0
       DEMO_SERVICES_PORT: 4001
+      FEED_CACHE_FILE: ${FEED_CACHE_FILE:-/data/feed-cache.json}   # arXiv cache, survives restarts (volume below)
+    volumes:
+      - demo_feed_cache:/data
     expose: ['4001']
     # internal: reachable by the server as http://demo-services:4001; egress: /feed/digest calls arXiv.
     networks: [internal, egress]
@@ -178,3 +181,4 @@ networks:
 
 volumes:
   postgres_data:
+  demo_feed_cache:
