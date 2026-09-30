@@ -3,7 +3,7 @@
  * Wallet = connected wallet, or ?wallet=0x… for a read-only view. Claims and signed settings are Phase D.
  */
 import { useEffect, useState } from 'react';
-import { formatUnits, parseUnits, type Address, type Hex } from 'viem';
+import { formatUnits, type Address, type Hex } from 'viem';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { CreatorView } from '../design/CreatorView.js';
@@ -15,7 +15,9 @@ import { PRIVY_ENABLED, useConnectedWallet } from '../components/Site.js';
 import { Actions, ErrorLine, Modal, Row, btnStyle } from '../components/Modal.js';
 import { get } from '../lib/api.js';
 import type { ChainConfig } from '../lib/launch.js';
-import { prepareCollectFees, prepareEscrowClaim, prepareRelease, saveService, type PreparedTx } from '../lib/claims.js';
+import { loadServiceSettings, prepareCollectFees, prepareEscrowClaim, prepareRelease, saveService, type PreparedTx, type ServiceSettings } from '../lib/claims.js';
+import { ServiceLinkForm, emptyServiceLink, serviceLinkErrors, toServiceLink, type ServiceLinkValue } from '../components/ServiceLinkForm.js';
+import { ProtectApiCard } from '../components/ProtectApiCard.js';
 import { errMsg, walletClients } from '../lib/wallet.js';
 import { API_BASE } from '../env.js';
 import { PageShell } from './Token.js';
@@ -33,8 +35,9 @@ export default function Creator() {
   const connected = walletObj?.address ?? null;
   const cfg = useQuery({ queryKey: ['config'], queryFn: () => get<ChainConfig>('/api/config') });
   const [action, setAction] = useState<{ stage: 'preparing' | 'confirm' | 'sending' | 'done' | 'error'; title: string; tx?: PreparedTx; hash?: string; err?: string; sign?: boolean } | null>(null);
-  const [upstream, setUpstream] = useState('');
-  const [price, setPrice] = useState('');
+  const [svcLink, setSvcLink] = useState<ServiceLinkValue>(emptyServiceLink());
+  const [settings, setSettings] = useState<ServiceSettings | null>(null);
+  const [revealing, setRevealing] = useState(false);
   const wallet = (params.get('wallet') ?? connected ?? '').toLowerCase();
   const valid = /^0x[0-9a-f]{40}$/.test(wallet);
   const [sel, setSel] = useState(0);
@@ -44,8 +47,10 @@ export default function Creator() {
   const detail = useQuery({ queryKey: ['token', tok?.asset], queryFn: () => api.token(tok!.asset), enabled: !!tok });
 
   useEffect(() => {
+    // The link is private: fields start empty (price public) until the creator signs to show the settings.
     const s0 = dash.data?.services.find((x) => x.asset === tok?.asset);
-    setUpstream(s0?.upstreamUrl ?? ''); setPrice(s0 ? formatUnits(BigInt(s0.priceUsdc), 6) : '');
+    setSvcLink(emptyServiceLink(s0 ? formatUnits(BigInt(s0.priceUsdc), 6) : '0.02'));
+    setSettings(null);
   }, [tok?.asset, dash.data]);
 
   if (!valid) return <CreatorEmptyView v={{}} />;
@@ -60,7 +65,7 @@ export default function Creator() {
   const esc = tok.escrow;
   const unlocked = esc ? Math.min(Number(esc.usdcAccrued), Number(esc.recordedRevenue) * 0.2) : 0;
   const vest = tok.vesting;
-  const logs = d.recentRequests.filter((r) => !svc || r.service === svc.slug);
+  const logs = svc ? d.recentRequests.filter((r) => r.service === svc.slug) : [];
 
   const isOwner = !!connected && connected.toLowerCase() === wallet && !!walletObj && !!cfg.data;
   const ownerTitle = !PRIVY_ENABLED ? 'Set VITE_PRIVY_APP_ID to connect a wallet' : !connected ? 'Connect the creator wallet' : connected.toLowerCase() !== wallet ? 'Only the creator wallet can do this' : '';
@@ -78,15 +83,36 @@ export default function Creator() {
     try { const hash = await tx.send(); setAction({ ...action, stage: 'done', hash }); dash.refetch(); }
     catch (e) { setAction({ ...action, stage: 'error', err: errMsg(e) }); }
   }
-  async function onSave() {
-    setAction({ stage: 'sending', title: svc ? 'Save service settings' : 'Register service', sign: true });
+  const slugFor = (sym: string) => (sym.toLowerCase().length >= 3 ? sym.toLowerCase() : `${sym.toLowerCase()}-api`);
+  async function onReveal() {
+    if (!svc) return;
+    setRevealing(true);
     try {
-      if (!/^https?:\/\/\S+$/.test(upstream)) throw new Error('Upstream URL must be a URL.');
-      if (!/^\d+(\.\d{1,6})?$/.test(price) || Number(price) <= 0 || Number(price) > 100) throw new Error('Price per call: 0.000001–100 USDC.');
       const c = await walletClients(walletObj!, cfg.data!);
-      const slug = tok!.symbol.toLowerCase().length >= 3 ? tok!.symbol.toLowerCase() : `${tok!.symbol.toLowerCase()}-api`;
-      await saveService(c.walletClient, c.account, API_BASE, { existingId: svc?.id, asset: tok!.asset as Address, slug, name: tok!.name, upstreamUrl: upstream, priceUsdc: parseUnits(price, 6) });
-      setAction({ stage: 'done', title: svc ? 'Service settings saved' : 'Service registered', sign: true }); dash.refetch();
+      const st = await loadServiceSettings(c.walletClient, c.account, API_BASE, svc.id, tok!.asset as Address);
+      setSettings(st);
+      setSvcLink((v) => ({ ...v, apiLink: st.apiLink ?? '', wholeDomain: st.wholeDomain }));
+    } catch (e) { setAction({ stage: 'error', title: 'Service settings', err: errMsg(e), sign: true }); }
+    finally { setRevealing(false); }
+  }
+  async function onSave() {
+    setAction({ stage: 'sending', title: svc ? 'Save service settings' : 'Attach your API', sign: true });
+    try {
+      // A new service needs the link; an update may change only the price or the key (empty link = keep it).
+      const errs = serviceLinkErrors(svcLink).filter((e) => svc && !svcLink.apiLink.trim() ? !/link|https|Paste/i.test(e) : true);
+      if (errs.length) throw new Error(errs[0]);
+      const c = await walletClients(walletObj!, cfg.data!);
+      const f = toServiceLink(svcLink);
+      const linkChanged = !!f.apiLink && (!settings || f.apiLink !== settings.apiLink || !!f.wholeDomain !== settings.wholeDomain);
+      const priceChanged = !svc || f.priceUsdc !== BigInt(svc.priceUsdc);
+      await saveService(c.walletClient, c.account, API_BASE, {
+        existingId: svc?.id, asset: tok!.asset as Address, slug: slugFor(tok!.symbol), name: tok!.name,
+        ...(priceChanged ? { priceUsdc: f.priceUsdc } : {}),
+        ...(linkChanged || !svc ? { apiLink: f.apiLink, wholeDomain: f.wholeDomain } : {}),
+        ...(f.apiKey ? { apiKey: f.apiKey } : {}),
+      });
+      setAction({ stage: 'done', title: svc ? 'Service settings saved' : 'API attached', sign: true });
+      setSettings(null); dash.refetch();
     } catch (e) { setAction({ stage: 'error', title: 'Service settings', err: errMsg(e), sign: true }); }
   }
   const esc0 = tok.escrow, fees0 = tok.tradingFees, vest0 = tok.vesting;
@@ -137,12 +163,28 @@ export default function Creator() {
         disabled: !isOwner || !vest0 || !(Number(vest0.releasable) > 0), btnTitle: ownerTitle || (vest0 && Number(vest0.releasable) === 0 ? 'Nothing releasable yet (30-day cliff)' : 'Release vested tokens'),
         onClick: () => run('Release vested tokens', (c) => prepareRelease(c.publicClient, c.walletClient, c.account, tok.asset as Address)) },
     ],
-    svcStatus: !svc ? 'No service registered' : !svc.active ? 'Paused'
+    svcStatus: !svc ? 'Not attached yet' : !svc.active ? 'Paused'
       : health?.uptime7d != null ? `Live · ${(health.uptime7d * 100).toFixed(1)}% uptime, 7d` : 'Live',
-    formKey: tok.asset, upstream, price,
-    onUpstream: (e: React.ChangeEvent<HTMLInputElement>) => setUpstream(e.target.value),
-    onPrice: (e: React.ChangeEvent<HTMLInputElement>) => setPrice(e.target.value),
-    formDisabled: !isOwner,
+    svcColor: !svc || !svc.active ? '#8C87A3' : '#34D399',
+    serviceForm: (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {svc && !settings ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '13px', color: '#A7A2BD' }}>
+            Your current link is private.
+            <button type="button" onClick={onReveal} disabled={!isOwner || revealing} title={ownerTitle || 'Sign (free) to show your link and settings'}
+              style={{ height: '32px', padding: '0 14px', borderRadius: '999px', border: '1px solid #3A3456', background: 'transparent', color: '#ECEAF4', fontFamily: 'inherit', fontSize: '12px', cursor: 'pointer' }}>
+              {revealing ? 'Waiting for your signature…' : 'Show my settings'}
+            </button>
+            <span style={{ color: '#8C87A3' }}>or paste a new link below to replace it.</span>
+          </div>
+        ) : null}
+        <ServiceLinkForm value={svcLink} onChange={setSvcLink} slug={svc?.slug ?? slugFor(tok.symbol)} agentBase={API_BASE || window.location.origin}
+          keySet={settings?.apiKey ?? null} disabled={!isOwner} />
+      </div>
+    ),
+    protectCard: svc ? (
+      <ProtectApiCard settings={settings} onReveal={onReveal} canReveal={isOwner} revealTitle={ownerTitle || undefined} busy={revealing} />
+    ) : null,
     onSave, saveDisabled: !isOwner, saveTitle: ownerTitle || 'Sign and save (no gas)',
     modal,
     logs: logs.map((r) => ({
@@ -151,7 +193,8 @@ export default function Creator() {
       ch: r.charged ? `${fmtUsdc(r.amountUsdc)} USDC` : 'No',
       note: r.charged ? 'Settled by facilitator' : NOTES[r.errorCode ?? ''] ?? 'Not charged',
     })),
-    logsState: logs.length === 0 ? <div style={{ padding: '14px 0', fontSize: '13px', color: '#8C87A3' }}>No calls yet.</div> : null,
+    logsState: !svc ? <div style={{ padding: '14px 0', fontSize: '13px', color: '#8C87A3' }}>No calls yet. Paste your API link above and sign to attach it.</div>
+      : logs.length === 0 ? <div style={{ padding: '14px 0', fontSize: '13px', color: '#8C87A3' }}>No calls yet.</div> : null,
   };
   return <CreatorView v={v} />;
 }

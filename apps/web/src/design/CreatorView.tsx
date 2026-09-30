@@ -32,11 +32,8 @@ export function CreatorView({ v }: { v: any }) {
 </Fragment>))}
 </div>
 <section aria-labelledby="svc" style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
-<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h2 id="svc" style={{ margin: '0', fontSize: '18px', fontWeight: '700' }}>Service</h2><span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#34D399' }}><span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#34D399' }}></span>{v.svcStatus}</span></div>
-<div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 150px', gap: '14px' }}>
-<label style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', fontWeight: '600' }}>Upstream URL<input type="url" key={v.formKey} value={v.upstream} onChange={v.onUpstream} disabled={v.formDisabled} placeholder="https://your-api.example/v1/signals" style={{ height: '46px', boxSizing: 'border-box', padding: '0 14px', border: '1px solid #2A2640', borderRadius: '10px', background: '#0E0D16', color: '#ECEAF4', fontFamily: 'inherit', fontSize: '14px' }} /></label>
-<label style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', fontWeight: '600' }}>Price (USDC)<input type="text" inputMode="decimal" key={v.formKey + 'p'} value={v.price} onChange={v.onPrice} disabled={v.formDisabled} style={{ height: '46px', boxSizing: 'border-box', padding: '0 14px', border: '1px solid #2A2640', borderRadius: '10px', background: '#0E0D16', color: '#ECEAF4', fontFamily: "'JetBrains Mono', monospace", fontSize: '14px' }} /></label>
-</div>
+<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h2 id="svc" style={{ margin: '0', fontSize: '18px', fontWeight: '700' }}>Service</h2><span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: v.svcColor }}><span style={{ width: '8px', height: '8px', borderRadius: '50%', background: v.svcColor }}></span>{v.svcStatus}</span></div>
+{v.serviceForm}
 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}><p style={{ margin: '0', fontSize: '13px', color: '#A7A2BD' }}>Changes are signed by your wallet and shown publicly on the token page.</p><button type="button" onClick={v.onSave} disabled={v.saveDisabled} title={v.saveTitle} style={{ height: '44px', padding: '0 20px', borderRadius: '999px', border: '1px solid #3A3456', background: 'transparent', color: '#ECEAF4', fontFamily: 'inherit', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>Sign and save</button></div>
 <div>
 <div style={{ display: 'grid', gridTemplateColumns: '110px 80px 110px 120px minmax(0,1fr)', gap: '12px', padding: '10px 0', borderBottom: '1px solid #25213A', fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', letterSpacing: '0.12em', color: '#8C87A3' }}><span>TIME</span><span>STATUS</span><span style={{ textAlign: 'right' }}>LATENCY</span><span>CHARGED</span><span>NOTE</span></div>
@@ -46,6 +43,7 @@ export function CreatorView({ v }: { v: any }) {
 </Fragment>))}
 </div>
 </section>
+{v.protectCard}
 </div>
 </main>
 {v.modal}

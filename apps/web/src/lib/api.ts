@@ -28,7 +28,7 @@ export interface TokenListItem {
 }
 export interface TokenDetail extends Omit<TokenListItem, 'service' | 'usage30d'> {
   website: string | null; twitter: string | null; launcher: string; poolId: string; numeraire: string; decimals: number;
-  service: { id: string; slug: string; name: string; description: string | null; priceUsdc: string; requestSchema: string | null; responseSchema: string | null; endpoint: string; examplePath: string | null } | null;
+  service: { id: string; slug: string; name: string; description: string | null; priceUsdc: string; requestSchema: string | null; responseSchema: string | null; endpoint: string; examplePath: string | null; response: { kind: 'json' | 'stream' | 'file'; contentType: string | null; sample: string | null } | null } | null;
   usage30d: Usage | null; usageAll: Usage | null;
   serviceHealth: { successRate: number | null; latencyP50Ms: number | null; latencyP95Ms: number | null; uptime7d: number | null; calls7d: number } | null;
   serviceUpdatedAt: string | null;
@@ -64,7 +64,8 @@ export interface CreatorDash {
     escrow: { claimable: string | null; claimableSymbol: string; usdcAccrued: string; usdcClaimed: string; recordedRevenue: string; forfeitAt: number; forfeited: boolean } | null;
     vesting: { total: string; released: string; releasable: string; locked: string; start: number; cliffEnd: number; end: number } | null;
   }[];
-  services: { id: string; asset: string; slug: string; name: string; priceUsdc: string; upstreamUrl: string; active: boolean; updatedAt: string }[];
+  // Public: never the upstream link or secrets (those come from the signed settings read, lib/claims.ts).
+  services: { id: string; asset: string; slug: string; name: string; priceUsdc: string; examplePath: string | null; responseKind: string | null; active: boolean; updatedAt: string }[];
   recentRequests: { service: string | null; statusCode: number | null; upstreamStatus: number | null; latencyMs: number | null; charged: boolean; amountUsdc: string; errorCode: string | null; settleTxHash: string | null; createdAt: string }[];
 }
 
