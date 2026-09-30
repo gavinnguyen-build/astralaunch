@@ -52,11 +52,11 @@ const check = (ok: boolean, what: string) => { log(`${ok ? 'PASS' : 'FAIL'} ${wh
 // ── Test upstream (the creator's API) ─────────────────────────────────────────
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 7, 7, 7]);
 let requireSecret: string | null = null;
-const seen: { path: string; headers: IncomingMessage['headers'] }[] = [];
+const seen: { method: string; path: string; headers: IncomingMessage['headers'] }[] = [];
 async function upstream(req: IncomingMessage, res: ServerResponse) {
   const chunks: Buffer[] = []; for await (const c of req) chunks.push(c as Buffer);
   const body = Buffer.concat(chunks);
-  seen.push({ path: req.url ?? '', headers: req.headers });
+  seen.push({ method: req.method ?? '', path: req.url ?? '', headers: req.headers });
   if (requireSecret && req.headers[PROTECT_HEADER.toLowerCase()] !== requireSecret) { res.writeHead(401, { 'content-type': 'application/json' }); return res.end('{"error":"unauthorized"}'); }
   const url = new URL(req.url ?? '/', 'http://x');
   const j = (code: number, o: unknown, h: Record<string, string> = {}) => { res.writeHead(code, { 'content-type': 'application/json', server: 'uvicorn', 'x-powered-by': 'FastAPI', ...h }); res.end(JSON.stringify(o)); };
@@ -76,6 +76,9 @@ async function upstream(req: IncomingMessage, res: ServerResponse) {
     return j(200, { turn: req.headers['x-session-id'] ? 2 : 1, sid }, { 'x-session-id': sid });
   }
   if (url.pathname === '/v1/fail') return j(500, { error: 'model overloaded at http://127.0.0.1:4031/v1' });
+  if (url.pathname === '/v1/needs-body') {   // answers a plain GET with 400 (wants a body)
+    return req.method === 'POST' && body.length ? j(200, { ok: true }) : j(400, { error: 'body required' });
+  }
   if (url.pathname === '/v1/complete') {   // POST-only JSON API
     if (req.method !== 'POST') return j(405, { error: 'method not allowed' }, { allow: 'POST' });
     let m: { message?: string } = {};
@@ -220,8 +223,18 @@ async function main() {
   await upsertTokenFromRegistration(db, reg2, { name: 'nullfeed', symbol: 'FEED', decimals: 18 });
   await adminListAsset(db, FEED, 143, 'fork e2e').catch(() => {});
   const CHAT = 'http://127.0.0.1:4031/v1/complete';
-  const chk = await (await fetch(`${API}/api/services/check`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apiLink: CHAT }) })).json() as { ok: boolean; kind: string | null; status: number; noSample?: string };
-  check(chk.ok && chk.kind === null && chk.status === 405, `POST-only link: check passes without a sample (GET → ${chk.status}, launch allowed)`);
+  const checkLink = async (apiLink: string) => (await fetch(`${API}/api/services/check`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apiLink }) })).json() as Promise<{ ok: boolean; kind?: string | null; status?: number; noSample?: string; error?: string }>;
+  const methodsTo = (p: string, from: number) => seen.slice(from).filter((x) => x.path.split('?')[0] === p).map((x) => x.method);
+  let mark = seen.length;
+  const chk = await checkLink(CHAT);
+  check(chk.ok && chk.kind === null && chk.status === 405 && /add a Sample request/.test(chk.noSample ?? ''), `POST-only link: check passes without a sample (GET → ${chk.status}, launch allowed, hint shown)`);
+  check(JSON.stringify(methodsTo('/v1/complete', mark)) === '["GET"]', `the check sent only the GET the link implies: ${JSON.stringify(methodsTo('/v1/complete', mark))} (no POST {} probe)`);
+  mark = seen.length;
+  const c400 = await checkLink('http://127.0.0.1:4031/v1/needs-body');
+  check(c400.ok && c400.kind === null && c400.status === 400 && JSON.stringify(methodsTo('/v1/needs-body', mark)) === '["GET"]', `GET 400 → reachable, no sample call, only a GET sent`);
+  mark = seen.length;
+  const c404 = await checkLink('http://127.0.0.1:4031/v1/missing');
+  check(!c404.ok && c404.error === 'Nothing found at this link.' && JSON.stringify(methodsTo('/v1/missing', mark)) === '["GET"]', `GET 404 → "${c404.error}"`);
   const CSLUG = `chat-${Date.now() % 1_000_000}`;
   const cm = { asset: FEED, slug: CSLUG, name: 'Chat', priceUsdc: PRICE.toString(), apiLink: CHAT, issuedAt: Math.floor(Date.now() / 1000) };
   const cr = await fetch(`${API}/api/services`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...cm, signature: await creator.signMessage({ message: serviceCreateMessage(cm) }) }) });
