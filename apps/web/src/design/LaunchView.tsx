@@ -24,15 +24,6 @@ export function LaunchView({ v }: { v: any }) {
 <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '14px', fontWeight: '600' }}>Website (optional)<input type="url" value={v.f.website.value} onChange={v.f.website.onChange} placeholder="https://yourproject.com" style={{ height: '48px', boxSizing: 'border-box', padding: '0 14px', border: '1px solid #2A2640', borderRadius: '10px', background: '#0E0D16', color: '#ECEAF4', fontFamily: 'inherit', fontSize: '15px', width: '100%' }} /></label>
 </section>
 <section style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-<h2 style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', letterSpacing: '0.16em', fontWeight: '500', color: '#B9A8E8' }}>FEES</h2>
-<div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-<span style={{ fontSize: '14px', fontWeight: '600' }}>Fee recipient wallet (optional)</span>
-<label style={{ position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', clip: 'rect(0 0 0 0)' }} htmlFor="recv">Fee recipient address</label>
-<input id="recv" type="text" value={v.f.recipient.value} onChange={v.f.recipient.onChange} placeholder={v.recipientPlaceholder} style={{ height: '48px', boxSizing: 'border-box', padding: '0 14px', border: '1px solid #2A2640', borderRadius: '10px', background: '#0E0D16', color: '#ECEAF4', fontFamily: "'JetBrains Mono', monospace", fontSize: '15px', width: '100%' }} />
-<p style={{ margin: '0', fontSize: '13px', color: '#8C87A3' }}>Defaults to your connected wallet. Enter another address to send fees elsewhere. The recipient gets the 0.70% trading fee, the usage escrow and the 15% vesting.</p>
-</div>
-</section>
-<section style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 <h2 style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', letterSpacing: '0.16em', fontWeight: '500', color: '#B9A8E8' }}>MARKET</h2>
 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}><span style={{ fontSize: '14px', fontWeight: '600' }}>Pool pairing</span><div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: '10px' }}>
 {(v.pairings ?? []).map((o: any, oI: number) => (<Fragment key={oI}>
@@ -43,7 +34,7 @@ export function LaunchView({ v }: { v: any }) {
 {(v.vesting ?? []).map((o: any, oI: number) => (<Fragment key={oI}>
 <button type="button" aria-pressed={o.on} onClick={o.pick} aria-disabled={o.ariaDis} style={{ height: '48px', borderRadius: '10px', border: o.border, background: o.bg, color: o.fg, fontFamily: 'inherit', fontSize: '14px', fontWeight: '600', cursor: o.cursor, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>{o.label}{o.soon ? (<><span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', padding: '2px 6px', borderRadius: '999px', border: '1px solid #3A3456', color: '#8C87A3' }}>SOON</span></>) : null}</button>
 </Fragment>))}
-</div><p style={{ margin: '0', fontSize: '13px', color: '#8C87A3' }}>15% of the supply vests to the fee recipient over 1 year with a 30-day cliff.</p></div>
+</div><p style={{ margin: '0', fontSize: '13px', color: '#8C87A3' }}>15% of the supply vests to your wallet over 1 year with a 30-day cliff.</p></div>
 </section>
 <section style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 <h2 style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', letterSpacing: '0.16em', fontWeight: '500', color: '#B9A8E8' }}>SERVICE (OPTIONAL)</h2>

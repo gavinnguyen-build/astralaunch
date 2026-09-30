@@ -8,7 +8,7 @@
  */
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { createPublicClient, createWalletClient, custom, defineChain, getAddress, http, isAddress, parseUnits, type Address } from 'viem';
+import { createPublicClient, createWalletClient, custom, defineChain, getAddress, http, parseUnits, type Address } from 'viem';
 import { examplePathError } from '@astralaunch/shared';
 import { LaunchView } from '../design/LaunchView.js';
 import { API_BASE, RPC_URL } from '../env.js';
@@ -48,7 +48,7 @@ export default function Launch() {
   const [service, setService] = useState<'api' | 'later'>('api');
   const f = {
     name: useField(), symbol: useField(), imageUrl: useField(), xHandle: useField(), website: useField(),
-    recipient: useField(), upstream: useField(), price: useField('0.02'), example: useField(),
+    upstream: useField(), price: useField('0.02'), example: useField(),
   };
   const status = useQuery({
     queryKey: ['feeStatus', wallet?.address], enabled: !!wallet && !!config.data,
@@ -68,7 +68,6 @@ export default function Launch() {
     if (f.imageUrl.value && !/^https:\/\/\S+$/.test(f.imageUrl.value)) e.push('Image must be an https URL.');
     if (f.xHandle.value && !/^@?[A-Za-z0-9_]{1,15}$/.test(f.xHandle.value)) e.push('X account must be a handle like @name.');
     if (f.website.value && !/^https?:\/\/\S+$/.test(f.website.value)) e.push('Website must be a URL.');
-    if (f.recipient.value && !isAddress(f.recipient.value)) e.push('Fee recipient must be a 0x address (ENS is not available on Monad).');
     if (service === 'api') {
       if (!/^https?:\/\/\S+$/.test(f.upstream.value)) e.push('Upstream URL is required for "My API".');
       if (!/^\d+(\.\d{1,6})?$/.test(f.price.value) || Number(f.price.value) <= 0 || Number(f.price.value) > 100) e.push('Price per call: 0.000001–100 USDC.');
@@ -76,7 +75,7 @@ export default function Launch() {
       if (ex && examplePathError(ex)) e.push('Example call must be a path on your API starting with "/", e.g. /price?token=MON.');
     }
     return e;
-  }, [f.name.value, f.symbol.value, f.imageUrl.value, f.xHandle.value, f.website.value, f.recipient.value, f.upstream.value, f.price.value, f.example.value, service]);
+  }, [f.name.value, f.symbol.value, f.imageUrl.value, f.xHandle.value, f.website.value, f.upstream.value, f.price.value, f.example.value, service]);
 
   async function clients(cfg: ChainConfig): Promise<Ctx> {
     const chain = defineChain({ id: cfg.chainId, name: 'Monad', nativeCurrency: { name: 'MON', symbol: 'MON', decimals: 18 }, rpcUrls: { default: { http: [RPC_URL] } } });
@@ -95,7 +94,6 @@ export default function Launch() {
     const slug = symbol.toLowerCase().length >= 3 ? symbol.toLowerCase() : `${symbol.toLowerCase()}-api`;
     return {
       name: f.name.value.trim(), symbol, pairing: pair,
-      feeRecipient: f.recipient.value ? getAddress(f.recipient.value) : undefined,
       imageUrl: f.imageUrl.value || undefined, xHandle: f.xHandle.value ? f.xHandle.value.replace(/^@/, '') : undefined,
       website: f.website.value || undefined,
       service: service === 'api' ? {
@@ -182,7 +180,7 @@ export default function Launch() {
 
   const connected = !!wallet;
   const v = {
-    f, recipientPlaceholder: wallet ? `Your wallet · ${shortAddr(wallet.address)}` : 'Your wallet',
+    f,
     pairings: group<Pair | 'fx' | 'st'>([{ id: 'usdc', label: 'USDC' }, { id: 'mon', label: 'MON' }, { id: 'fx', label: 'Forex', soon: true }, { id: 'st', label: 'Stocks', soon: true }], pair, (x) => setPair(x as Pair)),
     pairHint: pair === 'mon'
       ? 'Trades settle in MON. Services are still paid in USDC, so each usage buyback swaps USDC to MON, then MON to your token.'
@@ -212,7 +210,7 @@ function Confirm({ plan, input, onCancel, onConfirm }: { plan: LaunchPlan; input
       <R k="Pairing">{plan.numeraireSymbol}</R>
       <R k="Fee recipient"><AddrLink a={plan.creator} /></R>
       <R k="Supply">1,000,000,000 · 85% pool · 15% vested</R>
-      <R k="Vesting">15% to the fee recipient · 30-day cliff · 1 year</R>
+      <R k="Vesting">15% to your wallet · 30-day cliff · 1 year</R>
       <R k="Launch fee">{plan.feeTx.needed ? fmtMon(plan.feeTx.valueWei) : `${fmtMon(plan.feeTx.valueWei)} · already paid`}</R>
       <R k="Gas (est.)">{fmtMon(plan.estimatedMonCost - (plan.feeTx.needed ? plan.feeTx.valueWei : 0n))}{plan.mode === 'classic' ? ' · register estimated' : ''}</R>
       <R k="Estimated total">{fmtMon(plan.estimatedMonCost)} (fee + gas)</R>

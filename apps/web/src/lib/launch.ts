@@ -44,7 +44,6 @@ export interface LaunchInput {
   name: string;
   symbol: string;
   pairing: 'usdc' | 'mon';
-  feeRecipient?: Address;            // defaults to the connected wallet (= on-chain creator)
   imageUrl?: string;
   xHandle?: string;
   website?: string;
@@ -180,7 +179,7 @@ function buildParams(sdk: DopplerSDK, o: {
 
 async function paramsFor(ctx: Ctx, input: LaunchInput, startTime: number) {
   const { contracts, tokens } = ctx.config;
-  const creator = getAddress(input.feeRecipient ?? ctx.account);
+  const creator = getAddress(ctx.account);   // the creator / fee recipient is always the connected wallet
   let numeraire: Address, numerairePrice: number, numeraireDecimals: number, oracleNote: string;
   if (input.pairing === 'usdc') {
     numeraire = tokens.usdc; numerairePrice = 1; numeraireDecimals = 6; oracleNote = '1 USDC = $1';
@@ -227,8 +226,7 @@ export async function launchCreateParams(ctx: Ctx, input: LaunchInput, startTime
 }
 
 const hasMetadata = (i: LaunchInput) => !!(i.imageUrl || i.xHandle || i.website || i.description);
-const wantsSignature = (i: LaunchInput, creator: Address, account: Address) =>
-  (hasMetadata(i) || !!i.service) && getAddress(creator) === getAddress(account);
+const wantsSignature = (i: LaunchInput) => hasMetadata(i) || !!i.service;
 
 /** Rate limit + fee receipt check, then preview simulations for the confirmation dialog. */
 export async function planLaunch(ctx: Ctx, input: LaunchInput): Promise<LaunchPlan> {
@@ -260,7 +258,7 @@ export async function planLaunch(ctx: Ctx, input: LaunchInput): Promise<LaunchPl
     const gasPrice = await ctx.publicClient.getGasPrice();
     const monBalance = await ctx.publicClient.getBalance({ address: ctx.account });
     return {
-      ...p, mode: 'helper', txCount: 1, signatureCount: wantsSignature(input, p.creator, ctx.account) ? 1 : 0,
+      ...p, mode: 'helper', txCount: 1, signatureCount: wantsSignature(input) ? 1 : 0,
       excludedFromBalanceLimit: p.excluded, previewStartTime, predictedToken: result[0],
       feeTx: { needed: !reuse, reusingReceipt: reuse, valueWei: feeWei, gas: null },
       launchGas: gas, registerGas: 'included', gasPrice, estimatedMonCost: gas * gasPrice + value, monBalance,
@@ -278,10 +276,9 @@ export async function planLaunch(ctx: Ctx, input: LaunchInput): Promise<LaunchPl
   const monBalance = await ctx.publicClient.getBalance({ address: ctx.account });
   // register() ≈ 1M gas on the fork; shown as an estimate until the token exists.
   const estimatedMonCost = (withBuffer(launchGas) + withBuffer(1_000_000n) + (feeGas ? withBuffer(feeGas) : 0n)) * gasPrice + (reuse ? 0n : feeWei);
-  const canSign = getAddress(p.creator) === getAddress(ctx.account);
   return {
     ...p, mode: 'classic', txCount: (reuse ? 0 : 1) + 2,
-    signatureCount: canSign ? (hasMetadata(input) ? 1 : 0) + (input.service ? 1 : 0) : 0,
+    signatureCount: (hasMetadata(input) ? 1 : 0) + (input.service ? 1 : 0),
     excludedFromBalanceLimit: p.excluded, previewStartTime, predictedToken: sim.tokenAddress as Address,
     feeTx: { needed: !reuse, reusingReceipt: reuse, valueWei: feeWei, gas: feeGas ? withBuffer(feeGas) : null },
     launchGas: withBuffer(launchGas), registerGas: 'after launch', gasPrice, estimatedMonCost, monBalance,
@@ -372,8 +369,7 @@ export async function executeLaunch(ctx: Ctx, input: LaunchInput, plan: LaunchPl
   }
   progress('listing', 'done');
 
-  // ── 5. signed metadata + service (only the on-chain creator can sign) ──
-  const canSign = getAddress(p.creator) === getAddress(ctx.account);
+  // ── 5. signed metadata + service (the connected wallet is the on-chain creator) ──
   const meta = {
     asset, issuedAt: Math.floor(Date.now() / 1000),
     ...(input.imageUrl ? { imageUrl: input.imageUrl } : {}), ...(input.xHandle ? { xHandle: input.xHandle } : {}),
@@ -381,7 +377,6 @@ export async function executeLaunch(ctx: Ctx, input: LaunchInput, plan: LaunchPl
   };
   const hasMeta = Object.keys(meta).length > 2;
   if (!hasMeta) progress('metadata', 'skipped');
-  else if (!canSign) { progress('metadata', 'skipped', { note: 'fee recipient must sign' }); notes.push('Metadata must be signed by the fee recipient wallet.'); }
   else {
     progress('metadata', 'running', { note: 'sign in your wallet' });
     const signature = await ctx.walletClient.signMessage({ account: ctx.account, message: tokenMetadataMessage(meta) });
@@ -390,7 +385,6 @@ export async function executeLaunch(ctx: Ctx, input: LaunchInput, plan: LaunchPl
     progress('metadata', 'done');
   }
   if (!input.service) progress('service', 'skipped');
-  else if (!canSign) { progress('service', 'skipped', { note: 'fee recipient must sign' }); notes.push('The service must be registered by the fee recipient wallet.'); }
   else {
     progress('service', 'running', { note: 'sign in your wallet' });
     const svc = {
@@ -464,8 +458,7 @@ async function executeHelperLaunch(ctx: Ctx, input: LaunchInput, plan: LaunchPla
     progress('verify', 'skipped', { note: `used paid fee ${plan.feeTx.reusingReceipt}` });
   }
 
-  // ── 3. one signature for metadata + service (only the on-chain creator can sign) ──
-  const canSign = getAddress(p.creator) === getAddress(ctx.account);
+  // ── 3. one signature for metadata + service (the connected wallet is the on-chain creator) ──
   const details = {
     asset, issuedAt: Math.floor(Date.now() / 1000),
     ...(input.imageUrl ? { imageUrl: input.imageUrl } : {}), ...(input.xHandle ? { xHandle: input.xHandle } : {}),
@@ -479,10 +472,7 @@ async function executeHelperLaunch(ctx: Ctx, input: LaunchInput, plan: LaunchPla
   const wants = hasMetadata(input) || !!input.service;
   let signature: Hex | null = null;
   if (!wants) progress('sign', 'skipped');
-  else if (!canSign) {
-    progress('sign', 'skipped', { note: 'fee recipient must sign' });
-    notes.push('Token details and the service must be signed by the fee recipient wallet, from the Creator page.');
-  } else {
+  else {
     progress('sign', 'running', { note: 'one signature: token details + service' });
     signature = await ctx.walletClient.signMessage({ account: ctx.account, message: launchDetailsMessage(details) });
     progress('sign', 'done');
