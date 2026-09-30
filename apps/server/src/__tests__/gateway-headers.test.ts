@@ -5,12 +5,16 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { Hono } from 'hono';
 import { createTestDb, type TestDb } from './helpers/pgliteDb.js';
+import { startTestUpstream, json } from './helpers/testUpstream.js';
 
-const h = vi.hoisted(() => ({
+const h = vi.hoisted(() => {
+  process.env.ALLOW_LOCAL_UPSTREAMS = 'true';   // local test upstream (lib/ssrf.ts reads it at import)
+  return {
   db: null as unknown,
   verify: vi.fn(async () => ({ isValid: true })),
   settle: vi.fn(async () => ({ success: true, transaction: '0x' + 'e'.repeat(64), network: 'eip155:143', payer: '0x' + '1'.repeat(40) })),
-}));
+  };
+});
 vi.mock('../db/client.js', () => ({ get db() { return h.db; } }));
 vi.mock('../env.js', () => ({
   FACILITATOR_URL: 'http://facilitator.invalid', USDC_ADDR: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
@@ -36,20 +40,19 @@ const sdk = new x402HTTPClient(new x402Client());
 
 describe('gateway x402 headers', () => {
   let db: TestDb; let close: () => Promise<void>;
-  const upstream = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
-  const realFetch = globalThis.fetch;
+  let up: Awaited<ReturnType<typeof startTestUpstream>>;
 
   beforeAll(async () => {
     ({ db, close } = await createTestDb());
     h.db = db;
+    up = await startTestUpstream(json({ ok: true }));
     await db.insert(services).values({
       slug: 'svc', name: 'svc', asset: '0x' + 'a'.repeat(40), router: ROUTER, creator: '0x' + '2'.repeat(40),
-      upstreamUrl: 'https://upstream.example', priceUsdc: '10000', upstreamSecret: 's',
+      upstreamUrl: up.url, priceUsdc: '10000', upstreamSecret: 's',
     });
-    globalThis.fetch = upstream as unknown as typeof fetch;
   });
-  afterAll(async () => { globalThis.fetch = realFetch; await close(); });
-  beforeEach(() => { h.verify.mockClear(); h.settle.mockClear(); upstream.mockClear(); });
+  afterAll(async () => { await up.close(); await close(); });
+  beforeEach(() => { h.verify.mockClear(); h.settle.mockClear(); up.reset(); });
 
   const payload = () => ({
     x402Version: 2, resource: { url: 'http://x/s/svc/json' },
@@ -82,7 +85,7 @@ describe('gateway x402 headers', () => {
   });
 
   it('never settles when upstream fails', async () => {
-    upstream.mockResolvedValueOnce(new Response('boom', { status: 500 }));
+    up.set((_q, r) => { r.writeHead(500, { 'content-type': 'text/plain' }); r.end('boom'); });
     const res = await app.request('/s/svc/json', { headers: sdk.encodePaymentSignatureHeader(payload()) });
     expect(res.status).toBe(502);
     expect(h.settle).not.toHaveBeenCalled();

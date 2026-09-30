@@ -8,12 +8,16 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import { readFileSync } from 'node:fs';
 import { Hono } from 'hono';
 import { createTestDb, type TestDb } from './helpers/pgliteDb.js';
+import { startTestUpstream, json } from './helpers/testUpstream.js';
 
-const h = vi.hoisted(() => ({
+const h = vi.hoisted(() => {
+  process.env.ALLOW_LOCAL_UPSTREAMS = 'true';   // local test upstream (lib/ssrf.ts reads it at import)
+  return {
   db: null as unknown,
   verify: vi.fn(async () => ({ isValid: true, payer: '0xAbCdEf0000000000000000000000000000000009' })),
   settle: vi.fn(async () => ({ success: true, transaction: '0x' + 'e'.repeat(64), network: 'eip155:143', payer: '0x' + '1'.repeat(40) })),
-}));
+  };
+});
 vi.mock('../db/client.js', () => ({ get db() { return h.db; } }));
 vi.mock('../env.js', () => ({
   FACILITATOR_URL: 'http://facilitator.invalid', USDC_ADDR: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
@@ -49,8 +53,7 @@ const paid = (path: string) => app.request(path, { headers: { 'PAYMENT-SIGNATURE
 
 describe('gateway: response schema before settle, upstream path prefix', () => {
   let db: TestDb; let close: () => Promise<void>;
-  const upstream = vi.fn(async (_url: string) => new Response(JSON.stringify(sightBody), { status: 200, headers: { 'Content-Type': 'application/json' } }));
-  const realFetch = globalThis.fetch;
+  let up: Awaited<ReturnType<typeof startTestUpstream>>;
   const svc = (slug: string, upstreamUrl: string, responseSchema: string | null) => ({
     slug, name: slug, asset: '0x' + 'a'.repeat(40), router: '0x' + '5'.repeat(40), creator: '0x' + '2'.repeat(40),
     upstreamUrl, priceUsdc: '10000', upstreamSecret: 's', responseSchema,
@@ -59,20 +62,20 @@ describe('gateway: response schema before settle, upstream path prefix', () => {
   beforeAll(async () => {
     ({ db, close } = await createTestDb());
     h.db = db;
+    up = await startTestUpstream(json(sightBody));
     await db.insert(services).values([
-      svc('sightsvc', 'https://up.example/sight', SIGHT_SCHEMA),
-      svc('feedshared', 'https://up.example', FEED_SCHEMA),     // the mainnet bug: shared base, FEED schema
-      svc('noschema', 'https://up.example/', null),
+      svc('sightsvc', `${up.url}/sight`, SIGHT_SCHEMA),
+      svc('feedshared', up.url, FEED_SCHEMA),     // the mainnet bug: shared base, FEED schema
+      svc('noschema', `${up.url}/`, null),
     ]);
-    globalThis.fetch = upstream as unknown as typeof fetch;
   });
-  afterAll(async () => { globalThis.fetch = realFetch; await close(); });
-  beforeEach(() => { h.verify.mockClear(); h.settle.mockClear(); upstream.mockClear(); });
+  afterAll(async () => { await up.close(); await close(); });
+  beforeEach(() => { h.verify.mockClear(); h.settle.mockClear(); up.reset(); });
 
   it('match: body passes the schema → settled, prefix applied, query kept', async () => {
     const res = await paid('/s/sightsvc/signals?handle=monad&x=1&x=2');
     expect(res.status).toBe(200);
-    expect(upstream.mock.calls[0]![0]).toBe('https://up.example/sight/signals?handle=monad&x=1&x=2');
+    expect(up.calls[0]!.path).toBe('/sight/signals?handle=monad&x=1&x=2');
     expect(h.settle).toHaveBeenCalledOnce();
     expect(await res.json()).toEqual(sightBody);
     expect(await latest()).toMatchObject({ settled: true, errorCode: null });
@@ -89,7 +92,7 @@ describe('gateway: response schema before settle, upstream path prefix', () => {
   });
 
   it('non-JSON body with a schema → 502 response_not_json, not settled', async () => {
-    upstream.mockImplementationOnce(async () => new Response('<html>hi</html>', { status: 200, headers: { 'Content-Type': 'text/html' } }));
+    up.set((_q, r) => { r.writeHead(200, { 'content-type': 'text/html', 'content-length': '15' }); r.end('<html>hi</html>'); });
     const res = await paid('/s/sightsvc/signals?handle=monad');
     expect(res.status).toBe(502);
     expect((await res.json() as { reason: string }).reason).toBe('response_not_json');
@@ -98,11 +101,11 @@ describe('gateway: response schema before settle, upstream path prefix', () => {
   });
 
   it('no schema → unchanged: any 2xx settles', async () => {
-    upstream.mockImplementationOnce(async () => new Response('plain', { status: 200 }));
+    up.set((_q, r) => { r.writeHead(200, { 'content-length': '5' }); r.end('plain'); });
     const res = await paid('/s/noschema/anything');
     expect(res.status).toBe(200);
     expect(await res.text()).toBe('plain');
-    expect(upstream.mock.calls[0]![0]).toBe('https://up.example/anything');
+    expect(up.calls[0]!.path).toBe('/anything');
     expect(h.settle).toHaveBeenCalledOnce();
   });
 
@@ -113,7 +116,7 @@ describe('gateway: response schema before settle, upstream path prefix', () => {
     }
     // "/s/sightsvc/../x" is normalised by the URL parser to /s/x (another slug), never to /feed on the upstream
     expect((await app.request('/s/sightsvc/../feed/digest')).status).toBe(404);
-    expect(upstream).not.toHaveBeenCalled();
+    expect(up.calls).toHaveLength(0);
     expect(h.verify).not.toHaveBeenCalled();
   });
 

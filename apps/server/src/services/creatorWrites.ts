@@ -15,13 +15,14 @@ import { compileResponseSchema } from '../lib/responseSchema.js';
 import { generateSecret } from '../lib/hmac.js';
 import { authorizeTokenCreator, consumeSignedMessage, ServiceAuthError } from './serviceAuth.js';
 import type { Db } from './launchFee.js';
+import { newProtectSecret, prepareServiceLink, type PreparedLink } from './serviceLinks.js';
 
 export type ServiceFields = Omit<CreateServiceInput, 'asset' | 'issuedAt' | 'signature'>;
 export type MetadataFields = Pick<TokenMetadataInput, 'imageUrl' | 'xHandle' | 'website' | 'description'>;
 
-/** Static checks on a service definition (no network): upstream base URL and response schema. */
+/** Static checks on a service definition (no network): legacy upstream base URL and response schema. */
 export function serviceInputError(s: Pick<ServiceFields, 'upstreamUrl' | 'responseSchema'>): string | null {
-  const bad = upstreamBaseError(s.upstreamUrl);
+  const bad = s.upstreamUrl ? upstreamBaseError(s.upstreamUrl) : null;
   if (bad) return bad;
   if (s.responseSchema) {
     try { compileResponseSchema(s.responseSchema); } catch (e) { return (e as Error).message; }
@@ -29,24 +30,34 @@ export function serviceInputError(s: Pick<ServiceFields, 'upstreamUrl' | 'respon
   return null;
 }
 
-/** Insert a service for `token` (router and creator from the chain-indexed row, never the client). 409 on a taken slug. */
-export async function insertService(tx: Db, token: Token, s: ServiceFields, issuedAt: number): Promise<Service> {
+/**
+ * Insert a service for `token` (router and creator from the chain-indexed row, never the client). 409 on a taken slug.
+ * `link` = the checked "one API link" fields (prepareServiceLink); without it the legacy upstreamUrl is stored.
+ */
+export async function insertService(tx: Db, token: Token, s: ServiceFields, issuedAt: number, link?: PreparedLink | null): Promise<Service> {
   const existing = await tx.select({ id: services.id }).from(services).where(eq(services.slug, s.slug)).limit(1);
   if (existing[0]) throw new ServiceAuthError(409, 'Slug already taken');
+  if (!link && !s.upstreamUrl) throw new ServiceAuthError(400, 'apiLink is required');
   const [row] = await tx.insert(services).values({
+    ...(link ? {
+      id: link.id, apiLink: link.apiLink, wholeDomain: link.wholeDomain, apiKeyHeader: link.apiKeyHeader, apiKeyEnc: link.apiKeyEnc,
+      responseKind: link.responseKind, responseContentType: link.responseContentType, responseSample: link.responseSample,
+      linkCheckedAt: link.linkCheckedAt,
+    } : {}),
+    protectSecret:  newProtectSecret(),
     slug:           s.slug,
     name:           s.name,
     asset:          token.asset,
     router:         token.router,
     creator:        token.creator,
-    upstreamUrl:    s.upstreamUrl,
+    upstreamUrl:    link ? link.upstreamUrl : s.upstreamUrl!,
     priceUsdc:      s.priceUsdc,
     upstreamSecret: generateSecret(),
-    timeoutSeconds: s.timeoutSeconds ?? 20,
+    timeoutSeconds: s.timeoutSeconds ?? (link ? 120 : 20),
     requestSchema:  s.requestSchema,
     responseSchema: s.responseSchema,
     description:    s.description,
-    examplePath:    s.examplePath,
+    examplePath:    link ? link.examplePath : s.examplePath,
     authSignedAt:   BigInt(issuedAt),
   }).returning();
   return row!;
@@ -98,12 +109,15 @@ export async function applyLaunchDetails(db: Db, body: LaunchDetailsInput, nowS:
     lastIssuedAt: withMetadata ? existing?.metadataSignedAt ?? null : null,
     requireListed: body.service !== undefined,
   });
-  if (body.service) await assertSafeUpstream(body.service.upstreamUrl);
+  // New model: call the pasted link once (must answer 2xx) before anything is written. Legacy: SSRF check only.
+  const s = body.service;
+  const link = s?.apiLink ? await prepareServiceLink({ apiLink: s.apiLink, wholeDomain: s.wholeDomain, apiKeyHeader: s.apiKeyHeader, apiKeyValue: s.apiKeyValue }) : null;
+  if (s && !s.apiLink && s.upstreamUrl) await assertSafeUpstream(s.upstreamUrl);
 
   return db.transaction(async (tx) => {
     await consumeSignedMessage(tx, message, token.creator, 'launch_details', body.issuedAt);
     if (withMetadata) await applyTokenMetadata(tx, asset, body, body.issuedAt);
-    const svc = body.service ? await insertService(tx, token, body.service, body.issuedAt) : null;
+    const svc = s ? await insertService(tx, token, s, body.issuedAt, link) : null;
     return {
       asset,
       metadataUpdated: withMetadata,

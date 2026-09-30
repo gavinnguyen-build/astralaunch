@@ -2,13 +2,22 @@ import { Hono, type Context } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { and, eq, isNull, lt, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { services } from '../db/schema.js';
-import { createServiceSchema, updateServiceSchema, serviceCreateMessage, serviceUpdateMessage } from '@astralaunch/shared';
-import { MONAD_NETWORK, USDC } from '@astralaunch/shared';
+import { services, type Service } from '../db/schema.js';
+import {
+  createServiceSchema, updateServiceSchema, serviceCreateMessage, serviceUpdateMessage,
+  linkCheckSchema, serviceSettingsSchema, serviceSettingsMessage, PROTECT_HEADER,
+} from '@astralaunch/shared';
+import { MONAD_NETWORK } from '@astralaunch/shared';
 import { assertSafeUpstream, SsrfError } from '../lib/ssrf.js';
 import { upstreamBaseError } from '../lib/upstream.js';
+import { gatewayLimits, paymentWindowS } from '../lib/proxy.js';
 import { authorizeTokenCreator, consumeSignedMessage, ServiceAuthError } from '../services/serviceAuth.js';
 import { insertService, serviceInputError } from '../services/creatorWrites.js';
+import { checkLink } from '../services/linkCheck.js';
+import {
+  ensureProtectSecret, exampleTarget, parseLinkOrThrow, prepareServiceLink, ServiceLinkError, type PreparedLink,
+} from '../services/serviceLinks.js';
+import { encryptSecret } from '../lib/secretBox.js';
 import { USDC_ADDR, PAYMENT_TIMEOUT_S } from '../env.js';
 
 const app = new Hono();
@@ -18,11 +27,25 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 function authError(c: Context, e: unknown) {
   if (e instanceof ServiceAuthError) return c.json({ error: e.message }, e.status);
-  if (e instanceof SsrfError) return c.json({ error: e.message }, 422);
+  if (e instanceof ServiceLinkError) return c.json({ error: e.message, check: e.check ?? null }, e.status);
+  if (e instanceof SsrfError) return c.json({ error: 'This link must be a public https address.' }, 422);
   throw e;
 }
 
-// POST /api/services — register a BYO service. Signed by the token's on-chain creator (D-SV1).
+/** Service fields that may be returned to anyone: never the link, the upstream, the key or a secret. */
+export function publicService(s: Service) {
+  return {
+    id: s.id, asset: s.asset, slug: s.slug, name: s.name, router: s.router, creator: s.creator, priceUsdc: s.priceUsdc,
+    description: s.description, examplePath: s.examplePath, timeoutSeconds: s.timeoutSeconds, active: s.active,
+    responseKind: s.responseKind, responseContentType: s.responseContentType, updatedAt: s.updatedAt,
+  };
+}
+
+const linkInput = (b: { apiLink?: string; wholeDomain?: boolean; apiKeyHeader?: string; apiKeyValue?: string }) =>
+  ({ apiLink: b.apiLink!, wholeDomain: b.wholeDomain, apiKeyHeader: b.apiKeyHeader || undefined, apiKeyValue: b.apiKeyValue });
+
+// POST /api/services — register a service. Signed by the token's on-chain creator (D-SV1).
+// New model: `apiLink` (+ optional key); the link must answer 2xx once before anything is stored.
 app.post('/', zValidator('json', createServiceSchema), async (c) => {
   const body = c.req.valid('json');
   const bad = serviceInputError(body);
@@ -34,19 +57,81 @@ app.post('/', zValidator('json', createServiceSchema), async (c) => {
     const token = await authorizeTokenCreator(db, {
       asset: body.asset, message, signature, issuedAt: body.issuedAt, nowS: nowS(),
     });
-    await assertSafeUpstream(body.upstreamUrl);
+    const link = body.apiLink ? await prepareServiceLink(linkInput(body)) : null;
+    if (!link) await assertSafeUpstream(body.upstreamUrl!);
 
     const svc = await db.transaction(async (tx) => {
       await consumeSignedMessage(tx, message, token.creator, 'service_create', body.issuedAt);
-      return insertService(tx, token, body, body.issuedAt);   // router + creator from chain, not the client
+      return insertService(tx, token, body, body.issuedAt, link);   // router + creator from chain, not the client
     });
-    return c.json({ id: svc.id, slug: svc.slug, router: svc.router }, 201);
+    return c.json({ id: svc.id, slug: svc.slug, router: svc.router, responseKind: svc.responseKind }, 201);
   } catch (e) {
     return authError(c, e);
   }
 });
 
-// PATCH /api/services/:id — update price/upstream/timeout/description. Signed by the token's on-chain creator (D-SV1).
+// POST /api/services/check — call a pasted link once and report what it returns (used before launching / attaching).
+// Public (no token exists yet before a launch), so it is rate-limited per client address.
+const checkHits = new Map<string, { n: number; resetAt: number }>();
+const CHECKS_PER_MINUTE = 10;
+function allowCheck(c: Context): boolean {
+  const ip = c.req.header('cf-connecting-ip') ?? c.req.header('x-real-ip') ?? c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? 'local';
+  const now = Date.now();
+  const hit = checkHits.get(ip);
+  if (!hit || hit.resetAt < now) { checkHits.set(ip, { n: 1, resetAt: now + 60_000 }); return true; }
+  hit.n += 1;
+  if (checkHits.size > 10_000) checkHits.clear();
+  return hit.n <= CHECKS_PER_MINUTE;
+}
+
+app.post('/check', zValidator('json', linkCheckSchema), async (c) => {
+  if (!allowCheck(c)) return c.json({ ok: false, error: 'Too many checks. Try again in a minute.' }, 429);
+  const body = c.req.valid('json');
+  try {
+    const link = parseLinkOrThrow(body);
+    const target = exampleTarget(link.upstreamUrl, link.examplePath);
+    if (!target) return c.json({ ok: false, error: 'The link path is not usable.' }, 400);
+    const headers = body.apiKeyHeader && body.apiKeyValue ? { [body.apiKeyHeader.toLowerCase()]: body.apiKeyValue } : {};
+    const check = await checkLink(target, headers, gatewayLimits().timeoutS);
+    const derived = { prefix: link.prefix, examplePath: link.examplePath };
+    if (!check.ok) return c.json({ ...derived, ...check }, 422);
+    return c.json({ ...derived, ...check });
+  } catch (e) {
+    if (e instanceof ServiceLinkError) return c.json({ ok: false, error: e.message }, e.status);
+    throw e;
+  }
+});
+
+// POST /api/services/:id/settings — the creator's private view (signed): the pasted link, the key header (never the
+// value), the protect-your-API secret and the protection probe result. The only endpoint that returns them.
+app.post('/:id/settings', zValidator('json', serviceSettingsSchema), async (c) => {
+  const id = c.req.param('id');
+  if (!UUID_RE.test(id)) return c.json({ error: 'Not found' }, 404);
+  const svc = await db.query.services.findFirst({ where: eq(services.id, id) });
+  if (!svc) return c.json({ error: 'Not found' }, 404);
+  const { signature, issuedAt } = c.req.valid('json');
+  try {
+    await authorizeTokenCreator(db, {
+      asset: svc.asset, message: serviceSettingsMessage(svc.id, svc.asset, issuedAt), signature, issuedAt, nowS: nowS(), requireListed: false,
+    });
+    const secret = await ensureProtectSecret(db, svc);
+    return c.json({
+      ...publicService(svc),
+      apiLink: svc.apiLink,
+      wholeDomain: svc.wholeDomain,
+      apiKey: svc.apiKeyHeader && svc.apiKeyEnc ? { header: svc.apiKeyHeader, set: true } : null,
+      protect: { header: PROTECT_HEADER, secret },
+      protection: { status: svc.protectionStatus, checkedAt: svc.protectionCheckedAt },
+      responseSample: svc.responseSample,
+      linkCheckedAt: svc.linkCheckedAt,
+      legacyUpstream: !svc.apiLink,
+    });
+  } catch (e) {
+    return authError(c, e);
+  }
+});
+
+// PATCH /api/services/:id — update price / link / key / timeout / description. Signed by the on-chain creator (D-SV1).
 app.patch('/:id', zValidator('json', updateServiceSchema), async (c) => {
   const id = c.req.param('id');
   const body = c.req.valid('json');
@@ -66,6 +151,15 @@ app.patch('/:id', zValidator('json', updateServiceSchema), async (c) => {
     });
     if (body.upstreamUrl) await assertSafeUpstream(body.upstreamUrl);
 
+    // A new link, or a new key on a link-based service: re-run the check (with the service's own headers).
+    const newKey = body.apiKeyHeader && body.apiKeyValue ? { apiKeyHeader: body.apiKeyHeader, apiKeyValue: body.apiKeyValue } : null;
+    let link: PreparedLink | null = null;
+    if (body.apiLink || (newKey && svc.apiLink)) {
+      link = await prepareServiceLink({
+        apiLink: body.apiLink ?? svc.apiLink!, wholeDomain: body.apiLink ? body.wholeDomain : svc.wholeDomain, ...(newKey ?? {}),
+      }, body.apiKeyHeader === '' ? { ...svc, apiKeyHeader: null, apiKeyEnc: null } : svc);
+    }
+
     const updated = await db.transaction(async (tx) => {
       await consumeSignedMessage(tx, message, token.creator, 'service_update', body.issuedAt);
       const [row] = await tx.update(services).set({
@@ -74,6 +168,16 @@ app.patch('/:id', zValidator('json', updateServiceSchema), async (c) => {
         ...(body.timeoutSeconds !== undefined && { timeoutSeconds: body.timeoutSeconds }),
         ...(body.description    !== undefined && { description:    body.description }),
         ...(body.examplePath    !== undefined && { examplePath:    body.examplePath || null }),   // "" removes it
+        ...(link && {
+          apiLink: link.apiLink, wholeDomain: link.wholeDomain, upstreamUrl: link.upstreamUrl, examplePath: link.examplePath,
+          responseKind: link.responseKind, responseContentType: link.responseContentType, responseSample: link.responseSample,
+          linkCheckedAt: link.linkCheckedAt, apiKeyHeader: link.apiKeyHeader, apiKeyEnc: link.apiKeyEnc,
+          ...(svc.apiLink ? {} : { timeoutSeconds: body.timeoutSeconds ?? 120 }),   // moving to the new model
+          protectionStatus: null, protectionCheckedAt: null,
+        }),
+        // Key on a legacy (upstreamUrl) service: stored without a link check.
+        ...(!link && newKey && { apiKeyHeader: newKey.apiKeyHeader, apiKeyEnc: encryptSecret(newKey.apiKeyValue, svc.id) }),
+        ...(body.apiKeyHeader === '' && !link && { apiKeyHeader: null, apiKeyEnc: null }),
         authSignedAt: BigInt(body.issuedAt),
         updatedAt:    new Date(),
       })
@@ -84,8 +188,7 @@ app.patch('/:id', zValidator('json', updateServiceSchema), async (c) => {
       return row;
     });
 
-    const { upstreamSecret: _secret, authSignedAt, ...publicFields } = updated;
-    return c.json({ ...publicFields, authSignedAt: authSignedAt?.toString() ?? null });
+    return c.json({ ...publicService(updated), authSignedAt: updated.authSignedAt?.toString() ?? null });
   } catch (e) {
     return authError(c, e);
   }
@@ -109,11 +212,12 @@ app.get('/:slug/manifest', async (c) => {
       asset:             USDC_ADDR,
       amount:            svc.priceUsdc,
       payTo:             svc.router,
-      maxTimeoutSeconds: PAYMENT_TIMEOUT_S,
+      maxTimeoutSeconds: paymentWindowS(PAYMENT_TIMEOUT_S, Math.min(svc.timeoutSeconds, gatewayLimits().timeoutS)),
       extra: { name: 'USDC', version: '2' },
     },
     endpoint: `/s/${svc.slug}`,
     examplePath: svc.examplePath,
+    response: svc.responseKind ? { kind: svc.responseKind, contentType: svc.responseContentType } : null,
   });
 });
 

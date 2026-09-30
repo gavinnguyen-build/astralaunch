@@ -17,12 +17,12 @@ function ip4(s: string): bigint {
   return s.split('.').reduce((acc, n) => (acc << 8n) | BigInt(n), 0n);
 }
 
-function isBlockedIpv4(addr: string): boolean {
+export function isBlockedIpv4(addr: string): boolean {
   const n = ip4(addr);
   return BLOCKED_CIDRS.some(([lo, hi]) => n >= lo && n <= hi);
 }
 
-function isBlockedIpv6(addr: string): boolean {
+export function isBlockedIpv6(addr: string): boolean {
   const lower = addr.toLowerCase();
   // ::1 loopback, link-local fe80::/10, site-local fc00::/7
   if (lower === '::1') return true;
@@ -30,8 +30,16 @@ function isBlockedIpv6(addr: string): boolean {
   return false;
 }
 
+/** True if a resolved address (v4 or v6, incl. IPv4-mapped v6) must never be an upstream target. */
+export function isBlockedAddress(addr: string): boolean {
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(addr);
+  if (mapped) return isBlockedIpv4(mapped[1]!);
+  const v = isIP(addr);
+  return v === 4 ? isBlockedIpv4(addr) : v === 6 ? isBlockedIpv6(addr) || addr === '::' : true;
+}
+
 /** Block plain IP literals that are private (before DNS resolution). */
-function blockIpLiteral(hostname: string): void {
+export function blockIpLiteral(hostname: string): void {
   const v4 = isIP(hostname);
   if (v4 === 4 && isBlockedIpv4(hostname)) throw new SsrfError(`Blocked IP: ${hostname}`);
   if (v4 === 6 && isBlockedIpv6(hostname)) throw new SsrfError(`Blocked IPv6: ${hostname}`);
@@ -93,6 +101,15 @@ export async function assertSafeUpstream(rawUrl: string): Promise<void> {
     if (e instanceof SsrfError) throw e;
     throw new SsrfError(`DNS resolution failed: ${(e as Error).message}`);
   }
+}
+
+/**
+ * How the gateway may reach `origin`: public https only, unless ALLOW_LOCAL_UPSTREAMS (local fork tests) or the
+ * exact origin is in UPSTREAM_ALLOWLIST (e.g. demo-services on the internal network, http allowed).
+ */
+export function upstreamPolicy(origin: string): { allowPrivate: boolean; httpsRequired: boolean } {
+  const trusted = ALLOW_LOCAL || ALLOWLIST.has(origin);
+  return { allowPrivate: trusted, httpsRequired: !trusted };
 }
 
 export class SsrfError extends Error {

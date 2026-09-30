@@ -44,6 +44,18 @@ export const services = pgTable('services', {
   requestSchema:  text('request_schema'),
   responseSchema: text('response_schema'),
   examplePath:    text('example_path'),       // sample call relative to /s/{slug} (0011)
+  // "One API link" model (0012). apiLink is private; apiKeyEnc is AES-256-GCM (lib/secretBox.ts), never returned.
+  apiLink:             text('api_link'),
+  wholeDomain:         boolean('whole_domain').notNull().default(false),
+  apiKeyHeader:        text('api_key_header'),
+  apiKeyEnc:           text('api_key_enc'),
+  protectSecret:       text('protect_secret'),       // X-Astralaunch-Secret value (generated lazily)
+  responseKind:        text('response_kind'),        // 'json' | 'stream' | 'file'
+  responseContentType: text('response_content_type'),
+  responseSample:      text('response_sample'),      // JSON only, truncated
+  linkCheckedAt:       timestamp('link_checked_at', { withTimezone: true }),
+  protectionStatus:    text('protection_status'),    // 'protected' | 'unprotected' | null (not probed yet)
+  protectionCheckedAt: timestamp('protection_checked_at', { withTimezone: true }),
   description:    text('description'),
   active:         boolean('active').notNull().default(true),
   authSignedAt:   bigint('auth_signed_at', { mode: 'bigint' }), // issuedAt of last accepted signed request (0007)

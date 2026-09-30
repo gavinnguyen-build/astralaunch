@@ -29,7 +29,9 @@ export async function creatorDashboard(db: Db, chain: CreatorChain, walletRaw: s
 
   const svc = own.length === 0 ? [] : await db.select({
     id: services.id, asset: services.asset, slug: services.slug, name: services.name, priceUsdc: services.priceUsdc,
-    upstreamUrl: services.upstreamUrl, timeoutSeconds: services.timeoutSeconds, description: services.description,
+    // Never the upstream link or secrets (public endpoint): those come from the signed POST /api/services/:id/settings.
+    timeoutSeconds: services.timeoutSeconds, description: services.description, examplePath: services.examplePath,
+    responseKind: services.responseKind, responseContentType: services.responseContentType,
     active: services.active, responseSchema: services.responseSchema, updatedAt: services.updatedAt,
   }).from(services).where(inArray(services.asset, own.map((t) => t.asset)));
 
