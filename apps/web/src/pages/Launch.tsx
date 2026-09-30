@@ -8,8 +8,7 @@
  */
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { createPublicClient, createWalletClient, custom, defineChain, getAddress, http, parseUnits, type Address } from 'viem';
-import { examplePathError } from '@astralaunch/shared';
+import { createPublicClient, createWalletClient, custom, defineChain, getAddress, http, type Address } from 'viem';
 import { LaunchView } from '../design/LaunchView.js';
 import { API_BASE, RPC_URL } from '../env.js';
 import { get } from '../lib/api.js';
@@ -18,6 +17,10 @@ import { PRIVY_ENABLED, useConnectedWallet } from '../components/Site.js';
 import { AddrLink, TxLink } from '../components/Explorer.js';
 import { A } from '../components/A.js';
 import { shortAddr } from '../lib/format.js';
+import { ServiceLinkForm, checkSummary, emptyServiceLink, serviceLinkErrors, toServiceLink, type ServiceLinkValue } from '../components/ServiceLinkForm.js';
+
+/** Public base of agent links (the API origin; same origin in local dev). */
+const AGENT_BASE = API_BASE || (typeof window !== 'undefined' ? window.location.origin : '');
 
 type Pair = 'usdc' | 'mon';
 const STEPS: Record<LaunchPlan['mode'], [StepKey, string][]> = {
@@ -48,8 +51,8 @@ export default function Launch() {
   const [service, setService] = useState<'api' | 'later'>('api');
   const f = {
     name: useField(), symbol: useField(), imageUrl: useField(), xHandle: useField(), website: useField(),
-    upstream: useField(), price: useField('0.02'), example: useField(),
   };
+  const [svcLink, setSvcLink] = useState<ServiceLinkValue>(emptyServiceLink());
   const status = useQuery({
     queryKey: ['feeStatus', wallet?.address], enabled: !!wallet && !!config.data,
     queryFn: () => feeStatus({ apiBase: API_BASE, account: wallet!.address as Address } as Ctx),
@@ -68,14 +71,9 @@ export default function Launch() {
     if (f.imageUrl.value && !/^https:\/\/\S+$/.test(f.imageUrl.value)) e.push('Image must be an https URL.');
     if (f.xHandle.value && !/^@?[A-Za-z0-9_]{1,15}$/.test(f.xHandle.value)) e.push('X account must be a handle like @name.');
     if (f.website.value && !/^https?:\/\/\S+$/.test(f.website.value)) e.push('Website must be a URL.');
-    if (service === 'api') {
-      if (!/^https?:\/\/\S+$/.test(f.upstream.value)) e.push('Upstream URL is required for "My API".');
-      if (!/^\d+(\.\d{1,6})?$/.test(f.price.value) || Number(f.price.value) <= 0 || Number(f.price.value) > 100) e.push('Price per call: 0.000001–100 USDC.');
-      const ex = f.example.value.trim();
-      if (ex && examplePathError(ex)) e.push('Example call must be a path on your API starting with "/", e.g. /price?token=MON.');
-    }
+    if (service === 'api') e.push(...serviceLinkErrors(svcLink));
     return e;
-  }, [f.name.value, f.symbol.value, f.imageUrl.value, f.xHandle.value, f.website.value, f.upstream.value, f.price.value, f.example.value, service]);
+  }, [f.name.value, f.symbol.value, f.imageUrl.value, f.xHandle.value, f.website.value, svcLink, service]);
 
   async function clients(cfg: ChainConfig): Promise<Ctx> {
     const chain = defineChain({ id: cfg.chainId, name: 'Monad', nativeCurrency: { name: 'MON', symbol: 'MON', decimals: 18 }, rpcUrls: { default: { http: [RPC_URL] } } });
@@ -96,10 +94,7 @@ export default function Launch() {
       name: f.name.value.trim(), symbol, pairing: pair,
       imageUrl: f.imageUrl.value || undefined, xHandle: f.xHandle.value ? f.xHandle.value.replace(/^@/, '') : undefined,
       website: f.website.value || undefined,
-      service: service === 'api' ? {
-        slug, name: f.name.value.trim(), upstreamUrl: f.upstream.value, priceUsdc: parseUnits(f.price.value, 6),
-        ...(f.example.value.trim() ? { examplePath: f.example.value.trim() } : {}),
-      } : undefined,
+      service: service === 'api' ? { slug, name: f.name.value.trim(), ...toServiceLink(svcLink) } : undefined,
     };
   }
 
@@ -188,6 +183,11 @@ export default function Launch() {
     vesting: group([{ id: 'v15', label: '15% vesting' }, { id: 'none', label: 'No vesting', soon: true }], 'v15'),
     services: group<'api' | 'later'>([{ id: 'api', label: 'My API' }, { id: 'later', label: 'Attach later' }], service, setService),
     hasApi: service === 'api', later: service === 'later',
+    serviceForm: (() => {
+      const sym = f.symbol.value.trim().toLowerCase();
+      const slug = sym.length >= 3 ? sym : sym ? `${sym}-api` : undefined;
+      return <ServiceLinkForm value={svcLink} onChange={setSvcLink} slug={slug} agentBase={AGENT_BASE} disabled={phase !== 'form'} />;
+    })(),
     feeNote: !connected ? '' : st?.unusedReceipts.length ? 'Already paid: your unused fee will be used' : limitHit ? 'Limit reached: 3 launches per 24h' : '',
     onLaunch, onCancel: () => setPhase('form'),
     launchDisabled: !connected || !config.data || errors.length > 0 || !!limitHit || phase !== 'form',
@@ -211,6 +211,7 @@ function Confirm({ plan, input, onCancel, onConfirm }: { plan: LaunchPlan; input
       <R k="Your wallet"><AddrLink a={plan.creator} /></R>
       <R k="Supply">1,000,000,000 · 85% pool · 15% vested</R>
       <R k="Vesting">15% to your wallet · 30-day cliff · 1 year</R>
+      {plan.linkCheck ? <R k="Your API">{checkSummary(plan.linkCheck)}</R> : null}
       <R k="Launch fee">{plan.feeTx.needed ? fmtMon(plan.feeTx.valueWei) : `${fmtMon(plan.feeTx.valueWei)} · already paid`}</R>
       <R k="Gas (est.)">{fmtMon(plan.estimatedMonCost - (plan.feeTx.needed ? plan.feeTx.valueWei : 0n))}{plan.mode === 'classic' ? ' · register estimated' : ''}</R>
       <R k="Estimated total">{fmtMon(plan.estimatedMonCost)} (fee + gas)</R>

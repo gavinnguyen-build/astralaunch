@@ -42,7 +42,7 @@ try {
   const a = await run('USDC launch with metadata + service', {
     name: 'Fork Sight', symbol: 'FSIGHT', pairing: 'usdc', xHandle: 'forksight', website: 'https://example.com',
     description: 'Fork test of the browser launch flow',
-    service: { slug: 'fork-sight', name: 'Fork Sight', upstreamUrl: 'http://127.0.0.1:4001', priceUsdc: 500_000n, description: 'Ranked X-style signals (sample data)' },
+    service: { slug: 'fork-sight', name: 'Fork Sight', apiLink: 'http://127.0.0.1:4001/sight/signals?handle=monad', priceUsdc: 500_000n, description: 'Ranked X-style signals (sample data)' },
   });
   const tok = await (await fetch(`${API}/api/tokens/${a.asset}`)).json() as { symbol: string; xHandle: string; service: { slug: string; priceUsdc: string } | null };
   log(`check: /api/tokens/${a.asset} → symbol ${tok.symbol}, x @${tok.xHandle}, service ${tok.service?.slug} @ ${tok.service?.priceUsdc}`);

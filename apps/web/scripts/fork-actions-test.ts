@@ -37,7 +37,7 @@ try {
     const ctx: Ctx = { publicClient: pc as never, walletClient: wcCreator, account: creator.address, apiBase: API, config };
     const slug = `phase-d-${Date.now() % 100000}`;
     const input = { name: 'Phase D', symbol: 'PHD', pairing: 'usdc' as const,
-      service: { slug, name: 'Phase D', upstreamUrl: 'http://127.0.0.1:4001', priceUsdc: 500_000n } };
+      service: { slug, name: 'Phase D', apiLink: 'http://127.0.0.1:4001/sight/signals?handle=monad', priceUsdc: 500_000n } };
     // a taken slug is refused before any transaction
     try { await planLaunch(ctx, { ...input, service: { ...input.service, slug: 'phase-d' } }); log('UNEXPECTED: taken slug accepted'); }
     catch (e) { log(`taken slug refused before any tx: ${(e as Error).message}`); }
@@ -48,7 +48,7 @@ try {
     const tok = await (await fetch(`${API}/api/tokens/${res.asset}`)).json() as { service: { id: string } };
     await new Promise((r) => setTimeout(r, 1_100)); // signed updates must be newer than the create (replay rule)
     const saved = await saveService(wcCreator, creator.address, API, { existingId: tok.service.id, asset: res.asset, slug, name: 'Phase D',
-      upstreamUrl: 'http://127.0.0.1:4001', priceUsdc: 600_000n });
+      priceUsdc: 600_000n });
     log(`service settings saved (signed PATCH): price ${(saved as { priceUsdc: string }).priceUsdc}`);
 
     const A: TradeAddrs = { universalRouter: UNIVERSAL_ROUTER, permit2: PERMIT2, quoter: V4_QUOTER, vault: config.contracts.vault, wmon: config.tokens.wmon, usdc: config.tokens.usdc };

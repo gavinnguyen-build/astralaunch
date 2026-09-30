@@ -48,7 +48,47 @@ export interface LaunchInput {
   xHandle?: string;
   website?: string;
   description?: string;
-  service?: { slug: string; name: string; upstreamUrl: string; priceUsdc: bigint; description?: string; examplePath?: string };
+  /** "One API link" service: the link the creator already uses, one price for every call, optional key / whole domain. */
+  service?: ServiceInput;
+}
+
+export interface ServiceInput {
+  slug: string; name: string; apiLink: string; priceUsdc: bigint; description?: string;
+  wholeDomain?: boolean; apiKey?: { header: string; value: string };
+}
+
+/** Result of POST /api/services/check (the server calls the pasted link once). */
+export type LinkCheckResult =
+  | { ok: true; status: number; kind: 'json' | 'stream' | 'file'; contentType: string | null; sample: string | null; prefix: string; examplePath: string }
+  | { ok: false; error: string; status?: number };
+
+/** Ask the server to call the pasted link once (must answer 2xx within the timeout). Never throws for a failed check. */
+export async function checkServiceLink(apiBase: string, s: Pick<ServiceInput, 'apiLink' | 'wholeDomain' | 'apiKey'>): Promise<LinkCheckResult> {
+  try {
+    const res = await fetch(`${apiBase}/api/services/check`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        apiLink: s.apiLink, ...(s.wholeDomain ? { wholeDomain: true } : {}),
+        ...(s.apiKey ? { apiKeyHeader: s.apiKey.header, apiKeyValue: s.apiKey.value } : {}),
+      }),
+    });
+    const body = await res.json().catch(() => ({})) as LinkCheckResult & { error?: string };
+    if (res.ok && body.ok) return body;
+    return { ok: false, error: body.error ?? `The check failed (${res.status}).`, status: body.status };
+  } catch {
+    return { ok: false, error: 'Could not reach Astralaunch to check the link. Try again.' };
+  }
+}
+
+/** Signed service fields (create / launch-details): only what is set, so the canonical message stays minimal. */
+export function serviceFields(s: ServiceInput) {
+  return {
+    slug: s.slug, name: s.name, priceUsdc: s.priceUsdc.toString(),
+    ...(s.description ? { description: s.description } : {}),
+    apiLink: s.apiLink.trim(),
+    ...(s.wholeDomain ? { wholeDomain: true } : {}),
+    ...(s.apiKey ? { apiKeyHeader: s.apiKey.header, apiKeyValue: s.apiKey.value } : {}),
+  };
 }
 
 export interface Ctx {
@@ -139,6 +179,8 @@ export interface LaunchPlan {
   mode: 'helper' | 'classic';
   /** Wallet transactions / signatures the user will be asked for. */
   txCount: number; signatureCount: number;
+  /** The service link check (null without a service): passed, or launching is blocked. */
+  linkCheck: Extract<LinkCheckResult, { ok: true }> | null;
   creator: Address;
   numeraire: Address; numeraireSymbol: 'USDC' | 'MON'; numerairePrice: number; oracleNote: string;
   beneficiaries: { beneficiary: Address; shares: bigint; label: string }[];
@@ -237,9 +279,14 @@ export async function planLaunch(ctx: Ctx, input: LaunchInput): Promise<LaunchPl
       'rate_limited', { nextSlotAt: status.nextSlotAt });
   }
   // A taken service slug would only fail after the token is launched: check it before any tx.
+  let linkCheck: LaunchPlan['linkCheck'] = null;
   if (input.service) {
     const m = await fetch(`${ctx.apiBase}/api/services/${encodeURIComponent(input.service.slug)}/manifest`);
     if (m.status === 200) throw new LaunchError(`The service name "${input.service.slug}" is already taken. Choose another ticker or attach the API later.`, 'slug_taken');
+    // Call the pasted link once before any transaction; a failing link blocks the launch.
+    const check = await checkServiceLink(ctx.apiBase, input.service);
+    if (!check.ok) throw new LaunchError(`Your API link did not pass the check: ${check.error}`, 'link_check', { check });
+    linkCheck = check;
   }
   const reuse = status.unusedReceipts[0]?.txHash ?? null;
   const feeWei = BigInt(ctx.config.launchFee.wei);
@@ -258,7 +305,7 @@ export async function planLaunch(ctx: Ctx, input: LaunchInput): Promise<LaunchPl
     const gasPrice = await ctx.publicClient.getGasPrice();
     const monBalance = await ctx.publicClient.getBalance({ address: ctx.account });
     return {
-      ...p, mode: 'helper', txCount: 1, signatureCount: wantsSignature(input) ? 1 : 0,
+      ...p, mode: 'helper', txCount: 1, signatureCount: wantsSignature(input) ? 1 : 0, linkCheck,
       excludedFromBalanceLimit: p.excluded, previewStartTime, predictedToken: result[0],
       feeTx: { needed: !reuse, reusingReceipt: reuse, valueWei: feeWei, gas: null },
       launchGas: gas, registerGas: 'included', gasPrice, estimatedMonCost: gas * gasPrice + value, monBalance,
@@ -277,7 +324,7 @@ export async function planLaunch(ctx: Ctx, input: LaunchInput): Promise<LaunchPl
   // register() ≈ 1M gas on the fork; shown as an estimate until the token exists.
   const estimatedMonCost = (withBuffer(launchGas) + withBuffer(1_000_000n) + (feeGas ? withBuffer(feeGas) : 0n)) * gasPrice + (reuse ? 0n : feeWei);
   return {
-    ...p, mode: 'classic', txCount: (reuse ? 0 : 1) + 2,
+    ...p, mode: 'classic', txCount: (reuse ? 0 : 1) + 2, linkCheck,
     signatureCount: (hasMetadata(input) ? 1 : 0) + (input.service ? 1 : 0),
     excludedFromBalanceLimit: p.excluded, previewStartTime, predictedToken: sim.tokenAddress as Address,
     feeTx: { needed: !reuse, reusingReceipt: reuse, valueWei: feeWei, gas: feeGas ? withBuffer(feeGas) : null },
@@ -387,12 +434,7 @@ export async function executeLaunch(ctx: Ctx, input: LaunchInput, plan: LaunchPl
   if (!input.service) progress('service', 'skipped');
   else {
     progress('service', 'running', { note: 'sign in your wallet' });
-    const svc = {
-      asset, slug: input.service.slug, name: input.service.name, upstreamUrl: input.service.upstreamUrl,
-      priceUsdc: input.service.priceUsdc.toString(), ...(input.service.description ? { description: input.service.description } : {}),
-      ...(input.service.examplePath ? { examplePath: input.service.examplePath } : {}),
-      issuedAt: Math.floor(Date.now() / 1000),
-    };
+    const svc = { asset, ...serviceFields(input.service), issuedAt: Math.floor(Date.now() / 1000) };
     const signature = await ctx.walletClient.signMessage({ account: ctx.account, message: serviceCreateMessage(svc) });
     const r = await api<{ error?: string }>(ctx, '/api/services', { method: 'POST', body: JSON.stringify({ ...svc, signature }) });
     if (r.status !== 201) throw new LaunchError(`Service was not registered: ${r.body.error ?? r.status}`, 'service_failed', { asset });
@@ -463,11 +505,7 @@ async function executeHelperLaunch(ctx: Ctx, input: LaunchInput, plan: LaunchPla
     asset, issuedAt: Math.floor(Date.now() / 1000),
     ...(input.imageUrl ? { imageUrl: input.imageUrl } : {}), ...(input.xHandle ? { xHandle: input.xHandle } : {}),
     ...(input.website ? { website: input.website } : {}), ...(input.description ? { description: input.description } : {}),
-    ...(input.service ? { service: {
-      slug: input.service.slug, name: input.service.name, upstreamUrl: input.service.upstreamUrl,
-      priceUsdc: input.service.priceUsdc.toString(), ...(input.service.description ? { description: input.service.description } : {}),
-      ...(input.service.examplePath ? { examplePath: input.service.examplePath } : {}),
-    } } : {}),
+    ...(input.service ? { service: serviceFields(input.service) } : {}),
   };
   const wants = hasMetadata(input) || !!input.service;
   let signature: Hex | null = null;

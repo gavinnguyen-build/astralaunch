@@ -63,7 +63,7 @@ try {
   const a = await run('USDC + metadata + service, one tx + one signature', {
     name: 'Helper Sight', symbol: 'HSIGHT', pairing: 'usdc', xHandle: 'helpersight', website: 'https://example.com',
     description: 'One-transaction launch',
-    service: { slug: 'helper-sight', name: 'Helper Sight', upstreamUrl: 'http://127.0.0.1:4001', priceUsdc: 500_000n, description: 'sample' },
+    service: { slug: 'helper-sight', name: 'Helper Sight', apiLink: 'http://127.0.0.1:4001/sight/signals?handle=monad', priceUsdc: 500_000n, description: 'sample' },
   }, { tx: 1, sig: 1, fee: true });
   const tok = await (await fetch(`${API}/api/tokens/${a.asset}`)).json() as { xHandle: string; website: string; service: { slug: string; priceUsdc: string } | null };
   check(tok.xHandle === 'helpersight' && tok.website === 'https://example.com' && tok.service?.slug === 'helper-sight' && tok.service?.priceUsdc === '500000',
