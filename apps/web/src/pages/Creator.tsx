@@ -91,7 +91,8 @@ export default function Creator() {
       const c = await walletClients(walletObj!, cfg.data!);
       const st = await loadServiceSettings(c.walletClient, c.account, API_BASE, svc.id, tok!.asset as Address);
       setSettings(st);
-      setSvcLink((v) => ({ ...v, apiLink: st.apiLink ?? '', wholeDomain: st.wholeDomain }));
+      setSvcLink((v) => ({ ...v, apiLink: st.apiLink ?? '', wholeDomain: st.wholeDomain,
+        sampleMethod: st.sampleRequest?.method ?? '', sampleBody: st.sampleRequest?.body ?? '' }));
     } catch (e) { setAction({ stage: 'error', title: 'Service settings', err: errMsg(e), sign: true }); }
     finally { setRevealing(false); }
   }
@@ -104,12 +105,18 @@ export default function Creator() {
       const c = await walletClients(walletObj!, cfg.data!);
       const f = toServiceLink(svcLink);
       const linkChanged = !!f.apiLink && (!settings || f.apiLink !== settings.apiLink || !!f.wholeDomain !== settings.wholeDomain);
+      // Sample: send when it differs from what is stored ('' removes a stored one); unknown until the settings are shown.
+      const stored = settings?.sampleRequest ?? null;
+      const formSample = svcLink.sampleMethod ? `${svcLink.sampleMethod} ${svcLink.sampleMethod === 'POST' ? svcLink.sampleBody.trim() : ''}` : '';
+      const storedSample = stored ? `${stored.method} ${stored.method === 'POST' ? stored.body ?? '' : ''}` : '';
+      const sampleChanged = settings ? formSample !== storedSample : !!svcLink.sampleMethod;
       const priceChanged = !svc || f.priceUsdc !== BigInt(svc.priceUsdc);
       await saveService(c.walletClient, c.account, API_BASE, {
         existingId: svc?.id, asset: tok!.asset as Address, slug: slugFor(tok!.symbol), name: tok!.name,
         ...(priceChanged ? { priceUsdc: f.priceUsdc } : {}),
         ...(linkChanged || !svc ? { apiLink: f.apiLink, wholeDomain: f.wholeDomain } : {}),
         ...(f.apiKey ? { apiKey: f.apiKey } : {}),
+        ...(!svc || sampleChanged ? { sampleMethod: svcLink.sampleMethod, sampleBody: svcLink.sampleBody.trim() || undefined } : {}),
       });
       setAction({ stage: 'done', title: svc ? 'Service settings saved' : 'API attached', sign: true });
       setSettings(null); dash.refetch();

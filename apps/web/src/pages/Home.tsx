@@ -57,7 +57,7 @@ export default function Home() {
       calls: compact(t.usage30d?.paidCalls ?? 0), by: <AddrLink a={t.creator} label={handle} />, age: ago(t.launchedAt),
       href: `/token/${t.asset}`, chartHref: `/token/${t.asset}/chart`, hasService: !!t.service,
       // "Try a sample call": only when the service has a signed example call.
-      onTry: t.service?.examplePath ? () => (wallet ? setSample(t) : login?.()) : null,
+      onTry: t.service?.sample ? () => (wallet ? setSample(t) : login?.()) : null,
       tryDisabled: !cfg.data || (!wallet && !login),
       tryTitle: !PRIVY_ENABLED ? 'Set VITE_PRIVY_APP_ID to connect a wallet' : !wallet ? 'Connect a wallet to run a paid sample call'
         : t.service ? `One paid call · ${Number(t.service.priceUsdc) / 1e6} USDC` : '',
@@ -77,8 +77,8 @@ export default function Home() {
         border: on ? '0' : '1px solid #2A2640', pick: () => setFilter(f.slug) };
     }),
     cards,
-    modal: sample?.service?.examplePath && wallet && cfg.data ? (
-      <SampleCall asset={sample.asset as `0x${string}`} slug={sample.service.slug} examplePath={sample.service.examplePath}
+    modal: sample?.service?.sample && wallet && cfg.data ? (
+      <SampleCall asset={sample.asset as `0x${string}`} slug={sample.service.slug} sample={sample.service.sample}
         priceUsdc={sample.service.priceUsdc} wallet={wallet} config={cfg.data} onClose={() => setSample(null)} />
     ) : null,
     moreHref: `/discover?filter=${filter}`,

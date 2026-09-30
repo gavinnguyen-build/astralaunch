@@ -15,13 +15,20 @@ import { MONAD_NETWORK } from '@astralaunch/shared';
 const registryAbi = [{ type: 'function', name: 'routers', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'address' }] }] as const;
 const erc20Abi = [{ type: 'function', name: 'balanceOf', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] }] as const;
 
+/** A sample request: GET, or POST with a JSON body. */
+export interface SampleRequest { method: 'GET' | 'POST'; body: string | null }
+
+const init = (r?: SampleRequest | null): RequestInit => r?.method === 'POST'
+  ? { method: 'POST', ...(r.body ? { body: r.body, headers: { 'Content-Type': 'application/json' } } : {}) }
+  : {};
+
 export interface CallPlan {
-  url: string; paymentRequired: PaymentRequired; requirement: PaymentRequirements;
+  url: string; request: SampleRequest | null; paymentRequired: PaymentRequired; requirement: PaymentRequirements;
   amount: bigint; payTo: Address; balance: bigint;
 }
 
-export async function prepareCall(pc: PublicClient, account: Address, url: string, asset: Address, registry: Address, usdc: Address): Promise<CallPlan | { free: true; status: number; body: string }> {
-  const first = await fetch(url);
+export async function prepareCall(pc: PublicClient, account: Address, url: string, asset: Address, registry: Address, usdc: Address, request: SampleRequest | null = null): Promise<CallPlan | { free: true; status: number; body: string }> {
+  const first = await fetch(url, init(request));
   if (first.status !== 402) return { free: true, status: first.status, body: await first.text() };
   const http = new x402HTTPClient(new x402Client());
   const paymentRequired = http.getPaymentRequiredResponse((n) => first.headers.get(n), await first.json().catch(() => undefined));
@@ -30,7 +37,7 @@ export async function prepareCall(pc: PublicClient, account: Address, url: strin
   const router = getAddress(await pc.readContract({ address: registry, abi: registryAbi, functionName: 'routers', args: [asset] }));
   if (getAddress(req.payTo) !== router) throw new Error(`payTo ${req.payTo} is not this token's revenue router ${router}. Not paying.`);
   const balance = await pc.readContract({ address: usdc, abi: erc20Abi, functionName: 'balanceOf', args: [account] });
-  return { url, paymentRequired, requirement: req, amount: BigInt(req.amount), payTo: router, balance };
+  return { url, request, paymentRequired, requirement: req, amount: BigInt(req.amount), payTo: router, balance };
 }
 
 export async function payAndCall(pc: PublicClient, wc: WalletClient, account: Address, plan: CallPlan) {
@@ -47,7 +54,8 @@ export async function payAndCall(pc: PublicClient, wc: WalletClient, account: Ad
     throw new Error('The signed authorization does not match the requirement. Not sending.');
   }
   const http = new x402HTTPClient(client);
-  const res = await fetch(plan.url, { headers: http.encodePaymentSignatureHeader(payload) });
+  const base = init(plan.request);
+  const res = await fetch(plan.url, { ...base, headers: { ...(base.headers as Record<string, string> | undefined), ...http.encodePaymentSignatureHeader(payload) } });
   const body = await res.text();
   let settleTx: string | null = null;
   try { settleTx = http.getPaymentSettleResponse((n) => res.headers.get(n)).transaction ?? null; } catch { /* not settled */ }

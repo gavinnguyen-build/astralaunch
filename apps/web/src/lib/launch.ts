@@ -55,21 +55,25 @@ export interface LaunchInput {
 export interface ServiceInput {
   slug: string; name: string; apiLink: string; priceUsdc: bigint; description?: string;
   wholeDomain?: boolean; apiKey?: { header: string; value: string };
+  /** Sample request (Advanced): method, and a JSON body for POST. Absent = plain GET on the link. */
+  sampleMethod?: 'GET' | 'POST'; sampleBody?: string;
 }
 
 /** Result of POST /api/services/check (the server calls the pasted link once). */
 export type LinkCheckResult =
-  | { ok: true; status: number; kind: 'json' | 'stream' | 'file'; contentType: string | null; sample: string | null; prefix: string; examplePath: string }
+  | { ok: true; status: number; kind: 'json' | 'stream' | 'file' | null; contentType: string | null; sample: string | null; prefix: string; examplePath: string; noSample?: string }
   | { ok: false; error: string; status?: number };
 
 /** Ask the server to call the pasted link once (must answer 2xx within the timeout). Never throws for a failed check. */
-export async function checkServiceLink(apiBase: string, s: Pick<ServiceInput, 'apiLink' | 'wholeDomain' | 'apiKey'>): Promise<LinkCheckResult> {
+export async function checkServiceLink(apiBase: string, s: Pick<ServiceInput, 'apiLink' | 'wholeDomain' | 'apiKey' | 'sampleMethod' | 'sampleBody'>): Promise<LinkCheckResult> {
   try {
     const res = await fetch(`${apiBase}/api/services/check`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         apiLink: s.apiLink, ...(s.wholeDomain ? { wholeDomain: true } : {}),
         ...(s.apiKey ? { apiKeyHeader: s.apiKey.header, apiKeyValue: s.apiKey.value } : {}),
+        ...(s.sampleMethod ? { sampleMethod: s.sampleMethod } : {}),
+        ...(s.sampleMethod === 'POST' && s.sampleBody ? { sampleBody: s.sampleBody } : {}),
       }),
     });
     const body = await res.json().catch(() => ({})) as LinkCheckResult & { error?: string };
@@ -88,6 +92,8 @@ export function serviceFields(s: ServiceInput) {
     apiLink: s.apiLink.trim(),
     ...(s.wholeDomain ? { wholeDomain: true } : {}),
     ...(s.apiKey ? { apiKeyHeader: s.apiKey.header, apiKeyValue: s.apiKey.value } : {}),
+    ...(s.sampleMethod ? { sampleMethod: s.sampleMethod } : {}),
+    ...(s.sampleMethod === 'POST' && s.sampleBody ? { sampleBody: s.sampleBody } : {}),
   };
 }
 

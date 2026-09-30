@@ -2,13 +2,14 @@
  * "One API link" service form, shared by the Launch page and the Creator page Service card:
  * "Your API link" + "Price per call (USDC)", everything else in a collapsed "Advanced" section.
  */
-import { parseApiLink, agentExampleUrl } from '@astralaunch/shared';
+import { parseApiLink, agentExampleUrl, sampleBodyError } from '@astralaunch/shared';
 import { parseUnits } from 'viem';
 import type { LinkCheckResult, ServiceInput } from '../lib/launch.js';
 
-export interface ServiceLinkValue { apiLink: string; price: string; wholeDomain: boolean; keyHeader: string; keyValue: string }
+/** sampleMethod '' = no sample request (the link is checked with a plain GET). */
+export interface ServiceLinkValue { apiLink: string; price: string; wholeDomain: boolean; keyHeader: string; keyValue: string; sampleMethod: '' | 'GET' | 'POST'; sampleBody: string }
 
-export const emptyServiceLink = (price = '0.02'): ServiceLinkValue => ({ apiLink: '', price, wholeDomain: false, keyHeader: '', keyValue: '' });
+export const emptyServiceLink = (price = '0.02'): ServiceLinkValue => ({ apiLink: '', price, wholeDomain: false, keyHeader: '', keyValue: '', sampleMethod: '', sampleBody: '' });
 
 export const SERVICE_HELP = 'Your API must answer within one request. Streaming is fine.';
 
@@ -20,14 +21,17 @@ export function serviceLinkErrors(v: ServiceLinkValue): string[] {
   if (!/^\d+(\.\d{1,6})?$/.test(v.price) || Number(v.price) <= 0 || Number(v.price) > 100) e.push('Price per call: 0.000001–100 USDC.');
   if (!!v.keyHeader.trim() !== !!v.keyValue) e.push('API key: fill in both the header name and the value (or neither).');
   if (v.keyHeader.trim() && !/^[A-Za-z0-9-]{1,64}$/.test(v.keyHeader.trim())) e.push('API key header: letters, digits and "-" only (e.g. X-Api-Key).');
+  if (v.sampleMethod === 'POST' && v.sampleBody.trim()) { const b = sampleBodyError(v.sampleBody.trim()); if (b) e.push(`Sample request: ${b}`); }
   return e;
 }
 
-export function toServiceLink(v: ServiceLinkValue): Pick<ServiceInput, 'apiLink' | 'priceUsdc' | 'wholeDomain' | 'apiKey'> {
+export function toServiceLink(v: ServiceLinkValue): Pick<ServiceInput, 'apiLink' | 'priceUsdc' | 'wholeDomain' | 'apiKey' | 'sampleMethod' | 'sampleBody'> {
   return {
     apiLink: v.apiLink.trim(), priceUsdc: parseUnits(v.price, 6),
     ...(v.wholeDomain ? { wholeDomain: true } : {}),
     ...(v.keyHeader.trim() && v.keyValue ? { apiKey: { header: v.keyHeader.trim(), value: v.keyValue } } : {}),
+    ...(v.sampleMethod ? { sampleMethod: v.sampleMethod } : {}),
+    ...(v.sampleMethod === 'POST' && v.sampleBody.trim() ? { sampleBody: v.sampleBody.trim() } : {}),
   };
 }
 
@@ -39,6 +43,7 @@ const hint = { fontSize: '13px', fontWeight: 400, color: '#8C87A3' };
 /** One line describing what the link check found. */
 export function checkSummary(c: LinkCheckResult): string {
   if (!c.ok) return c.error;
+  if (!c.kind) return c.noSample ?? 'Your API is reachable. No sample call.';
   const what = c.kind === 'json' ? 'JSON' : c.kind === 'stream' ? 'a stream' : `a file${c.contentType ? ` (${c.contentType.split(';')[0]})` : ''}`;
   return `Your API answered ${c.status} with ${what}.`;
 }
@@ -95,6 +100,24 @@ export function ServiceLinkForm({ value, onChange, slug, agentBase, check, keySe
             <input type="checkbox" checked={value.wholeDomain} disabled={disabled} onChange={(e) => set({ wholeDomain: e.target.checked })} />
             Open the whole domain
           </label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '4px', borderTop: '1px solid #25213A' }}>
+            <span style={{ fontSize: '14px', fontWeight: 600, marginTop: '8px' }}>Sample request</span>
+            <div style={{ display: 'grid', gridTemplateColumns: '140px minmax(0,1fr)', gap: '14px', alignItems: 'start' }}>
+              <label style={label}>Method
+                <select value={value.sampleMethod} disabled={disabled} onChange={(e) => set({ sampleMethod: e.target.value as ServiceLinkValue['sampleMethod'] })} style={input}>
+                  <option value="">Not set</option><option value="GET">GET</option><option value="POST">POST</option>
+                </select>
+              </label>
+              {value.sampleMethod === 'POST' ? (
+                <label style={label}>JSON body
+                  <textarea value={value.sampleBody} disabled={disabled} onChange={(e) => set({ sampleBody: e.target.value })} rows={4}
+                    placeholder='{"message": "hello"}' spellCheck={false}
+                    style={{ ...mono, height: 'auto', padding: '10px 14px', resize: 'vertical', fontSize: '13px' }} />
+                </label>
+              ) : <span style={{ ...hint, paddingTop: '30px' }}>{value.sampleMethod === 'GET' ? 'Your link is called with GET.' : 'Optional.'}</span>}
+            </div>
+            <span style={hint}>The call made to check your API and by &quot;Try a sample call&quot; on your token page. Set it if your API needs a POST body (max 16 KB).</span>
+          </div>
           <span style={hint}>
             {parsed?.ok
               ? value.wholeDomain

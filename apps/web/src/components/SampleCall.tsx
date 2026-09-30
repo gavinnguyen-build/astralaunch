@@ -1,5 +1,5 @@
 /**
- * "Try a sample call": one paid call to the service's examplePath through the x402 gateway, from the
+ * "Try a sample call": one paid call to the service's sample request (GET, or POST with its JSON body) through the x402 gateway, from the
  * browser wallet (EIP-3009 signature, no gas). Used by the token page and the Home cards.
  * No path typing: the request is the creator's signed examplePath. The response body is not shown;
  * the outcome is Done + the settlement tx, or one plain sentence (the gateway never charges a failure).
@@ -18,10 +18,28 @@ export const gatewayBase = () => (API_BASE || window.location.origin);
 export const agentLink = (slug: string) => `${gatewayBase()}/s/${slug}/`;
 export const priceLabel = (priceUsdc: string) => formatUnits(BigInt(priceUsdc), 6);
 
-/** "name: value" lines for the example's query parameters (empty = no input). */
-export function exampleParams(examplePath: string): [string, string][] {
-  const q = examplePath.includes('?') ? examplePath.slice(examplePath.indexOf('?') + 1) : '';
-  return [...new URLSearchParams(q).entries()];
+/** A service's public sample call (GET /api/tokens*, `service.sample`); null = no sample call. */
+export interface ServiceSample { method: 'GET' | 'POST'; path: string; body: string | null }
+
+/** "name: value" lines for the sample's input: query parameters, then a JSON body's top-level fields (empty = no input). */
+export function exampleParams(sample: ServiceSample): [string, string][] {
+  const q = sample.path.includes('?') ? sample.path.slice(sample.path.indexOf('?') + 1) : '';
+  const out: [string, string][] = [...new URLSearchParams(q).entries()];
+  if (sample.method === 'POST' && sample.body) {
+    try {
+      const j = JSON.parse(sample.body) as unknown;
+      if (j && typeof j === 'object' && !Array.isArray(j)) for (const [k, v] of Object.entries(j)) out.push([k, typeof v === 'string' ? v : JSON.stringify(v)]);
+      else out.push(['body', sample.body]);
+    } catch { out.push(['body', sample.body]); }
+  }
+  return out;
+}
+
+/** The sample as one copyable request: a URL for GET, a curl command for POST. */
+export function sampleRequestText(slug: string, sample: ServiceSample): string {
+  const url = agentLink(slug) + sample.path.replace(/^\//, '');
+  if (sample.method !== 'POST') return url;
+  return `curl -X POST '${url}' -H 'Content-Type: application/json'${sample.body ? ` -d '${sample.body.replace(/'/g, `'\\''`)}'` : ''}`;
 }
 
 type State = { k: 'confirm' } | { k: 'running' } | { k: 'done'; tx: string | null } | { k: 'failed'; msg: string };
@@ -34,20 +52,21 @@ function failure(e: unknown): string {
   return 'The service did not answer. You were not charged.';
 }
 
-export function SampleCall({ asset, slug, examplePath, priceUsdc, wallet, config, onClose, onPaid }: {
-  asset: Address; slug: string; examplePath: string; priceUsdc: string; wallet: PrivyWallet; config: ChainConfig;
+export function SampleCall({ asset, slug, sample, priceUsdc, wallet, config, onClose, onPaid }: {
+  asset: Address; slug: string; sample: ServiceSample; priceUsdc: string; wallet: PrivyWallet; config: ChainConfig;
   onClose: () => void; onPaid?: () => void;
 }) {
   const [st, setSt] = useState<State>({ k: 'confirm' });
-  const params = exampleParams(examplePath);
+  const params = exampleParams(sample);
   const price = priceLabel(priceUsdc);
 
   async function run() {
     setSt({ k: 'running' });
     try {
       const c = await walletClients(wallet, config);
-      const url = `${gatewayBase()}/s/${slug}${examplePath}`;
-      const plan = await prepareCall(c.publicClient, c.account, url, asset, config.contracts.registry, config.tokens.usdc);
+      const url = `${gatewayBase()}/s/${slug}${sample.path}`;
+      const plan = await prepareCall(c.publicClient, c.account, url, asset, config.contracts.registry, config.tokens.usdc,
+        { method: sample.method, body: sample.body });
       if ('free' in plan) {
         setSt(plan.status >= 200 && plan.status < 300 ? { k: 'done', tx: null } : { k: 'failed', msg: 'The service did not answer. You were not charged.' });
         return;

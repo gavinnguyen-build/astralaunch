@@ -61,19 +61,23 @@ export async function prepareRelease(pc: PublicClient, wc: WalletClient, account
 export async function saveService(wc: WalletClient, account: Address, apiBase: string, s: {
   existingId?: string; asset: Address; slug: string; name: string;
   priceUsdc?: bigint; apiLink?: string; wholeDomain?: boolean; apiKey?: { header: string; value: string };
+  /** Sample request: GET/POST (+ JSON body for POST); '' removes a stored one (updates only). */
+  sampleMethod?: '' | 'GET' | 'POST'; sampleBody?: string;
 }) {
   const issuedAt = Math.floor(Date.now() / 1000);
   const link = s.apiLink ? { apiLink: s.apiLink, ...(s.wholeDomain ? { wholeDomain: true } : {}) } : {};
   const key = s.apiKey ? { apiKeyHeader: s.apiKey.header, apiKeyValue: s.apiKey.value } : {};
+  const sample = s.sampleMethod === undefined ? {}
+    : { sampleMethod: s.sampleMethod, ...(s.sampleMethod === 'POST' && s.sampleBody ? { sampleBody: s.sampleBody } : {}) };
   let url: string, method: 'POST' | 'PATCH', body: Record<string, unknown>;
   if (s.existingId) {
-    const fields = { ...(s.priceUsdc !== undefined ? { priceUsdc: s.priceUsdc.toString() } : {}), ...link, ...key, issuedAt };
-    if (Object.keys(fields).length === 1) throw new Error('Nothing to save: change the link, the price or the API key.');
+    const fields = { ...(s.priceUsdc !== undefined ? { priceUsdc: s.priceUsdc.toString() } : {}), ...link, ...key, ...sample, issuedAt };
+    if (Object.keys(fields).length === 1) throw new Error('Nothing to save: change the link, the price, the API key or the sample request.');
     const signature = await wc.signMessage({ account, message: serviceUpdateMessage(s.existingId, s.asset, fields) });
     url = `${apiBase}/api/services/${s.existingId}`; method = 'PATCH'; body = { ...fields, signature };
   } else {
     if (!s.apiLink || s.priceUsdc === undefined) throw new Error('Paste your API link and set a price.');
-    const fields = { asset: s.asset, slug: s.slug, name: s.name, priceUsdc: s.priceUsdc.toString(), ...link, ...key, issuedAt };
+    const fields = { asset: s.asset, slug: s.slug, name: s.name, priceUsdc: s.priceUsdc.toString(), ...link, ...key, ...(s.sampleMethod ? sample : {}), issuedAt };
     const signature = await wc.signMessage({ account, message: serviceCreateMessage(fields) });
     url = `${apiBase}/api/services`; method = 'POST'; body = { ...fields, signature };
   }
@@ -91,6 +95,7 @@ export interface ServiceSettings {
   protect: { header: string; secret: string };
   protection: { status: 'protected' | 'unprotected' | null; checkedAt: string | null };
   responseKind: string | null; responseContentType: string | null;
+  sampleRequest: { method: 'GET' | 'POST'; body: string | null } | null;
 }
 
 export async function loadServiceSettings(wc: WalletClient, account: Address, apiBase: string, serviceId: string, asset: Address): Promise<ServiceSettings> {

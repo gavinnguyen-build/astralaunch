@@ -23,12 +23,12 @@ export interface Usage {
 export interface TokenListItem {
   asset: string; name: string; symbol: string; creator: string; router: string; imageUrl: string | null;
   launchedAt: string; xHandle: string | null; description: string | null; verified: boolean; holders: number;
-  service: { slug: string; name: string; description: string | null; priceUsdc: string; endpoint: string; examplePath: string | null } | null;
+  service: { slug: string; name: string; description: string | null; priceUsdc: string; endpoint: string; examplePath: string | null; sample: { method: 'GET' | 'POST'; path: string; body: string | null } | null } | null;
   market: Market | null; usage30d: Usage | null;
 }
 export interface TokenDetail extends Omit<TokenListItem, 'service' | 'usage30d'> {
   website: string | null; twitter: string | null; launcher: string; poolId: string; numeraire: string; decimals: number;
-  service: { id: string; slug: string; name: string; description: string | null; priceUsdc: string; requestSchema: string | null; responseSchema: string | null; endpoint: string; examplePath: string | null; response: { kind: 'json' | 'stream' | 'file'; contentType: string | null; sample: string | null } | null } | null;
+  service: { id: string; slug: string; name: string; description: string | null; priceUsdc: string; requestSchema: string | null; responseSchema: string | null; endpoint: string; examplePath: string | null; response: { kind: 'json' | 'stream' | 'file'; contentType: string | null; sample: string | null } | null; sample: { method: 'GET' | 'POST'; path: string; body: string | null } | null } | null;
   usage30d: Usage | null; usageAll: Usage | null;
   serviceHealth: { successRate: number | null; latencyP50Ms: number | null; latencyP95Ms: number | null; uptime7d: number | null; calls7d: number } | null;
   serviceUpdatedAt: string | null;

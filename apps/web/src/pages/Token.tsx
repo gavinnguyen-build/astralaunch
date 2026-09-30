@@ -7,7 +7,7 @@ import { ago, avatarFor, compact, daysUntil, fmtDate, fmtTime, fmtUsd, fmtUsdc, 
 import { Empty, ErrorBox, Loading, UsdOr } from '../components/State.js';
 import { SiteFooter, SiteHeader } from '../components/Site.js';
 import { AddrLink, TokenLink, TxLink } from '../components/Explorer.js';
-import { SampleCall, agentLink, priceLabel } from '../components/SampleCall.js';
+import { SampleCall, agentLink, priceLabel, sampleRequestText } from '../components/SampleCall.js';
 import { PRIVY_ENABLED, useConnectedWallet, useLogin } from '../components/Site.js';
 import { get } from '../lib/api.js';
 import type { ChainConfig } from '../lib/launch.js';
@@ -98,8 +98,9 @@ export default function Token() {
       { label: 'Uptime 7d', value: health?.uptime7d == null ? '—' : `${(health.uptime7d * 100).toFixed(1)}%` },
     ],
     // Example request (the creator's pasted link, as the gateway URL) and the response seen by the attach check.
-    exampleRequest: svc?.examplePath ? agentLink(svc.slug) + svc.examplePath.replace(/^\//, '') : null,
-    copyExample: () => svc?.examplePath && navigator.clipboard?.writeText(agentLink(svc.slug) + svc.examplePath.replace(/^\//, '')),
+    // Only when the service has a sample call (null for e.g. POST-only APIs without one; the agent link stays).
+    exampleRequest: svc?.sample ? sampleRequestText(svc.slug, svc.sample) : null,
+    copyExample: () => svc?.sample && navigator.clipboard?.writeText(sampleRequestText(svc.slug, svc.sample)),
     schema: (() => {
       const r = svc?.response;
       if (r?.kind === 'json' && r.sample) return r.sample;
@@ -109,7 +110,7 @@ export default function Token() {
     })(),
     payNote: priceUsdc ? `Agents pay ${priceUsdc} USDC per call over x402. Calls that fail or return an invalid response are never charged.` : 'This token has no paid service yet.',
     tryLabel: svc ? `Try a sample call · ${priceLabel(svc.priceUsdc)} USDC` : '',
-    tryShow: !!svc?.examplePath,
+    tryShow: !!svc?.sample,
     payments: (payments.data?.payments ?? []).map((p) => {
       const [tag, color] = TAGS[p.class];
       const who = p.class === 'creator' ? 'creator' : p.payerServices > 0 ? `pays ${p.payerServices} service${p.payerServices === 1 ? '' : 's'}` : 'direct transfer';
@@ -126,10 +127,10 @@ export default function Token() {
     escrowExpires: esc ? (esc.forfeited ? 'forfeited' : `in ${daysUntil(esc.forfeitAt)} days`) : '—',
     lastChange: t.serviceUpdatedAt ? `Updated · ${ago(t.serviceUpdatedAt)} ago` : '—',
     onTry: () => (wallet ? setTrying(true) : login?.()),
-    tryDisabled: !svc?.examplePath || !cfg.data || (!wallet && !login),
-    tryTitle: !PRIVY_ENABLED ? 'Set VITE_PRIVY_APP_ID to connect a wallet' : !wallet ? 'Connect a wallet to run a paid sample call' : `Runs ${svc?.examplePath ?? ''} once, paid from your wallet`,
-    modal: trying && svc?.examplePath && wallet && cfg.data ? (
-      <SampleCall asset={t.asset as `0x${string}`} slug={svc.slug} examplePath={svc.examplePath} priceUsdc={svc.priceUsdc} wallet={wallet} config={cfg.data}
+    tryDisabled: !svc?.sample || !cfg.data || (!wallet && !login),
+    tryTitle: !PRIVY_ENABLED ? 'Set VITE_PRIVY_APP_ID to connect a wallet' : !wallet ? 'Connect a wallet to run a paid sample call' : `Runs ${svc?.sample ? `${svc.sample.method} ${svc.sample.path}` : ''} once, paid from your wallet`,
+    modal: trying && svc?.sample && wallet && cfg.data ? (
+      <SampleCall asset={t.asset as `0x${string}`} slug={svc.slug} sample={svc.sample} priceUsdc={svc.priceUsdc} wallet={wallet} config={cfg.data}
         onClose={() => setTrying(false)} onPaid={() => { void payments.refetch(); }} />
     ) : null,
   };
