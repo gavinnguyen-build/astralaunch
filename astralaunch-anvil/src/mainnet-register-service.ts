@@ -2,12 +2,18 @@
 // Signed by the token's ON-CHAIN creator with the shared messages (D-SV1).
 //
 //   read -s CREATOR_PRIVATE_KEY && export CREATOR_PRIVATE_KEY
-//   ASSET=0x... SLUG=nullsight UPSTREAM_URL=https://api.example.com PRICE_USDC=0.01 \
+//   ASSET=0x... SLUG=myagent API_LINK='https://myagent.ai/v1/ask?q=hello' PRICE_USDC=0.02 \
 //   SERVER_URL=http://localhost:3001 \
 //     npx tsx src/mainnet-register-service.ts [--yes]
 //
 // Env:
-//   ASSET, SLUG                    required; UPSTREAM_URL required to create, optional on an update
+//   ASSET, SLUG                    required; API_LINK (or legacy UPSTREAM_URL) required to create, optional on an update
+//   API_LINK                       the link you already use to call your API ("one API link" model). The server
+//                                  calls it once (must answer 2xx) and derives the upstream, the allowed prefix
+//                                  (the link's directory) and the sample call. Replaces UPSTREAM_URL/EXAMPLE_PATH.
+//   WHOLE_DOMAIN=1                 with API_LINK: allow every path of the link's domain (prefix "/")
+//   API_KEY_HEADER, API_KEY_VALUE  optional API key the gateway adds to every call (stored encrypted, never shown);
+//                                  on an update API_KEY_HEADER='' removes it
 //   PRICE_USDC                     human USDC (e.g. 0.01), not raw units. Required to create; on an update,
 //                                  omit it to keep the current price
 //   UPSTREAM_URL                   may carry a path prefix (e.g. http://127.0.0.1:4001/sight): the gateway maps
@@ -53,7 +59,21 @@ run(async () => {
   if (!isAddress(assetRaw)) throw new Error(`ASSET is not an address: ${assetRaw}`);
   const asset = assetRaw.toLowerCase() as `0x${string}`;
   const slug = need('SLUG');
-  const upstreamUrl = process.env.UPSTREAM_URL || undefined;   // required to create; optional on an update
+  const upstreamUrl = process.env.UPSTREAM_URL || undefined;   // legacy; required to create unless API_LINK is set
+  const apiLink = process.env.API_LINK || undefined;
+  const wholeDomain = process.env.WHOLE_DOMAIN === '1' ? true : undefined;
+  const apiKeyHeader = process.env.API_KEY_HEADER;             // '' removes the key on an update
+  const apiKeyValue = process.env.API_KEY_VALUE || undefined;
+  if (apiLink && upstreamUrl) throw new Error('Set API_LINK or UPSTREAM_URL, not both');
+  if (apiLink && process.env.EXAMPLE_PATH !== undefined) throw new Error('EXAMPLE_PATH is derived from API_LINK; do not set both');
+  if (wholeDomain && !apiLink) throw new Error('WHOLE_DOMAIN needs API_LINK');
+  if (!!apiKeyHeader !== !!apiKeyValue) throw new Error('Set API_KEY_HEADER and API_KEY_VALUE together (API_KEY_HEADER="" alone removes the key)');
+  const keyFields = {
+    ...(apiKeyHeader === '' ? { apiKeyHeader: '' } : {}),
+    ...(apiKeyHeader && apiKeyValue ? { apiKeyHeader, apiKeyValue } : {}),
+  };
+  // Never print the API key value.
+  const masked = <T,>(o: T): T => JSON.parse(JSON.stringify(o).replace(apiKeyValue ? JSON.stringify(apiKeyValue).slice(1, -1) : '\u0000never', '***'));
   const priceHuman = process.env.PRICE_USDC || undefined;
   if (priceHuman !== undefined && !/^\d+(\.\d{1,6})?$/.test(priceHuman)) throw new Error('PRICE_USDC must be a decimal USDC amount like 0.01');
   const priceRaw = priceHuman !== undefined ? parseUnits(priceHuman, 6) : undefined;
@@ -108,14 +128,16 @@ run(async () => {
 
   if (!existing) {
     if (priceRaw === undefined) throw new Error('PRICE_USDC is required to create a service');
-    if (upstreamUrl === undefined) throw new Error('UPSTREAM_URL is required to create a service');
+    if (upstreamUrl === undefined && apiLink === undefined) throw new Error('API_LINK is required to create a service');
     const fields = {
-      asset, slug, name: process.env.NAME || slug, upstreamUrl, priceUsdc: priceRaw.toString(),
+      asset, slug, name: process.env.NAME || slug, ...(apiLink ? { apiLink } : { upstreamUrl }), priceUsdc: priceRaw.toString(),
       ...(requestSchema !== undefined && { requestSchema }),
       ...(responseSchema !== undefined && { responseSchema }),
       ...(timeoutSeconds !== undefined && { timeoutSeconds }),
       ...(description !== undefined && { description }),
       ...(examplePath && { examplePath }),
+      ...(wholeDomain && { wholeDomain }),
+      ...keyFields,
       issuedAt,
     };
     message = serviceCreateMessage(fields);
@@ -132,6 +154,9 @@ run(async () => {
       ...(timeoutSeconds !== undefined && { timeoutSeconds }),
       ...(description !== undefined && { description }),
       ...(examplePath !== undefined && { examplePath }),
+      ...(apiLink !== undefined && { apiLink }),
+      ...(wholeDomain && { wholeDomain }),
+      ...keyFields,
       issuedAt,
     };
     message = serviceUpdateMessage(existing.id, asset, fields);
@@ -141,18 +166,20 @@ run(async () => {
     url = `${server}/api/services/${existing.id}`;
     const cur = formatUnits(BigInt(existing.payment.amount), 6);
     console.log(`\nAction:  UPDATE service "${slug}" (id ${existing.id}); price ${priceHuman !== undefined ? `${cur} → ${priceHuman}` : `${cur} (unchanged)`} USDC`);
-    console.log(`Upstream: ${upstreamUrl ?? '(unchanged)'}`);
+    console.log(`Link:     ${apiLink ?? upstreamUrl ?? '(unchanged)'}${wholeDomain ? '  (whole domain)' : ''}`);
+    if (apiKeyHeader !== undefined) console.log(`API key:  ${apiKeyHeader === '' ? '(removed)' : `${apiKeyHeader}: ***`}`);
     if (examplePath !== undefined) console.log(`Example:  ${examplePath === '' ? '(removed)' : examplePath}`);
   }
 
   if (priceRaw !== undefined) console.log(`Price:   ${priceHuman} USDC per call (${priceRaw} raw, 6 decimals)`);
-  console.log(`\nSigned message (personal_sign):\n${message}`);
-  show(`${method} ${url}`, body);
+  console.log(`\nSigned message (personal_sign):\n${masked(message)}`);
+  show(`${method} ${url}`, masked(body));
   await confirm(`Send this ${method} to ${server}?`);
 
   const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const resBody = await readBody(res);
   show(`Response ${res.status}`, resBody);
   if (!res.ok) throw new Error(`${method} failed with ${res.status}`);
-  console.log(`\nOK. Gateway endpoint: ${server}/s/${slug}/`);
+  console.log(`\nOK. Agent link: ${server}/s/${slug}/`);
+  if (apiLink) console.log('Protect your API: the secret header value is on the Creator page (Service card → Protect your API).');
 });
