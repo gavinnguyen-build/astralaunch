@@ -79,9 +79,6 @@ export function SiteHeader(_props: { active?: string }) {
         </nav>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <A href="/docs" style={{ height: '40px', boxSizing: 'border-box', padding: '0 16px', borderRadius: '999px', border: '1px solid #2A2640', background: 'transparent', color: '#ECEAF4', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ECEAF4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13.5 6l-3 12"></path></svg>For agents
-        </A>
         {addr ? (
           <A href="/creator" style={{ height: '40px', boxSizing: 'border-box', padding: '0 16px', borderRadius: '999px', border: '1px solid #3A3456', background: '#16132A', color: '#ECEAF4', fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}>
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#34D399' }}></span>{shortAddr(addr)}
