@@ -18,6 +18,8 @@ import {
   ensureProtectSecret, exampleTarget, parseLinkOrThrow, prepareServiceLink, publicSample, ServiceLinkError, type PreparedLink,
 } from '../services/serviceLinks.js';
 import { encryptSecret } from '../lib/secretBox.js';
+import { compileResponseSchema } from '../lib/responseSchema.js';
+import { clearSchemaMismatches, schemaMismatchSummary } from '../services/schemaMismatches.js';
 import { USDC_ADDR, PAYMENT_TIMEOUT_S } from '../env.js';
 
 const app = new Hono();
@@ -128,13 +130,16 @@ app.post('/:id/settings', zValidator('json', serviceSettingsSchema), async (c) =
       linkCheckedAt: svc.linkCheckedAt,
       sampleRequest: svc.sampleMethod ? { method: svc.sampleMethod, body: svc.sampleBody } : null,
       legacyUpstream: !svc.apiLink,
+      // Response schema and the responses that failed it (D-SV4): creator-only, like everything above.
+      responseSchema: svc.responseSchema,
+      schemaMismatches: await schemaMismatchSummary(db, svc.id),
     });
   } catch (e) {
     return authError(c, e);
   }
 });
 
-// PATCH /api/services/:id — update price / link / key / timeout / description. Signed by the on-chain creator (D-SV1).
+// PATCH /api/services/:id — update price / link / key / timeout / description / response schema. Signed by the on-chain creator (D-SV1).
 app.patch('/:id', zValidator('json', updateServiceSchema), async (c) => {
   const id = c.req.param('id');
   const body = c.req.valid('json');
@@ -144,6 +149,9 @@ app.patch('/:id', zValidator('json', updateServiceSchema), async (c) => {
   if (!svc) return c.json({ error: 'Not found' }, 404);
   const bad = body.upstreamUrl ? upstreamBaseError(body.upstreamUrl) : null;
   if (bad) return c.json({ error: bad }, 400);
+  if (body.responseSchema) {
+    try { compileResponseSchema(body.responseSchema); } catch (e) { return c.json({ error: (e as Error).message }, 400); }
+  }
 
   const { signature, ...signed } = body;
   const message = serviceUpdateMessage(svc.id, svc.asset, signed);
@@ -187,6 +195,7 @@ app.patch('/:id', zValidator('json', updateServiceSchema), async (c) => {
         // Key on a legacy (upstreamUrl) service: stored without a link check.
         ...(!link && newKey && { apiKeyHeader: newKey.apiKeyHeader, apiKeyEnc: encryptSecret(newKey.apiKeyValue, svc.id) }),
         ...(body.apiKeyHeader === '' && !link && { apiKeyHeader: null, apiKeyEnc: null }),
+        ...(body.responseSchema !== undefined && { responseSchema: body.responseSchema || null }),   // "" removes it
         authSignedAt: BigInt(body.issuedAt),
         updatedAt:    new Date(),
       })
@@ -194,6 +203,7 @@ app.patch('/:id', zValidator('json', updateServiceSchema), async (c) => {
         .where(and(eq(services.id, id), or(isNull(services.authSignedAt), lt(services.authSignedAt, BigInt(body.issuedAt)))))
         .returning();
       if (!row) throw new ServiceAuthError(409, 'A newer signed request for this service was already accepted');
+      if (body.responseSchema !== undefined) await clearSchemaMismatches(tx, svc.id);   // they were against the old schema
       return row;
     });
 

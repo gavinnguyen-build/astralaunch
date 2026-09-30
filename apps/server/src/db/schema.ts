@@ -91,6 +91,17 @@ export const gatewayRequests = pgTable('gateway_requests', {
 export type GatewayRequest = typeof gatewayRequests.$inferSelect;
 export type NewGatewayRequest = typeof gatewayRequests.$inferInsert;
 
+// ── schema_mismatches (D-SV4) ─────────────────────────────────────────────
+// Responses that failed the service's response schema; creator-only (signed settings), 7 days.
+export const schemaMismatches = pgTable('schema_mismatches', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  serviceId: uuid('service_id').notNull().references(() => services.id),
+  code:      text('code').notNull(),               // 'schema_mismatch' | 'response_not_json' | 'schema_invalid'
+  detail:    text('detail'),
+  path:      text('path'),                         // under /s/{slug}, no query string
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('schema_mismatches_service_time').on(t.serviceId, t.createdAt)]);
+
 // ── service_probes (SPEC §9.4) ─────────────────────────────────────────────
 export const serviceProbes = pgTable('service_probes', {
   id:         uuid('id').primaryKey().defaultRandom(),

@@ -572,3 +572,27 @@ about 16 s to answer. It also returns 429 when polled often; this was seen from 
   copy (`services.response_schema`, `source` const). There, the gateway refuses a fallback answer as a schema mismatch,
   so it returns 502 and does not charge. The creator must update the stored schema with a signed settings update to
   serve the fallback.
+
+**D-SV4. Stale response schemas: creators can replace or remove them, and see the failures (2026-10-01).** A service
+stores its own copy of its response schema (`services.response_schema`). When the API's answers change, every
+response fails the gateway check: a 502, never charged. Before this change the creator had no way to know and no way
+to fix it. Seen with nullfeed: D-DS2 added `"source": "fallback sample"`, and the stored schema only allows the arXiv
+value.
+- **Update / remove.** `PATCH /api/services/:id` accepts `responseSchema` (stringified JSON Schema, ≤ 20,000 chars;
+  `""` removes it). It is signed like the other update fields. `responseSchema` is appended to the canonical update
+  keys before `issuedAt`, so a message without it is byte-for-byte the same as before and earlier signed messages stay
+  valid. The server compiles the schema before accepting it (400 with a readable message). A new or removed schema
+  clears the service's recorded mismatches, since they were checked against the old one.
+- **Mismatches.** The gateway records each failed check (`schema_mismatch`, `response_not_json`, `schema_invalid`)
+  in `schema_mismatches` (migration 0014). A row holds the code, the validator's first error (≤ 300 chars) and the
+  request path under `/s/{slug}`. The query string is never stored, because it can carry agent data. Rows older than
+  7 days are pruned on write.
+- **Creator-only.** The 7-day count and the latest error are returned only by the signed settings read
+  (`POST /api/services/:id/settings`). They are never on a public endpoint (token, list, manifest,
+  `/api/creator/:wallet`). `/api/creator/me` is not used, because it trusts an unauthenticated header.
+- **Creator page.** After "Show my settings" (one signature), a notice reads "N responses did not match your schema
+  in the last 7 days", with the latest error and a link to the Response schema field in Advanced. That field is a
+  JSON textarea with validation and a "Remove schema" button; saving sends the schema only when it changed.
+- **Register script.** `RESPONSE_SCHEMA` on an existing service replaces the schema; `REMOVE_SCHEMA=1` removes it.
+- **Operator alert.** Not added. The Telegram path lives in the keeper, which does not read the server database.
+  Possible follow-up: a keeper job over `schema_mismatches`.

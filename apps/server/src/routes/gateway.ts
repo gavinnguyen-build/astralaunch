@@ -43,6 +43,7 @@ import {
 } from '../lib/proxy.js';
 import { readBody, upstreamRequest, UpstreamError } from '../lib/upstreamClient.js';
 import { apiKeyFor, ensureProtectSecret, gatewayHeaders } from '../services/serviceLinks.js';
+import { recordSchemaMismatch } from '../services/schemaMismatches.js';
 
 const facilitator = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
 
@@ -216,6 +217,7 @@ app.all('/:slug/*', async (c) => {
     const check = checkResponse(svc.responseSchema, forCheck);
     if (!check.ok) {
       await logRequest(svc, payer, true, false, res.status, check.code, startMs, null, bodyBytes);
+      await recordSchemaMismatch(db, svc.id, check.code, check.detail, reqUrl.pathname.slice(`/s/${slug}`.length));
       return c.json({ error: 'Upstream response failed the service response schema; you were not charged', reason: check.code, detail: check.detail }, 502);
     }
   }

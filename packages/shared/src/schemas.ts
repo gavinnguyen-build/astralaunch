@@ -142,11 +142,13 @@ export const updateServiceSchema = z.object({
   /** New sample request; sampleMethod "" removes it (the link is checked with a plain GET again). */
   sampleMethod:   z.union([z.literal(''), z.enum(['GET', 'POST'])]).optional(),
   sampleBody:     linkFields.sampleBody,
+  /** New response JSON schema (stringified); "" removes it (responses are no longer checked). */
+  responseSchema: z.union([z.literal(''), z.string().min(1).max(20_000)]).optional(),
   ...signedFields,
 }).refine(
   d => d.priceUsdc !== undefined || d.upstreamUrl !== undefined || d.timeoutSeconds !== undefined || d.description !== undefined
     || d.examplePath !== undefined || d.apiLink !== undefined || d.wholeDomain !== undefined || d.apiKeyHeader !== undefined
-    || d.sampleMethod !== undefined,
+    || d.sampleMethod !== undefined || d.responseSchema !== undefined,
   'at least one field required',
 ).refine(d => !(d.apiLink !== undefined && d.upstreamUrl !== undefined), 'send either apiLink or upstreamUrl')
   .refine(d => !(d.apiLink !== undefined && d.examplePath !== undefined), 'examplePath is derived from apiLink; do not send both')
@@ -167,10 +169,11 @@ function canonical(obj: Record<string, unknown>, keys: readonly string[]): strin
 // examplePath was added later: a message without it is byte-for-byte the same as before (canonical()
 // omits undefined fields), so earlier signed messages stay valid.
 // apiLink / wholeDomain / apiKeyHeader / apiKeyValue ("one API link" model) likewise: absent → identical message.
+// responseSchema on an update (D-SV4) likewise.
 const CREATE_KEYS = ['asset', 'slug', 'name', 'upstreamUrl', 'priceUsdc', 'requestSchema',
   'responseSchema', 'timeoutSeconds', 'description', 'examplePath', 'apiLink', 'wholeDomain', 'apiKeyHeader', 'apiKeyValue', 'sampleMethod', 'sampleBody', 'issuedAt'] as const;
 const UPDATE_KEYS = ['serviceId', 'asset', 'priceUsdc', 'upstreamUrl', 'timeoutSeconds',
-  'description', 'examplePath', 'apiLink', 'wholeDomain', 'apiKeyHeader', 'apiKeyValue', 'sampleMethod', 'sampleBody', 'issuedAt'] as const;
+  'description', 'examplePath', 'apiLink', 'wholeDomain', 'apiKeyHeader', 'apiKeyValue', 'sampleMethod', 'sampleBody', 'responseSchema', 'issuedAt'] as const;
 
 /** Message the token creator signs to register a service. */
 export function serviceCreateMessage(m: Omit<CreateServiceInput, 'signature'>): string {
