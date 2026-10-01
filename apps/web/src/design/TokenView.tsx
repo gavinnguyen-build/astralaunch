@@ -4,6 +4,7 @@ import { Fragment } from 'react';
 import { A, route } from '../components/A.js';
 import { SiteHeader, SiteFooter } from '../components/Site.js';
 import { CopyButton } from '../components/CopyButton.js';
+import { ExampleResponse } from '../components/ExampleResponse.js';
 import './TokenView.css';
 
 export function TokenView({ v }: { v: any }) {
@@ -63,15 +64,15 @@ export function TokenView({ v }: { v: any }) {
 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h2 id="svc" style={{ margin: '0', fontSize: '18px', fontWeight: '700' }}>Service</h2><span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#34D399' }}><span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#34D399' }}></span>{v.svcStatus}</span></div>
 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><span style={{ fontSize: '14px', fontWeight: '700' }}>Agent link</span><span style={{ fontSize: '12px', fontWeight: '600', padding: '3px 10px', borderRadius: '999px', background: '#2E2152', color: '#C4B5FD' }}>x402 · pay per call built in</span></div>
-<div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', borderRadius: '10px', background: '#0E0D16', border: '1px solid #25213A', fontFamily: "'JetBrains Mono', monospace", fontSize: '13px' }}><span style={{ flexGrow: '1', color: '#C9C5DA' }}>{v.endpoint}</span>{v.agentLinkText ? <CopyButton text={v.agentLinkText} label="Copy agent link" /> : null}</div>
+<div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', borderRadius: '10px', background: '#0E0D16', border: '1px solid #25213A', fontFamily: "'JetBrains Mono', monospace", fontSize: '13px' }}><span style={{ flexGrow: '1', minWidth: '0', color: '#C9C5DA', overflowWrap: 'anywhere' }}>{v.endpoint}</span>{v.agentLinkText ? <CopyButton text={v.agentLinkText} label="Copy agent link" /> : null}</div>
 </div>
 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: '12px' }}>
 {(v.svc ?? []).map((m: any, mI: number) => (<Fragment key={mI}>
-<div style={{ padding: '14px', border: '1px solid #25213A', borderRadius: '12px', background: '#0E0D16' }}><div style={{ fontSize: '12px', color: '#8C87A3' }}>{m.label}</div><div style={{ marginTop: '6px', fontSize: '18px', fontWeight: '700' }}>{m.value}</div></div>
+<div style={{ padding: '14px', border: '1px solid #25213A', borderRadius: '12px', background: '#0E0D16' }}><div style={{ fontSize: '12px', color: '#8C87A3' }}>{m.label}</div><div title={m.muted ? m.value : undefined} style={m.muted ? { marginTop: '6px', height: '22px', lineHeight: '22px', fontSize: '13px', fontWeight: '500', color: '#8C87A3', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } : { marginTop: '6px', height: '22px', lineHeight: '22px', fontSize: '18px', fontWeight: '700' }}>{m.value}</div></div>
 </Fragment>))}
 </div>
 <div style={{ display: 'grid', gridTemplateColumns: v.tryShow ? 'minmax(0,1fr) 300px' : 'minmax(0,1fr)', gap: '16px', alignItems: 'start' }}>
-<div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '0' }}><span style={{ fontSize: '13px', fontWeight: '700' }}>Example response</span><pre style={{ margin: '0', padding: '14px', borderRadius: '10px', background: '#0E0D16', border: '1px solid #25213A', fontFamily: "'JetBrains Mono', monospace", fontSize: '12px', lineHeight: '1.6', color: '#C9C5DA', overflowX: 'auto', maxHeight: '320px' }}>{v.schema}</pre></div>
+<div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '0' }}><span style={{ fontSize: '13px', fontWeight: '700' }}>Example response</span><ExampleResponse>{v.schema}</ExampleResponse></div>
 {v.tryShow ? (<><div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}><span style={{ fontSize: '13px', fontWeight: '700' }}>Try it yourself</span><div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '14px', borderRadius: '10px', background: '#0E0D16', border: '1px solid #25213A' }}><p style={{ margin: '0', fontSize: '13px', lineHeight: '1.55', color: '#C9C5DA' }}>Pay once from your wallet and see the real answer.</p><button type="button" onClick={v.onTry} disabled={v.tryDisabled} title={v.tryTitle} style={{ width: '100%', height: '44px', borderRadius: '999px', border: '0', background: '#8B5CF6', color: '#FFFFFF', fontFamily: 'inherit', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>{v.tryLabel}</button></div></div></>) : null}
 </div>
 </section>

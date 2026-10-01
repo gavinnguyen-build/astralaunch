@@ -14,6 +14,7 @@ import type { ChainConfig } from '../lib/launch.js';
 import { useState } from 'react';
 
 const GREEN = '#34D399', RED = '#F87171', MUTED = '#8C87A3';
+const NO_CALLS = 'No paid calls yet';
 const TAGS = {
   clean: ['Clean revenue', GREEN], creator: ['Excluded · creator', RED],
   contract: ['Excluded · platform contract', RED], not_facilitator: ['Excluded · not settled by facilitator', MUTED],
@@ -59,6 +60,8 @@ export default function Token() {
   const vest = t.creatorSummary.vesting;
   const unlocked = esc ? Math.min(Number(esc.usdcAccrued), (Number(esc.recordedRevenue) * 0.2)) : 0;
   const health = t.serviceHealth;
+  // Example part of the agent link (the sample call's path, else the legacy example path), without the leading "/".
+  const examplePart = (svc?.sample?.path ?? svc?.examplePath ?? '').replace(/^\//, '');
 
   const v = {
     initial: t.symbol.charAt(0), avatar: avatarFor(t.asset), sym: `$${t.symbol}`, name: t.name,
@@ -87,13 +90,17 @@ export default function Token() {
     ],
     svcStatus: !svc ? 'No service' : health?.uptime7d == null ? 'Live' : health.uptime7d >= 0.95 ? 'Live' : 'Degraded',
     // Always the gateway link (VITE_API_BASE), never the creator's upstream URL.
-    endpoint: svc ? agentLink(svc.slug) : 'No service registered yet',
-    agentLinkText: svc ? agentLink(svc.slug) : null,
+    // The full example request: gateway base as usual, the example part (e.g. digest?topic=…) in the accent purple.
+    endpoint: svc ? <>{agentLink(svc.slug)}{examplePart ? <span style={{ color: '#C4B5FD' }}>{examplePart}</span> : null}</> : 'No service registered yet',
+    agentLinkText: svc ? `${agentLink(svc.slug)}${examplePart}` : null,
     svc: [
       { label: 'Price per call', value: priceUsdc ? `${priceUsdc} USDC` : '—' },
-      { label: 'Success rate', value: health?.successRate == null ? '—' : `${(health.successRate * 100).toFixed(1)}%` },
-      { label: 'Latency p50', value: health?.latencyP50Ms == null ? '—' : `${health.latencyP50Ms} ms` },
-      { label: 'Latency p95', value: health?.latencyP95Ms == null ? '—' : health.latencyP95Ms >= 1000 ? `${(health.latencyP95Ms / 1000).toFixed(1)} s` : `${health.latencyP95Ms} ms` },
+      // From paid calls in the window; none yet → a muted note instead of "—". Uptime comes from the probes.
+      health?.successRate == null ? { label: 'Success rate', value: NO_CALLS, muted: true }
+        : { label: 'Success rate', value: `${(health.successRate * 100).toFixed(1)}%` },
+      health?.latencyP50Ms == null ? { label: 'Latency p50', value: NO_CALLS, muted: true } : { label: 'Latency p50', value: `${health.latencyP50Ms} ms` },
+      health?.latencyP95Ms == null ? { label: 'Latency p95', value: NO_CALLS, muted: true }
+        : { label: 'Latency p95', value: health.latencyP95Ms >= 1000 ? `${(health.latencyP95Ms / 1000).toFixed(1)} s` : `${health.latencyP95Ms} ms` },
       { label: 'Uptime 7d', value: health?.uptime7d == null ? '—' : `${(health.uptime7d * 100).toFixed(1)}%` },
     ],
     // Example request (the creator's pasted link, as the gateway URL) and the response seen by the attach check.
