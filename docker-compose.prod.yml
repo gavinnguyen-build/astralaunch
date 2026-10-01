@@ -169,6 +169,7 @@ services:
         VITE_REGISTRY_ADDR: ${VITE_REGISTRY_ADDR:-0x6B3A79C723AB69f8938C87209E1D9730c739e00c}
         VITE_ESCROW_ADDR: ${VITE_ESCROW_ADDR:-0xA070ad1387d525E4A180Bdb09B65FD4086858F15}
         VITE_VAULT_ADDR: ${VITE_VAULT_ADDR:-0x394F1dcA6011C16BC6e70CA13F6F29767D92171E}
+        VITE_EXPLORER_URL: ${VITE_EXPLORER_URL:-https://monadscan.com}   # empty/unset → Monadscan
     restart: unless-stopped
     expose: ['80']
     networks: [egress]
