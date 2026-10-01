@@ -68,8 +68,8 @@ export default function Token() {
     creatorLabel: <AddrLink a={t.creator} />, xHandle: t.xHandle ? `@${t.xHandle}` : null, xHref: t.xHandle ? `https://x.com/${t.xHandle}` : '#',
     website: t.website, websiteLabel: t.website?.replace(/^https?:\/\//, '').replace(/\/$/, ''),
     launched: `${fmtDate(t.launchedAt)} · ${ago(t.launchedAt)} ago`,
-    tokenShort: <TokenLink a={t.asset} />, tokenFull: t.asset, routerShort: <AddrLink a={t.router} />, routerFull: t.router,
-    poolLabel: `${t.symbol} / ${sym} · 2%`, feeRecipient: <AddrLink a={t.creator} />,
+    tokenShort: <TokenLink a={t.asset} />, tokenFull: t.asset, creatorFull: t.creator,
+    poolLabel: `${t.symbol} / ${sym} · 2%`,
     price: <UsdOr usd={m?.priceUsd} alt={m?.price ? fmtPrice(m.price, '') : null} symbol={sym} price />,
     mcap: <UsdOr usd={m?.mcapUsd} alt={m?.price ? compact(Number(m.price) * Number(m.supply)) : null} symbol={sym} />,
     vol24: <UsdOr usd={m?.volume24hUsd} alt={m ? compact(m.volume24h) : null} symbol={sym} />,
@@ -88,7 +88,7 @@ export default function Token() {
     svcStatus: !svc ? 'No service' : health?.uptime7d == null ? 'Live' : health.uptime7d >= 0.95 ? 'Live' : 'Degraded',
     // Always the gateway link (VITE_API_BASE), never the creator's upstream URL.
     endpoint: svc ? agentLink(svc.slug) : 'No service registered yet',
-    copyEndpoint: () => svc && navigator.clipboard?.writeText(agentLink(svc.slug)),
+    agentLinkText: svc ? agentLink(svc.slug) : null,
     svc: [
       { label: 'Price per call', value: priceUsdc ? `${priceUsdc} USDC` : '—' },
       { label: 'Success rate', value: health?.successRate == null ? '—' : `${(health.successRate * 100).toFixed(1)}%` },

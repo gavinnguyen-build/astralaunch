@@ -3,6 +3,7 @@
 import { Fragment } from 'react';
 import { A, route } from '../components/A.js';
 import { SiteHeader, SiteFooter } from '../components/Site.js';
+import { CopyButton } from '../components/CopyButton.js';
 import './TokenView.css';
 
 export function TokenView({ v }: { v: any }) {
@@ -25,27 +26,22 @@ export function TokenView({ v }: { v: any }) {
 <p style={{ margin: '8px 0 0', maxWidth: '640px', fontSize: '15px', lineHeight: '1.55', color: '#A7A2BD' }}>{v.desc}</p>
 </div>
 </div>
-<div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: '16px' }}>
+<div className="tv-info-grid">
 <section style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}><h2 style={{ margin: '0', fontSize: '18px', fontWeight: '700' }}>Project</h2>
 <dl style={{ margin: '0', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px' }}>
-<div style={{ display: 'flex', justifyContent: 'space-between' }}><dt style={{ color: '#8C87A3' }}>Creator</dt><dd style={{ margin: '0' }}>{v.creatorLabel}</dd></div>
-<div style={{ display: 'flex', justifyContent: 'space-between' }}><dt style={{ color: '#8C87A3' }}>X account</dt><dd style={{ margin: '0' }}>{v.xHandle ? <A href={v.xHref}>{v.xHandle}</A> : '—'}</dd></div>
-<div style={{ display: 'flex', justifyContent: 'space-between' }}><dt style={{ color: '#8C87A3' }}>Website</dt><dd style={{ margin: '0' }}>{v.website ? <A href={v.website}>{v.websiteLabel}</A> : '—'}</dd></div>
-<div style={{ display: 'flex', justifyContent: 'space-between' }}><dt style={{ color: '#8C87A3' }}>Launched</dt><dd style={{ margin: '0' }}>{v.launched}</dd></div>
-</dl></section>
-<section style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}><h2 style={{ margin: '0', fontSize: '18px', fontWeight: '700' }}>Contracts</h2>
-<dl style={{ margin: '0', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px' }}>
-<div style={{ display: 'flex', justifyContent: 'space-between' }}><dt style={{ color: '#8C87A3' }}>Token</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}><span title={v.tokenFull}>{v.tokenShort}</span></dd></div>
-<div style={{ display: 'flex', justifyContent: 'space-between' }}><dt style={{ color: '#8C87A3' }}>Revenue router</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}><span title={v.routerFull}>{v.routerShort}</span></dd></div>
-<div style={{ display: 'flex', justifyContent: 'space-between' }}><dt style={{ color: '#8C87A3' }}>Pool</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.poolLabel}</dd></div>
-<div style={{ display: 'flex', justifyContent: 'space-between' }}><dt style={{ color: '#8C87A3' }}>Creator</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.feeRecipient}</dd></div>
+<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}><dt style={{ color: '#8C87A3' }}>Creator</dt><dd style={{ margin: '0', display: 'flex', alignItems: 'center', gap: '8px', fontFamily: "'JetBrains Mono', monospace" }}><span title={v.creatorFull}>{v.creatorLabel}</span><CopyButton text={v.creatorFull} label="Copy creator address" variant="sm" /></dd></div>
+<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}><dt style={{ color: '#8C87A3' }}>Token contract</dt><dd style={{ margin: '0', display: 'flex', alignItems: 'center', gap: '8px', fontFamily: "'JetBrains Mono', monospace" }}><span title={v.tokenFull}>{v.tokenShort}</span><CopyButton text={v.tokenFull} label="Copy token contract address" variant="sm" /></dd></div>
+<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}><dt style={{ color: '#8C87A3' }}>X account</dt><dd style={{ margin: '0' }}>{v.xHandle ? <A href={v.xHref}>{v.xHandle}</A> : '—'}</dd></div>
+<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}><dt style={{ color: '#8C87A3' }}>Website</dt><dd style={{ margin: '0' }}>{v.website ? <A href={v.website}>{v.websiteLabel}</A> : '—'}</dd></div>
+<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}><dt style={{ color: '#8C87A3' }}>Launched</dt><dd style={{ margin: '0' }}>{v.launched}</dd></div>
 </dl></section>
 <section style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}><h2 style={{ margin: '0', fontSize: '18px', fontWeight: '700' }}>Market</h2>
 <dl style={{ margin: '0', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px' }}>
-<div style={{ display: 'flex', justifyContent: 'space-between' }}><dt style={{ color: '#8C87A3' }}>Price</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.price}</dd></div>
-<div style={{ display: 'flex', justifyContent: 'space-between' }}><dt style={{ color: '#8C87A3' }}>Market cap</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.mcap}</dd></div>
-<div style={{ display: 'flex', justifyContent: 'space-between' }}><dt style={{ color: '#8C87A3' }}>Volume 24h</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.vol24}</dd></div>
-<div style={{ display: 'flex', justifyContent: 'space-between' }}><dt style={{ color: '#8C87A3' }}>Holders</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.holders}</dd></div>
+<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}><dt style={{ color: '#8C87A3' }}>Price</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.price}</dd></div>
+<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}><dt style={{ color: '#8C87A3' }}>Market cap</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.mcap}</dd></div>
+<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}><dt style={{ color: '#8C87A3' }}>Volume 24h</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.vol24}</dd></div>
+<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}><dt style={{ color: '#8C87A3' }}>Holders</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.holders}</dd></div>
+<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}><dt style={{ color: '#8C87A3' }}>Pool</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.poolLabel}</dd></div>
 </dl></section>
 </div>
 <section aria-labelledby="ucr" style={{ border: '1px solid #2A2640', borderRadius: '20px', padding: '28px', background: 'radial-gradient(700px 300px at 85% 90%, rgba(168,85,247,0.25), transparent 60%), #110F1A', display: 'flex', flexDirection: 'column', gap: '22px' }}>
@@ -67,7 +63,7 @@ export function TokenView({ v }: { v: any }) {
 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h2 id="svc" style={{ margin: '0', fontSize: '18px', fontWeight: '700' }}>Service</h2><span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#34D399' }}><span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#34D399' }}></span>{v.svcStatus}</span></div>
 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><span style={{ fontSize: '14px', fontWeight: '700' }}>Agent link</span><span style={{ fontSize: '12px', fontWeight: '600', padding: '3px 10px', borderRadius: '999px', background: '#2E2152', color: '#C4B5FD' }}>x402 · pay per call built in</span></div>
-<div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', borderRadius: '10px', background: '#0E0D16', border: '1px solid #25213A', fontFamily: "'JetBrains Mono', monospace", fontSize: '13px' }}><span style={{ flexGrow: '1', color: '#C9C5DA' }}>{v.endpoint}</span><button type="button" onClick={v.copyEndpoint} aria-label="Copy agent link" title="Copy agent link" style={{ width: '36px', height: '36px', borderRadius: '8px', border: '1px solid #2A2640', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C9C5DA" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a1 1 0 0 1 1-1h10"></path></svg></button></div>
+<div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', borderRadius: '10px', background: '#0E0D16', border: '1px solid #25213A', fontFamily: "'JetBrains Mono', monospace", fontSize: '13px' }}><span style={{ flexGrow: '1', color: '#C9C5DA' }}>{v.endpoint}</span>{v.agentLinkText ? <CopyButton text={v.agentLinkText} label="Copy agent link" /> : null}</div>
 </div>
 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: '12px' }}>
 {(v.svc ?? []).map((m: any, mI: number) => (<Fragment key={mI}>
