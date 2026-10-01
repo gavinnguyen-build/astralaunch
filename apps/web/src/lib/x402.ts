@@ -57,7 +57,11 @@ export async function payAndCall(pc: PublicClient, wc: WalletClient, account: Ad
   const base = init(plan.request);
   const res = await fetch(plan.url, { ...base, headers: { ...(base.headers as Record<string, string> | undefined), ...http.encodePaymentSignatureHeader(payload) } });
   const body = await res.text();
+  // Settlement tx from the gateway's PAYMENT-RESPONSE (SDK falls back to X-PAYMENT-RESPONSE); only a real tx hash.
   let settleTx: string | null = null;
-  try { settleTx = http.getPaymentSettleResponse((n) => res.headers.get(n)).transaction ?? null; } catch { /* not settled */ }
+  try {
+    const t = http.getPaymentSettleResponse((n) => res.headers.get(n)).transaction;
+    settleTx = typeof t === 'string' && /^0x[0-9a-fA-F]{64}$/.test(t) ? t : null;
+  } catch { /* not settled */ }
   return { status: res.status, body, settleTx };
 }

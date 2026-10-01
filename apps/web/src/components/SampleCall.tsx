@@ -107,7 +107,7 @@ export function SampleCall({ asset, slug, sample, priceUsdc, wallet, config, onC
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 5 5 9-10" /></svg>
           </span>
           <strong style={{ fontSize: '18px' }}>Done</strong>
-          {st.tx && <a href={explorerUrl.tx(st.tx)} target="_blank" rel="noreferrer" style={{ color: '#C4B5FD', fontSize: '14px' }}>View transaction</a>}
+          {st.tx && <a href={explorerUrl.tx(st.tx)} target="_blank" rel="noopener noreferrer" style={{ color: '#C4B5FD', fontSize: '14px' }}>View transaction</a>}
           <button type="button" style={{ ...btnStyle(false), width: '100%' }} onClick={() => setSt({ k: 'confirm' })}>Try again</button>
         </div>
       )}
