@@ -30,7 +30,9 @@ a{color:#C4B5FD}a:hover{color:#DDD6FE}
 .tv-dim{color:#8F8AA8;font-weight:500}
 .tv-unit{color:#8F8AA8;font-weight:500}
 .tv-num{font-weight:600;font-variant-numeric:tabular-nums}
-.tv-table{display:flex;flex-direction:column;--tv-cols:96px minmax(0,1fr) 120px 240px}
+.tv-table{display:flex;flex-direction:column;--tv-cols:96px minmax(0,1fr) 176px 240px}
+/* Amount stays right-aligned but sits 56px left of "Counted as" (which keeps its position) */
+.tv-amt{padding-right:56px}
 .tv-table-head{display:grid;grid-template-columns:var(--tv-cols);column-gap:20px;padding:0 0 12px;
   font-family:Inter,system-ui,sans-serif;font-weight:500;font-size:12px;color:#8F8AA8}
 .tv-table-row{display:grid;grid-template-columns:var(--tv-cols);column-gap:20px;align-items:center;min-height:48px;

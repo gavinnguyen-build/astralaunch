@@ -78,10 +78,10 @@ export function TokenView({ v }: { v: any }) {
 <section aria-labelledby="pay" className="tv-card">
 <h2 id="pay" className="tv-card-title">Payments</h2>
 <div className="tv-table">
-<div className="tv-table-head"><span>Time</span><span>Payer</span><span className="tv-right">Amount</span><span>Counted as</span></div>
+<div className="tv-table-head"><span>Time</span><span>Payer</span><span className="tv-right tv-amt">Amount</span><span>Counted as</span></div>
 {v.paymentsState}
 {(v.payments ?? []).map((r: any, rI: number) => (<Fragment key={rI}>
-<div className="tv-table-row"><span className="tv-dim">{r.t}</span><span className="tv-payer">{r.who}</span><span className="tv-right tv-num">{r.amt}</span><span><span className="tv-tag" style={{ color: r.color, background: r.tagBg }}>{r.tag}</span></span></div>
+<div className="tv-table-row"><span className="tv-dim">{r.t}</span><span className="tv-payer">{r.who}</span><span className="tv-right tv-num tv-amt">{r.amt}</span><span><span className="tv-tag" style={{ color: r.color, background: r.tagBg }}>{r.tag}</span></span></div>
 </Fragment>))}
 </div>
 </section>
