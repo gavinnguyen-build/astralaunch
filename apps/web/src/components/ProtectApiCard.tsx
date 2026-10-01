@@ -2,19 +2,12 @@
 import { useState } from 'react';
 import { protectSnippets } from '@astralaunch/shared';
 import type { ServiceSettings } from '../lib/claims.js';
+import { CopyButton } from './CopyButton.js';
 
 const card = { border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '24px', display: 'flex', flexDirection: 'column' as const, gap: '14px' };
 const monoBox = { margin: 0, padding: '12px 14px', borderRadius: '10px', background: '#0E0D16', border: '1px solid #2A2640', fontFamily: "'JetBrains Mono', monospace", fontSize: '12px', lineHeight: 1.55, color: '#D9D5EA', whiteSpace: 'pre' as const, overflowX: 'auto' as const };
 const small = { height: '32px', padding: '0 14px', borderRadius: '999px', border: '1px solid #3A3456', background: 'transparent', color: '#ECEAF4', fontFamily: 'inherit', fontSize: '12px', cursor: 'pointer' };
 
-function Copy({ text, label = 'Copy' }: { text: string; label?: string }) {
-  const [done, setDone] = useState(false);
-  return (
-    <button type="button" style={small} onClick={() => { void navigator.clipboard?.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1500); }); }}>
-      {done ? 'Copied' : label}
-    </button>
-  );
-}
 
 export function ProtectApiCard({ settings, onReveal, canReveal, revealTitle, busy }: {
   settings: ServiceSettings | null;
@@ -54,7 +47,7 @@ export function ProtectApiCard({ settings, onReveal, canReveal, revealTitle, bus
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <code style={{ ...monoBox, padding: '8px 12px' }}>{settings.protect.header}: {settings.protect.secret}</code>
-            <Copy text={settings.protect.secret} label="Copy secret" />
+            <CopyButton text={settings.protect.secret} label="Copy secret" variant="pill" />
           </div>
           {(() => {
             const snippets = protectSnippets(settings.protect.secret, settings.protect.header);
@@ -68,7 +61,7 @@ export function ProtectApiCard({ settings, onReveal, canReveal, revealTitle, bus
                   ))}
                 </div>
                 <pre style={monoBox}>{s.code}</pre>
-                <div><Copy text={s.code} label="Copy snippet" /></div>
+                <div><CopyButton text={s.code} label="Copy snippet" variant="pill" /></div>
               </div>
             );
           })()}

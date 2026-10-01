@@ -1,0 +1,10 @@
+.copy-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;border:1px solid #2A2640;background:transparent;color:#C9C5DA;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:transform .12s ease,background-color .2s ease,border-color .2s ease,color .2s ease}
+.copy-btn:hover{border-color:#3A3456;color:#ECEAF4}
+.copy-btn:active{transform:scale(.94)}
+.copy-btn:focus-visible{outline:2px solid #8B5CF6;outline-offset:2px}
+.copy-btn--icon{min-width:36px;height:36px;padding:0 10px;border-radius:8px}
+.copy-btn--sm{min-width:30px;height:30px;padding:0 8px;border-radius:8px}
+.copy-btn--pill{height:32px;padding:0 14px;border-radius:999px;border-color:#3A3456;color:#ECEAF4}
+.copy-btn[data-state="copied"]{border-color:rgba(52,211,153,.55);background:rgba(52,211,153,.12);color:#34D399}
+.copy-btn[data-state="failed"]{border-color:rgba(248,113,113,.55);background:rgba(248,113,113,.10);color:#F87171}
+.copy-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
