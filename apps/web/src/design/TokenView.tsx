@@ -29,8 +29,8 @@ export function TokenView({ v }: { v: any }) {
 <div className="tv-info-grid">
 <section className="tv-card"><h2 className="tv-card-title">Project</h2>
 <dl className="tv-rows">
-<div className="tv-row"><dt>Creator</dt><dd><span className="tv-mono" title={v.creatorFull}>{v.creatorLabel}</span><CopyButton text={v.creatorFull} label="Copy creator address" /></dd></div>
-<div className="tv-row"><dt>Token contract</dt><dd><span className="tv-mono" title={v.tokenFull}>{v.tokenShort}</span><CopyButton text={v.tokenFull} label="Copy token contract address" /></dd></div>
+<div className="tv-row"><dt>Creator</dt><dd><span className="tv-mono" title={v.creatorFull}>{v.creatorLabel}</span><CopyButton text={v.creatorFull} label="Copy creator address" variant="sm" /></dd></div>
+<div className="tv-row"><dt>Token contract</dt><dd><span className="tv-mono" title={v.tokenFull}>{v.tokenShort}</span><CopyButton text={v.tokenFull} label="Copy token contract address" variant="sm" /></dd></div>
 <div className="tv-row"><dt>X account</dt><dd>{v.xHandle ? <A href={v.xHref}>{v.xHandle}</A> : '—'}</dd></div>
 <div className="tv-row"><dt>Website</dt><dd>{v.website ? <A href={v.website}>{v.websiteLabel}</A> : '—'}</dd></div>
 <div className="tv-row"><dt>Launched</dt><dd>{v.launched}</dd></div>
