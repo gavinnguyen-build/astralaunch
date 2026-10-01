@@ -3,7 +3,7 @@
  * check and "Copied" (or red "Copy failed" if the clipboard write fails), then returns to normal.
  * The result is also announced through an aria-live region. Press animation: CopyButton.css.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import './CopyButton.css';
 
 type State = 'idle' | 'copied' | 'failed';
@@ -34,12 +34,17 @@ async function writeClipboard(text: string): Promise<boolean> {
  * `variant`: 'icon' (square icon button, the label is the accessible name), 'sm' (smaller icon button, for
  * inline addresses) or 'pill' (text button showing `label`).
  */
-export function CopyButton({ text, label = 'Copy', variant = 'icon' }: { text: string; label?: string; variant?: 'icon' | 'sm' | 'pill' }) {
+export function CopyButton({ text, label = 'Copy', variant = 'icon', insideLink = false }: {
+  text: string; label?: string; variant?: 'icon' | 'sm' | 'pill';
+  /** Inside a link card: the click must not navigate (preventDefault + stopPropagation). */
+  insideLink?: boolean;
+}) {
   const [state, setState] = useState<State>('idle');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
-  async function onClick() {
+  async function onClick(e: MouseEvent<HTMLButtonElement>) {
+    if (insideLink) { e.preventDefault(); e.stopPropagation(); }
     const ok = await writeClipboard(text);
     setState(ok ? 'copied' : 'failed');
     if (timer.current) clearTimeout(timer.current);

@@ -3,6 +3,7 @@
 import { Fragment } from 'react';
 import { A, route } from '../components/A.js';
 import { SiteHeader, SiteFooter } from '../components/Site.js';
+import { CopyButton } from '../components/CopyButton.js';
 import './HomeView.css';
 
 export function HomeView({ v }: { v: any }) {
@@ -100,33 +101,23 @@ export function HomeView({ v }: { v: any }) {
 </Fragment>))}
 </div>
 {v.cardsState}
-<div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: '13px', width: '1199px' }}>
+<div className="svc-grid">
 {(v.cards ?? []).map((c: any, cI: number) => (<Fragment key={cI}>
-<article style={{ border: '1px solid #25213A', borderRadius: '14px', background: '#13111C', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-<div style={{ padding: '16px 16px 14px', display: 'flex', flexDirection: 'column', gap: '10px', minHeight: '104px', boxSizing: 'border-box' }}>
-<div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-<span style={{ width: '26px', height: '26px', borderRadius: '50%', background: c.avatar, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '700', color: '#FFFFFF' }}>{c.initial}</span>
-<div style={{ flexGrow: '1', minWidth: '0' }}><A href={c.href} style={{ fontSize: '13px', fontWeight: '700', color: '#ECEAF4', textDecoration: 'none' }}>{c.name}</A><div style={{ fontSize: '11px', color: '#8C87A3' }}>{c.handle}</div></div>
-{c.verified ? (<><span style={{ fontSize: '10px', color: '#34D399', border: '1px solid rgba(52,211,153,0.4)', borderRadius: '999px', padding: '2px 7px' }}>Verified</span></>) : null}
-</div>
-<p style={{ margin: '0', fontSize: '13px', lineHeight: '1.5', color: '#C9C5DA' }}>{c.desc}</p>
-</div>
-<div style={{ padding: '14px 16px', borderTop: '1px solid #25213A', background: '#100E18', display: 'flex', flexDirection: 'column', gap: '12px', flexGrow: '1' }}>
-<div style={{ display: 'flex', justifyContent: 'space-between' }}>
-<div><div style={{ fontSize: '16px', fontWeight: '800' }}>{c.symbol}</div><div style={{ marginTop: '4px', fontSize: '12px', color: '#8C87A3' }}>{c.price} / call</div></div>
-<div style={{ textAlign: 'right', fontFamily: "'JetBrains Mono', monospace" }}><div style={{ fontSize: '12px' }}>{c.rev} <span style={{ color: '#A78BFA' }}>USDC</span></div><div style={{ marginTop: '4px', fontSize: '11px', color: c.chgColor }}>{c.chg}</div></div>
-</div>
-<div style={{ height: '5px', borderRadius: '3px', background: '#25213A', position: 'relative' }}><div style={{ height: '5px', borderRadius: '3px', width: c.ucrW, background: c.ucrBar }}></div><div style={{ position: 'absolute', left: '50%', top: '-3px', width: '2px', height: '11px', background: '#8C87A3' }}></div></div>
-<div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', color: '#8C87A3' }}><span style={{ color: c.ucrColor }}>UCR {c.ucr}</span><span>{c.calls} calls</span></div>
-<div style={{ marginTop: 'auto', paddingTop: '12px', borderTop: '1px solid #25213A', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-<span style={{ fontSize: '11px', color: '#8C87A3' }}>by <span style={{ color: '#C9C5DA' }}>{c.by}</span> · {c.age}</span>
-<div style={{ display: 'flex', gap: '6px' }}>
-{c.onTry ? (<><button type="button" onClick={c.onTry} disabled={c.tryDisabled} title={c.tryTitle} style={{ height: '32px', boxSizing: 'border-box', padding: '0 10px', borderRadius: '999px', border: '1px solid #3A3456', background: 'transparent', color: '#ECEAF4', fontFamily: 'inherit', fontSize: '12px', display: 'flex', alignItems: 'center', cursor: 'pointer', whiteSpace: 'nowrap' }}>Try a sample call</button></>) : null}
-<A href={c.chartHref} style={{ height: '32px', boxSizing: 'border-box', padding: '0 12px', borderRadius: '999px', background: '#2A2640', color: '#ECEAF4', fontSize: '12px', fontWeight: '700', display: 'flex', alignItems: 'center', textDecoration: 'none' }}>Trade</A>
+<A href={c.href} className="svc-card">
+<div className="svc-head">
+<span className="svc-img" style={{ background: c.tile }} aria-hidden="true">{c.initial}{c.imageUrl ? <img src={c.imageUrl} alt="" loading="lazy" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : null}</span>
+<div style={{ minWidth: '0' }}>
+<div className="svc-name">{c.name}</div>
+<div className="svc-meta"><span className="svc-ticker">{c.ticker}</span><CopyButton text={c.asset} label="Copy token address" variant="sm" insideLink /><span className="svc-chain">Monad</span></div>
 </div>
 </div>
-</div>
-</article>
+<p className="svc-desc">{c.desc}</p>
+<div className="svc-divider"></div>
+<dl className="svc-stats">
+<div className="svc-stat"><dt>Market Cap</dt><dd className="svc-mcap">{c.mcap}</dd></div>
+<div className="svc-stat"><dt>Volume 24h</dt><dd>{c.vol24}</dd></div>
+</dl>
+</A>
 </Fragment>))}
 </div>
 <div style={{ display: 'flex', justifyContent: 'center', width: '1199px', marginTop: '6px' }}>
@@ -154,7 +145,6 @@ export function HomeView({ v }: { v: any }) {
 </div>
 </section>
 </main>
-{v.modal}
 <SiteFooter />
 </div>
   );

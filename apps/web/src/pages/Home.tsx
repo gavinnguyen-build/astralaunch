@@ -3,15 +3,11 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { HomeView } from '../design/HomeView.js';
-import { api, get, TOKEN_FILTERS, type TokenFilter, type TokenListItem } from '../lib/api.js';
-import { ago, avatarFor, compact, fmtBps, fmtPrice, fmtUsdc, isDown } from '../lib/format.js';
+import { api, TOKEN_FILTERS, type TokenFilter } from '../lib/api.js';
+import { avatarFor, fmtUsd, fmtUsdc } from '../lib/format.js';
 import { ErrorBox, Loading, Empty } from '../components/State.js';
-import { AddrLink } from '../components/Explorer.js';
-import { SampleCall } from '../components/SampleCall.js';
-import { PRIVY_ENABLED, useConnectedWallet, useLogin } from '../components/Site.js';
-import type { ChainConfig } from '../lib/launch.js';
 
-const GREEN = '#34D399', RED = '#F87171', MUTED = '#8C87A3';
+const GREEN = '#34D399', MUTED = '#8C87A3';
 /** Cards on Home (3 × 3). */
 export const HOME_CARDS = 9;
 
@@ -40,28 +36,17 @@ export default function Home() {
     placeholderData: (prev) => prev,
   });
   const label = TOKEN_FILTERS.find((f) => f.slug === filter)!.label;
-  const wallet = useConnectedWallet();
-  const login = useLogin();
-  const cfg = useQuery({ queryKey: ['config'], queryFn: () => get<ChainConfig>('/api/config') });
-  const [sample, setSample] = useState<TokenListItem | null>(null);
-
+  // Service cards: image, name, $TICKER (copy address), chain, 2-line description, Market cap, Volume 24h.
   const cards = (list.data?.tokens ?? []).map((t) => {
-    const chg = t.market?.change7dBps ?? null;
-    const handle = t.xHandle ? `@${t.xHandle}` : `${t.creator.slice(0, 6)}…${t.creator.slice(-4)}`;
+    const name = t.service?.name ?? t.name;
     return {
-      initial: (t.service?.name ?? t.name).charAt(0).toUpperCase(), avatar: avatarFor(t.asset),
-      name: t.service?.name ?? t.name, handle, verified: t.verified,
-      desc: t.service?.description ?? t.description ?? 'No service yet.',
-      symbol: `$${t.symbol}`, price: t.service ? `${fmtPrice(Number(t.service.priceUsdc) / 1e6, '')} USDC` : '—',
-      rev: fmtUsdc(t.usage30d?.cleanRevenueUsdc ?? '0'), chg: `${fmtBps(chg)} 7d`, chgColor: isDown(chg) ? RED : GREEN,
-      calls: compact(t.usage30d?.paidCalls ?? 0), by: <AddrLink a={t.creator} label={handle} />, age: ago(t.launchedAt),
-      href: `/token/${t.asset}`, chartHref: `/token/${t.asset}/chart`, hasService: !!t.service,
-      // "Try a sample call": only when the service has a signed example call.
-      onTry: t.service?.sample ? () => (wallet ? setSample(t) : login?.()) : null,
-      tryDisabled: !cfg.data || (!wallet && !login),
-      tryTitle: !PRIVY_ENABLED ? 'Set VITE_PRIVY_APP_ID to connect a wallet' : !wallet ? 'Connect a wallet to run a paid sample call'
-        : t.service ? `One paid call · ${Number(t.service.priceUsdc) / 1e6} USDC` : '',
-      ...ucrBits(t.usage30d?.ucr),
+      href: `/token/${t.asset}`, asset: t.asset, name, ticker: `$${t.symbol}`,
+      imageUrl: t.imageUrl, initial: name.charAt(0).toUpperCase(),
+      // solid tile: the first colour of the token's avatar gradient
+      tile: avatarFor(t.asset).match(/#[0-9A-Fa-f]{6}/)?.[0] ?? '#8B5CF6',
+      desc: t.service?.description ?? t.description ?? 'No description yet.',
+      mcap: t.market?.mcapUsd != null ? fmtUsd(t.market.mcapUsd) : '—',
+      vol24: t.market?.volume24hUsd != null ? fmtUsd(t.market.volume24hUsd) : '—',
     };
   });
 
@@ -77,10 +62,6 @@ export default function Home() {
         border: on ? '0' : '1px solid #2A2640', pick: () => setFilter(f.slug) };
     }),
     cards,
-    modal: sample?.service?.sample && wallet && cfg.data ? (
-      <SampleCall asset={sample.asset as `0x${string}`} slug={sample.service.slug} sample={sample.service.sample}
-        priceUsdc={sample.service.priceUsdc} wallet={wallet} config={cfg.data} onClose={() => setSample(null)} />
-    ) : null,
     moreHref: `/discover?filter=${filter}`,
     query, onQuery: (e: React.ChangeEvent<HTMLInputElement>) => setQuery(e.target.value),
     onSearch: (e: React.FormEvent) => {
