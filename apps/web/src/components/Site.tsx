@@ -60,7 +60,7 @@ export function SiteHeader(_props: { active?: string }) {
   return (
     <header style={{ height: '64px', boxSizing: 'border-box', padding: '0 124px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #1E1B2E' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-        <A href="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#ECEAF4', textDecoration: 'none', fontWeight: 700, fontSize: '16px' }}>
+        <A href="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#ECEAF4', textDecoration: 'none', fontFamily: 'Satoshi, Inter, system-ui, sans-serif', fontWeight: 700, fontSize: '18px' }}>
           <img src="/astralaunch-logo.png" alt="" width={32} height={32} style={{ width: '32px', height: '32px', display: 'block' }} />
           astralaunch
         </A>

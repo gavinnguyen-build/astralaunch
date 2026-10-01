@@ -22,26 +22,26 @@ export function TokenView({ v }: { v: any }) {
 <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '20px' }}>
 <div>
-<div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}><h1 style={{ margin: '0', fontSize: '34px', fontWeight: '800', letterSpacing: '-0.02em' }}>{v.title}</h1>{v.verified ? (<span style={{ fontSize: '12px', color: '#34D399', border: '1px solid rgba(52,211,153,0.45)', borderRadius: '999px', padding: '3px 10px' }}>Verified</span>) : null}</div>
-<p style={{ margin: '8px 0 0', maxWidth: '640px', fontSize: '15px', lineHeight: '1.55', color: '#A7A2BD' }}>{v.desc}</p>
+<div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}><h1 className="tv-title">{v.title}</h1>{v.verified ? (<span style={{ fontSize: '12px', color: '#34D399', border: '1px solid rgba(52,211,153,0.45)', borderRadius: '999px', padding: '3px 10px' }}>Verified</span>) : null}</div>
+<p className="tv-subtitle">{v.desc}</p>
 </div>
 </div>
 <div className="tv-info-grid">
-<section style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}><h2 style={{ margin: '0', fontSize: '18px', fontWeight: '700' }}>Project</h2>
-<dl style={{ margin: '0', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px' }}>
-<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}><dt style={{ color: '#8C87A3' }}>Creator</dt><dd style={{ margin: '0', display: 'flex', alignItems: 'center', gap: '8px', fontFamily: "'JetBrains Mono', monospace" }}><span title={v.creatorFull}>{v.creatorLabel}</span><CopyButton text={v.creatorFull} label="Copy creator address" variant="sm" /></dd></div>
-<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}><dt style={{ color: '#8C87A3' }}>Token contract</dt><dd style={{ margin: '0', display: 'flex', alignItems: 'center', gap: '8px', fontFamily: "'JetBrains Mono', monospace" }}><span title={v.tokenFull}>{v.tokenShort}</span><CopyButton text={v.tokenFull} label="Copy token contract address" variant="sm" /></dd></div>
-<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}><dt style={{ color: '#8C87A3' }}>X account</dt><dd style={{ margin: '0' }}>{v.xHandle ? <A href={v.xHref}>{v.xHandle}</A> : '—'}</dd></div>
-<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}><dt style={{ color: '#8C87A3' }}>Website</dt><dd style={{ margin: '0' }}>{v.website ? <A href={v.website}>{v.websiteLabel}</A> : '—'}</dd></div>
-<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}><dt style={{ color: '#8C87A3' }}>Launched</dt><dd style={{ margin: '0' }}>{v.launched}</dd></div>
+<section className="tv-card"><h2 className="tv-card-title">Project</h2>
+<dl className="tv-rows">
+<div className="tv-row"><dt>Creator</dt><dd><span className="tv-mono" title={v.creatorFull}>{v.creatorLabel}</span><CopyButton text={v.creatorFull} label="Copy creator address" /></dd></div>
+<div className="tv-row"><dt>Token contract</dt><dd><span className="tv-mono" title={v.tokenFull}>{v.tokenShort}</span><CopyButton text={v.tokenFull} label="Copy token contract address" /></dd></div>
+<div className="tv-row"><dt>X account</dt><dd>{v.xHandle ? <A href={v.xHref}>{v.xHandle}</A> : '—'}</dd></div>
+<div className="tv-row"><dt>Website</dt><dd>{v.website ? <A href={v.website}>{v.websiteLabel}</A> : '—'}</dd></div>
+<div className="tv-row"><dt>Launched</dt><dd>{v.launched}</dd></div>
 </dl></section>
-<section style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}><h2 style={{ margin: '0', fontSize: '18px', fontWeight: '700' }}>Market</h2>
-<dl style={{ margin: '0', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px' }}>
-<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}><dt style={{ color: '#8C87A3' }}>Price</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.price}</dd></div>
-<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}><dt style={{ color: '#8C87A3' }}>Market cap</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.mcap}</dd></div>
-<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}><dt style={{ color: '#8C87A3' }}>Volume 24h</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.vol24}</dd></div>
-<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}><dt style={{ color: '#8C87A3' }}>Holders</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.holders}</dd></div>
-<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}><dt style={{ color: '#8C87A3' }}>Pool</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.poolLabel}</dd></div>
+<section className="tv-card"><h2 className="tv-card-title">Market</h2>
+<dl className="tv-rows">
+<div className="tv-row"><dt>Price</dt><dd>{v.price}</dd></div>
+<div className="tv-row"><dt>Market cap</dt><dd>{v.mcap}</dd></div>
+<div className="tv-row"><dt>Volume 24h</dt><dd>{v.vol24}</dd></div>
+<div className="tv-row"><dt>Holders</dt><dd>{v.holders}</dd></div>
+<div className="tv-row"><dt>Pool</dt><dd>{v.poolLabel}</dd></div>
 </dl></section>
 </div>
 <section aria-labelledby="ucr" style={{ border: '1px solid #2A2640', borderRadius: '20px', padding: '28px', background: 'radial-gradient(700px 300px at 85% 90%, rgba(168,85,247,0.25), transparent 60%), #110F1A', display: 'flex', flexDirection: 'column', gap: '22px' }}>
