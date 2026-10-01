@@ -23,14 +23,11 @@ export default function Leaderboard() {
 
   const val = (c: LeaderCreator) => (sort === 'rev' ? Number(c.cleanRevenueUsdc) : sort === 'ucr' ? Number(c.bestUcr ?? -1) : c.paidCalls);
   const list = isC ? [...(q.data?.creators ?? [])].sort((a, b) => val(b) - val(a)) : [];
-  const ucr = (c: LeaderCreator) => (c.bestUcr == null ? '—' : Number(c.bestUcr).toFixed(2));
   const name = (c: LeaderCreator) => shortAddr(c.creator);
   const sub = (c: LeaderCreator) => c.tokens.map((t) => `$${t.symbol}`).join(', ');
-  const href = (c: LeaderCreator) => `/token/${c.tokens[0]?.asset ?? ''}`;
   const cells = (c: LeaderCreator) => [
     { v: String(c.tokens.length), color: INK }, { v: `${fmtUsdc(c.cleanRevenueUsdc)} USDC`, color: INK },
-    { v: compact(c.paidCalls), color: INK }, { v: ucr(c), color: c.bestUcr != null && Number(c.bestUcr) >= 1 ? GREEN : MUTED },
-    { v: String(c.holders), color: INK },
+    { v: compact(c.paidCalls), color: INK },
   ];
   const tint = ['#FDE68A', '#E5E7EB', '#F4B183'];
   const meIdx = wallet ? list.findIndex((c) => c.creator === wallet) : -1;
@@ -47,23 +44,24 @@ export default function Leaderboard() {
       return { label, on: String(on), bg: on ? '#2A2640' : 'transparent', fg: on ? INK : '#C9C5DA', border: on ? '1px solid #3A3456' : '1px solid #25213A', pick: () => isC && setSort(k as Sort) };
     }),
     podium: list.slice(0, 3).map((c, i) => ({
-      rank: i + 1, name: name(c), sub: sub(c), initial: c.tokens[0]?.symbol.charAt(0) ?? '?', avatar: avatarFor(c.creator), href: href(c),
+      rank: i + 1, name: name(c), initial: c.tokens[0]?.symbol.charAt(0) ?? '?', avatar: avatarFor(c.creator),
       metricLabel: { rev: 'Clean revenue', ucr: 'Best UCR', calls: 'Paid calls' }[sort],
       metric: { rev: `${fmtUsdc(c.cleanRevenueUsdc)} USDC`, ucr: c.bestUcr == null ? '—' : `${Number(c.bestUcr).toFixed(2)}×`, calls: compact(c.paidCalls) }[sort],
       metricColor: i === 0 ? GREEN : INK,
-      facts: [{ k: 'Tokens', v: String(c.tokens.length) }, { k: 'Holders', v: String(c.holders) }, { k: 'UCR', v: ucr(c) }],
+      facts: [{ k: 'Tokens', v: String(c.tokens.length) }],
       border: i === 0 ? '1px solid #8B5CF6' : '1px solid #25213A', bg: i === 0 ? '#1B1530' : '#13111C', rankBg: tint[i], rankFg: '#1A1530',
     })),
-    cols: '56px 240px repeat(5, minmax(0,1fr))',
+    // Creators: # | creator (flexible) | 3 right-aligned numbers. Traders keep the 5-number layout.
+    cols: isC ? '56px minmax(0,1fr) 140px 200px 160px' : '56px 240px repeat(5, minmax(0,1fr))',
     heads: (isC
-      ? [['#', 'left'], ['Creator', 'left'], ['Tokens', 'right'], ['Clean revenue', 'right'], ['Paid calls', 'right'], ['Best UCR', 'right'], ['Holders', 'right']]
+      ? [['#', 'left'], ['Creator', 'left'], ['Tokens', 'right'], ['Clean revenue', 'right'], ['Paid calls', 'right']]
       : [['#', 'left'], ['Trader', 'left'], ['Volume', 'right'], ['Realized PnL', 'right'], ['Win rate', 'right'], ['Trades', 'right'], ['Best trade', 'right']]
     ).map(([label, align]) => ({ label, align })),
-    rows: list.slice(3).map((c, i) => ({ rank: String(i + 4), name: name(c), sub: sub(c), initial: c.tokens[0]?.symbol.charAt(0) ?? '?', avatar: avatarFor(c.creator), href: href(c), bg: 'transparent', cells: cells(c) })),
+    rows: list.slice(3).map((c, i) => ({ rank: String(i + 4), name: name(c), sub: sub(c), initial: c.tokens[0]?.symbol.charAt(0) ?? '?', avatar: avatarFor(c.creator), bg: 'transparent', cells: cells(c) })),
     me: isC && wallet ? {
       rank: meIdx >= 0 ? `#${meIdx + 1}` : '—', addr: <AddrLink a={wallet} />,
       sub: meIdx >= 0 ? sub(list[meIdx]!) : 'No listed tokens yet',
-      cells: meIdx >= 0 ? cells(list[meIdx]!) : [{ v: '0', color: INK }, { v: '0 USDC', color: INK }, { v: '0', color: INK }, { v: '—', color: MUTED }, { v: '0', color: INK }],
+      cells: meIdx >= 0 ? cells(list[meIdx]!) : [{ v: '0', color: INK }, { v: '0 USDC', color: INK }, { v: '0', color: INK }],
     } : null,
     listState: !isC ? <Empty>Trader rankings are coming soon. They will rank realized PnL on Astralaunch pools, excluding creators, fee recipients, platform contracts and buyback swaps.</Empty>
       : q.isLoading ? <Loading rows={3} height={120} />

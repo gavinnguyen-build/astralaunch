@@ -1,7 +1,6 @@
 // GENERATED from docs/design/Leaderboard.dc.html by apps/web/scripts/dc2tsx.py, then wired to real data.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Fragment } from 'react';
-import { A } from '../components/A.js';
 import { SiteHeader, SiteFooter } from '../components/Site.js';
 import './LeaderboardView.css';
 
@@ -27,16 +26,16 @@ export function LeaderboardView({ v }: { v: any }) {
 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: '16px' }}>
 {v.listState}
 {(v.podium ?? []).map((p: any, pI: number) => (<Fragment key={pI}>
-<A href={p.href} style={{ border: p.border, borderRadius: '20px', background: p.bg, padding: '22px', display: 'flex', flexDirection: 'column', gap: '16px', color: '#ECEAF4', textDecoration: 'none' }}>
+<div style={{ border: p.border, borderRadius: '20px', background: p.bg, padding: '22px', display: 'flex', flexDirection: 'column', gap: '16px', color: '#ECEAF4', textDecoration: 'none' }}>
 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-<div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}><span style={{ width: '44px', height: '44px', borderRadius: '12px', background: p.avatar, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: '800', color: '#FFFFFF' }}>{p.initial}</span><span><span style={{ display: 'block', fontFamily: 'Satoshi, Inter, system-ui, sans-serif', fontSize: '16px', fontWeight: '700' }}>{p.name}</span><span style={{ display: 'block', marginTop: '2px', fontSize: '12px', fontWeight: '500', color: '#8F8AA8' }}>{p.sub}</span></span></div>
+<div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}><span style={{ width: '44px', height: '44px', borderRadius: '12px', background: p.avatar, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: '800', color: '#FFFFFF' }}>{p.initial}</span><span style={{ display: 'block', fontFamily: 'Satoshi, Inter, system-ui, sans-serif', fontSize: '16px', fontWeight: '700' }}>{p.name}</span></div>
 <span style={{ fontFamily: 'Inter, system-ui, sans-serif', fontVariantNumeric: 'tabular-nums', fontSize: '13px', fontWeight: '700', padding: '6px 10px', borderRadius: '999px', background: p.rankBg, color: p.rankFg }}>#{p.rank}</span>
 </div>
 <div><div style={{ fontSize: '12px', fontWeight: '500', color: '#8F8AA8' }}>{p.metricLabel}</div><div style={{ marginTop: '6px', fontSize: '30px', fontWeight: '700', letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums', color: p.metricColor }}>{p.metric}</div></div>
 <dl style={{ margin: '0', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: '10px', paddingTop: '14px', borderTop: '1px solid #25213A' }}>
 {(p.facts ?? []).map((f: any, fI: number) => (<Fragment key={fI}><div><dt style={{ fontSize: '12px', fontWeight: '500', color: '#8F8AA8' }}>{f.k}</dt><dd style={{ margin: '4px 0 0', fontSize: '14px', fontWeight: '600', fontVariantNumeric: 'tabular-nums' }}>{f.v}</dd></div></Fragment>))}
 </dl>
-</A>
+</div>
 </Fragment>))}
 </div>
 <section aria-label="Rankings" style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '8px 20px 12px' }}>
@@ -44,11 +43,11 @@ export function LeaderboardView({ v }: { v: any }) {
 {(v.heads ?? []).map((h: any, hI: number) => (<Fragment key={hI}><span style={{ textAlign: h.align }}>{h.label}</span></Fragment>))}
 </div>
 {(v.rows ?? []).map((r: any, rI: number) => (<Fragment key={rI}>
-<A href={r.href} style={{ display: 'grid', gridTemplateColumns: v.cols, gap: '12px', alignItems: 'center', padding: '11px 8px', borderBottom: '1px solid #1E1B2E', color: '#ECEAF4', textDecoration: 'none', fontSize: '13px', fontFamily: 'Inter, system-ui, sans-serif', background: r.bg }}>
+<div style={{ display: 'grid', gridTemplateColumns: v.cols, gap: '12px', alignItems: 'center', padding: '11px 8px', borderBottom: '1px solid #1E1B2E', color: '#ECEAF4', textDecoration: 'none', fontSize: '13px', fontFamily: 'Inter, system-ui, sans-serif', background: r.bg }}>
 <span style={{ fontWeight: '500', color: '#8F8AA8', fontVariantNumeric: 'tabular-nums' }}>{r.rank}</span>
 <span style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '0' }}><span style={{ width: '30px', height: '30px', flexShrink: '0', borderRadius: '8px', background: r.avatar, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '800', color: '#FFFFFF' }}>{r.initial}</span><span style={{ minWidth: '0' }}><span style={{ display: 'block', fontWeight: '600', fontSize: '14px' }}>{r.name}</span><span style={{ display: 'block', fontSize: '12px', fontWeight: '500', color: '#8F8AA8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.sub}</span></span></span>
 {(r.cells ?? []).map((c: any, cI: number) => (<Fragment key={cI}><span style={{ textAlign: 'right', fontWeight: '600', fontVariantNumeric: 'tabular-nums', color: c.color }}>{c.v}</span></Fragment>))}
-</A>
+</div>
 </Fragment>))}
 {v.me ? (<><div style={{ display: 'grid', gridTemplateColumns: v.cols, gap: '12px', alignItems: 'center', marginTop: '10px', padding: '12px 8px', borderRadius: '12px', border: '1px solid #8B5CF6', background: '#1B1530', fontSize: '13px' }}>
 <span style={{ fontWeight: '600', color: '#C4B5FD', fontVariantNumeric: 'tabular-nums' }}>{v.me.rank}</span>
