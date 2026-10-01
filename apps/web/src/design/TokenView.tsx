@@ -75,28 +75,28 @@ export function TokenView({ v }: { v: any }) {
 {v.tryShow ? (<><div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}><span style={{ fontSize: '13px', fontWeight: '700' }}>Try it yourself</span><div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '14px', borderRadius: '10px', background: '#0E0D16', border: '1px solid #25213A' }}><p style={{ margin: '0', fontSize: '13px', lineHeight: '1.55', color: '#C9C5DA' }}>Pay once from your wallet and see the real answer.</p><button type="button" onClick={v.onTry} disabled={v.tryDisabled} title={v.tryTitle} style={{ width: '100%', height: '44px', borderRadius: '999px', border: '0', background: '#8B5CF6', color: '#FFFFFF', fontFamily: 'inherit', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>{v.tryLabel}</button></div></div></>) : null}
 </div>
 </section>
-<section aria-labelledby="pay" style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h2 id="pay" style={{ margin: '0', fontSize: '18px', fontWeight: '700' }}>Payments</h2></div>
-<div>
-<div style={{ display: 'grid', gridTemplateColumns: '110px minmax(0,1fr) 110px 200px', gap: '12px', padding: '0 0 10px', fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', letterSpacing: '0.12em', color: '#8C87A3' }}><span>TIME</span><span>PAYER</span><span style={{ textAlign: 'right' }}>AMOUNT</span><span>COUNTED AS</span></div>
+<section aria-labelledby="pay" className="tv-card">
+<h2 id="pay" className="tv-card-title">Payments</h2>
+<div className="tv-table">
+<div className="tv-table-head"><span>Time</span><span>Payer</span><span className="tv-right">Amount</span><span>Counted as</span></div>
 {v.paymentsState}
 {(v.payments ?? []).map((r: any, rI: number) => (<Fragment key={rI}>
-<div style={{ display: 'grid', gridTemplateColumns: '110px minmax(0,1fr) 110px 200px', gap: '12px', padding: '11px 0', borderTop: '1px solid #1E1B2E', fontSize: '13px', alignItems: 'center' }}><span style={{ fontFamily: "'JetBrains Mono', monospace", color: '#8C87A3' }}>{r.t}</span><span>{r.who}</span><span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono', monospace" }}>{r.amt}</span><span style={{ color: r.color }}>{r.tag}</span></div>
+<div className="tv-table-row"><span className="tv-dim">{r.t}</span><span className="tv-payer">{r.who}</span><span className="tv-right tv-num">{r.amt}</span><span><span className="tv-tag" style={{ color: r.color, background: r.tagBg }}>{r.tag}</span></span></div>
 </Fragment>))}
 </div>
 </section>
-<div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.2fr) minmax(0,1fr)', gap: '16px', alignItems: 'start' }}>
-<section aria-labelledby="creator" style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: '16px', width: '897px' }}>
-<h2 id="creator" style={{ margin: '0', fontSize: '18px', fontWeight: '700' }}>Creator</h2>
-<div><div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}><span style={{ color: '#8C87A3' }}>Escrow unlocked by usage</span><span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{v.escrowLine}</span></div><div style={{ marginTop: '8px', height: '8px', borderRadius: '4px', background: '#221F33' }}><div style={{ height: '8px', width: v.escrowW, borderRadius: '4px', background: '#34D399' }}></div></div></div>
-<div><div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}><span style={{ color: '#8C87A3' }}>Allocation vested</span><span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{v.vestLine}</span></div><div style={{ marginTop: '8px', height: '8px', borderRadius: '4px', background: '#221F33' }}><div style={{ height: '8px', width: v.vestW, borderRadius: '4px', background: '#C4B5FD' }}></div></div></div>
-<dl style={{ margin: '0', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px' }}>
-<div style={{ display: 'flex', justifyContent: 'space-between' }}><dt style={{ color: '#8C87A3' }}>Escrow claimed</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.escrowClaimed}</dd></div>
-<div style={{ display: 'flex', justifyContent: 'space-between' }}><dt style={{ color: '#8C87A3' }}>Escrow expires</dt><dd style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace" }}>{v.escrowExpires}</dd></div>
-<div style={{ display: 'flex', justifyContent: 'space-between' }}><dt style={{ color: '#8C87A3' }}>Last service change</dt><dd style={{ margin: '0' }}>{v.lastChange}</dd></div>
+<section aria-labelledby="creator" className="tv-card">
+<h2 id="creator" className="tv-card-title">Creator</h2>
+<div className="tv-stack">
+<div className="tv-meter"><div className="tv-row"><dt>Escrow unlocked by usage</dt><dd>{v.escrowLine}</dd></div><div className="tv-bar"><div style={{ width: v.escrowW, background: '#34D399' }}></div></div></div>
+<div className="tv-meter"><div className="tv-row"><dt>Allocation vested</dt><dd>{v.vestLine}</dd></div><div className="tv-bar"><div style={{ width: v.vestW, background: '#C4B5FD' }}></div></div></div>
+<dl className="tv-rows tv-rows--divided">
+<div className="tv-row"><dt>Escrow claimed</dt><dd>{v.escrowClaimed}</dd></div>
+<div className="tv-row"><dt>Escrow expires</dt><dd>{v.escrowExpires}</dd></div>
+<div className="tv-row"><dt>Last service change</dt><dd>{v.lastChange}</dd></div>
 </dl>
-</section>
 </div>
+</section>
 </div>
 </main>
 {v.modal}

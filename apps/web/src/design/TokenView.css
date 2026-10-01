@@ -24,3 +24,24 @@ a{color:#C4B5FD}a:hover{color:#DDD6FE}
   font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;white-space:nowrap;text-align:right}
 .tv-row dd a{color:#FFFFFF}
 .tv-mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:600;letter-spacing:-0.01em}
+
+/* Payments table + Creator card (same card system as Project / Market) */
+.tv-right{text-align:right;justify-self:end}
+.tv-dim{color:#8F8AA8;font-weight:500}
+.tv-unit{color:#8F8AA8;font-weight:500}
+.tv-num{font-weight:600;font-variant-numeric:tabular-nums}
+.tv-table{display:flex;flex-direction:column;--tv-cols:96px minmax(0,1fr) 120px 240px}
+.tv-table-head{display:grid;grid-template-columns:var(--tv-cols);column-gap:20px;padding:0 0 12px;
+  font-family:Inter,system-ui,sans-serif;font-weight:500;font-size:12px;color:#8F8AA8}
+.tv-table-row{display:grid;grid-template-columns:var(--tv-cols);column-gap:20px;align-items:center;min-height:48px;
+  border-top:1px solid rgba(120,100,255,0.10);font-family:Inter,system-ui,sans-serif;font-weight:500;font-size:14px;
+  color:#FFFFFF;font-variant-numeric:tabular-nums}
+.tv-table-row a{color:inherit}
+.tv-payer{display:flex;align-items:baseline;gap:8px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tv-payer .tv-dim::before{content:"·";margin-right:8px}
+.tv-tag{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.tv-stack{display:flex;flex-direction:column;gap:20px}
+.tv-meter{display:flex;flex-direction:column;gap:10px}
+.tv-bar{height:6px;border-radius:3px;background:rgba(255,255,255,0.06);overflow:hidden}
+.tv-bar>div{height:100%;border-radius:3px}
+.tv-rows--divided{padding-top:20px;border-top:1px solid rgba(120,100,255,0.10)}

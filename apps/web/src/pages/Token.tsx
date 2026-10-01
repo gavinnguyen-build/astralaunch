@@ -110,7 +110,8 @@ export default function Token() {
     payments: (payments.data?.payments ?? []).map((p) => {
       const [tag, color] = TAGS[p.class];
       const who = p.class === 'creator' ? 'creator' : p.payerServices > 0 ? `pays ${p.payerServices} service${p.payerServices === 1 ? '' : 's'}` : 'direct transfer';
-      return { t: <TxLink h={p.txHash} label={fmtTime(p.timestamp)} />, who: <><AddrLink a={p.payer} /> · {who}</>, amt: `${fmtUsdc(p.amountUsdc)} USDC`, tag, color };
+      return { t: <TxLink h={p.txHash} label={fmtTime(p.timestamp)} />, who: <><span className="tv-mono"><AddrLink a={p.payer} /></span><span className="tv-dim">{who}</span></>,
+        amt: <>{fmtUsdc(p.amountUsdc)}<span className="tv-unit"> USDC</span></>, tag, color, tagBg: `${color}1F` };
     }),
     paymentsState: payments.isLoading ? <Loading rows={2} height={32} />
       : payments.error ? <ErrorBox error={payments.error} retry={() => payments.refetch()} />
