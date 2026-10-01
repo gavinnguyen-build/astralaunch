@@ -7,7 +7,7 @@ import { ago, avatarFor, compact, daysUntil, fmtDate, fmtTime, fmtUsd, fmtUsdc, 
 import { Empty, ErrorBox, Loading, UsdOr } from '../components/State.js';
 import { SiteFooter, SiteHeader } from '../components/Site.js';
 import { AddrLink, TokenLink, TxLink } from '../components/Explorer.js';
-import { SampleCall, agentLink, priceLabel, sampleRequestText } from '../components/SampleCall.js';
+import { SampleCall, agentLink, priceLabel } from '../components/SampleCall.js';
 import { PRIVY_ENABLED, useConnectedWallet, useLogin } from '../components/Site.js';
 import { get } from '../lib/api.js';
 import type { ChainConfig } from '../lib/launch.js';
@@ -98,8 +98,6 @@ export default function Token() {
     ],
     // Example request (the creator's pasted link, as the gateway URL) and the response seen by the attach check.
     // Only when the service has a sample call (null for e.g. POST-only APIs without one; the agent link stays).
-    exampleRequest: svc?.sample ? sampleRequestText(svc.slug, svc.sample) : null,
-    copyExample: () => svc?.sample && navigator.clipboard?.writeText(sampleRequestText(svc.slug, svc.sample)),
     schema: (() => {
       const r = svc?.response;
       if (r?.kind === 'json' && r.sample) return r.sample;
