@@ -48,7 +48,7 @@ export default function Leaderboard() {
     }),
     podium: list.slice(0, 3).map((c, i) => ({
       rank: i + 1, name: name(c), sub: sub(c), initial: c.tokens[0]?.symbol.charAt(0) ?? '?', avatar: avatarFor(c.creator), href: href(c),
-      metricLabel: { rev: 'CLEAN REVENUE', ucr: 'BEST UCR', calls: 'PAID CALLS' }[sort],
+      metricLabel: { rev: 'Clean revenue', ucr: 'Best UCR', calls: 'Paid calls' }[sort],
       metric: { rev: `${fmtUsdc(c.cleanRevenueUsdc)} USDC`, ucr: c.bestUcr == null ? '—' : `${Number(c.bestUcr).toFixed(2)}×`, calls: compact(c.paidCalls) }[sort],
       metricColor: i === 0 ? GREEN : INK,
       facts: [{ k: 'Tokens', v: String(c.tokens.length) }, { k: 'Holders', v: String(c.holders) }, { k: 'UCR', v: ucr(c) }],
@@ -56,8 +56,8 @@ export default function Leaderboard() {
     })),
     cols: '56px 240px repeat(5, minmax(0,1fr))',
     heads: (isC
-      ? [['#', 'left'], ['CREATOR', 'left'], ['TOKENS', 'right'], ['CLEAN REVENUE', 'right'], ['PAID CALLS', 'right'], ['BEST UCR', 'right'], ['HOLDERS', 'right']]
-      : [['#', 'left'], ['TRADER', 'left'], ['VOLUME', 'right'], ['REALIZED PNL', 'right'], ['WIN RATE', 'right'], ['TRADES', 'right'], ['BEST TRADE', 'right']]
+      ? [['#', 'left'], ['Creator', 'left'], ['Tokens', 'right'], ['Clean revenue', 'right'], ['Paid calls', 'right'], ['Best UCR', 'right'], ['Holders', 'right']]
+      : [['#', 'left'], ['Trader', 'left'], ['Volume', 'right'], ['Realized PnL', 'right'], ['Win rate', 'right'], ['Trades', 'right'], ['Best trade', 'right']]
     ).map(([label, align]) => ({ label, align })),
     rows: list.slice(3).map((c, i) => ({ rank: String(i + 4), name: name(c), sub: sub(c), initial: c.tokens[0]?.symbol.charAt(0) ?? '?', avatar: avatarFor(c.creator), href: href(c), bg: 'transparent', cells: cells(c) })),
     me: isC && wallet ? {

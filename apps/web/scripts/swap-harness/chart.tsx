@@ -12,6 +12,7 @@ import TokenChart from '../../src/pages/TokenChart.js';
 import Token from '../../src/pages/Token.js';
 import Home from '../../src/pages/Home.js';
 import Discover from '../../src/pages/Discover.js';
+import Leaderboard from '../../src/pages/Leaderboard.js';
 
 const qs = new URLSearchParams(location.search);
 const path = qs.get('path') ?? `/token/${qs.get('asset') ?? ''}/chart`;
@@ -21,6 +22,7 @@ createRoot(document.getElementById('root')!).render(
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/discover" element={<Discover />} />
+        <Route path="/leaderboard" element={<Leaderboard />} />
         <Route path="/token/:asset" element={<Token />} />
         <Route path="/token/:asset/chart" element={<TokenChart />} />
       </Routes>
