@@ -1,13 +1,10 @@
 /** Links to the Monad explorer (monadscan.com): /address, /tx, /token. Opens in a new tab. */
 import type { CSSProperties, ReactNode } from 'react';
 import { EXPLORER_URL } from '../env.js';
+import { explorerLinks } from '../lib/explorer.js';
 import { shortAddr } from '../lib/format.js';
 
-export const explorerUrl = {
-  address: (a: string) => `${EXPLORER_URL}/address/${a}`,
-  tx: (h: string) => `${EXPLORER_URL}/tx/${h}`,
-  token: (a: string) => `${EXPLORER_URL}/token/${a}`,
-};
+export const explorerUrl = explorerLinks(EXPLORER_URL);
 
 const base: CSSProperties = { color: 'inherit', textDecoration: 'none', borderBottom: '1px dotted rgba(196,181,253,0.45)' };
 
