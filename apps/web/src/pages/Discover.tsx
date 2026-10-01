@@ -8,7 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DiscoverView } from '../design/DiscoverView.js';
 import { api, TOKEN_FILTERS, type TokenFilter, type TokenSort } from '../lib/api.js';
-import { avatarFor, compact, fmtBps, fmtPrice, fmtUsdc, isDown, serviceLabel, sparkPoints } from '../lib/format.js';
+import { avatarFor, compact, fmtBps, fmtPrice, fmtUsdc, isDown, sparkPoints } from '../lib/format.js';
 import { Empty, ErrorBox, Loading, UsdOr } from '../components/State.js';
 import { chipLabel, ucrBits } from './Home.js';
 import { pageItems } from '../lib/pagination.js';
@@ -18,8 +18,8 @@ export const PAGE_SIZE = 25;
 const RANGES = [['7D', '7d', 7], ['30D', '30d', 30], ['90D', '90d', 90]] as const;
 type Range = typeof RANGES[number][1];
 const SORTABLE: { key: TokenSort; label: string }[] = [
-  { key: 'price', label: 'PRICE' }, { key: 'change24h', label: '24H' }, { key: 'mcap', label: 'MCAP' },
-  { key: 'revenue', label: 'REVENUE' }, { key: 'ucr', label: 'UCR' }, { key: 'calls', label: 'CALLS' },
+  { key: 'price', label: 'Price' }, { key: 'change24h', label: '24h' }, { key: 'mcap', label: 'Mcap' },
+  { key: 'revenue', label: 'Revenue' }, { key: 'ucr', label: 'UCR' }, { key: 'calls', label: 'Calls' },
 ];
 const DEFAULTS = { filter: 'with-revenue' as TokenFilter, range: '30d' as Range, sort: 'revenue' as TokenSort, dir: 'desc' as 'asc' | 'desc' };
 
@@ -85,7 +85,7 @@ export default function Discover() {
     const sym = t.market?.numeraireSymbol ?? 'USDC';
     return {
       rank: String(offset + i + 1), initial: t.symbol.charAt(0), avatar: avatarFor(t.asset), sym: `$${t.symbol}`,
-      name: serviceLabel(t.name, t.service),
+      name: t.name,   // token name only (no service description)
       price: <UsdOr usd={t.market?.priceUsd} alt={t.market?.price ? fmtPrice(t.market.price, '') : null} symbol={sym} price />,
       chg: fmtBps(chg), chgColor: isDown(chg) ? RED : GREEN,
       mcap: <UsdOr usd={t.market?.mcapUsd} alt={t.market?.price && t.market.supply ? compact(Number(t.market.price) * Number(t.market.supply)) : null} symbol={sym} />,
