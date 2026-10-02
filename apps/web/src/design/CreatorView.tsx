@@ -44,6 +44,7 @@ export function CreatorView({ v }: { v: any }) {
 </div>
 </section>
 {v.imageCard}
+{v.descriptionCard}
 {v.protectCard}
 </div>
 </main>

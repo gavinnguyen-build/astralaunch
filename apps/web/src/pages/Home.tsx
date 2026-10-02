@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { HomeView } from '../design/HomeView.js';
 import { api, TOKEN_FILTERS, type TokenFilter } from '../lib/api.js';
 import { tokenImageSrc } from '../lib/tokenImage.js';
-import { avatarFor, fmtUsd, fmtUsdc } from '../lib/format.js';
+import { avatarFor, fmtUsd, fmtUsdc, briefOf } from '../lib/format.js';
 import { ErrorBox, Loading, Empty } from '../components/State.js';
 
 const GREEN = '#34D399', MUTED = '#8C87A3';
@@ -45,7 +45,7 @@ export default function Home() {
       imageUrl: tokenImageSrc(t, 256), initial: name.charAt(0).toUpperCase(),
       // solid tile: the first colour of the token's avatar gradient
       tile: avatarFor(t.asset).match(/#[0-9A-Fa-f]{6}/)?.[0] ?? '#8B5CF6',
-      desc: t.service?.description ?? t.description ?? 'No description yet.',
+      desc: briefOf(t) ?? 'No description yet.',   // token description, else the service description
       mcap: t.market?.mcapUsd != null ? fmtUsd(t.market.mcapUsd) : '—',
       vol24: t.market?.volume24hUsd != null ? fmtUsd(t.market.volume24hUsd) : '—',
     };

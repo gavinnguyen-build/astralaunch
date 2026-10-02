@@ -13,7 +13,7 @@ import { TokenChartView } from '../design/TokenChartView.js';
 import { TokenAvatar } from '../components/TokenAvatar.js';
 import { tokenImageSrc } from '../lib/tokenImage.js';
 import { api, type Candle, type Trade } from '../lib/api.js';
-import { ago, compact, fmtUsd, serviceLabel, fmtPrice, avatarFor } from '../lib/format.js';
+import { ago, compact, fmtUsd, serviceLabel, fmtPrice, avatarFor, briefOf } from '../lib/format.js';
 import { Empty, ErrorBox, Loading } from '../components/State.js';
 import { PageShell } from './Token.js';
 import { AddrLink, TxLink } from '../components/Explorer.js';
@@ -240,7 +240,8 @@ export default function TokenChart() {
     tabs: tabs.map((l) => ({ label: l, select: () => setTab(l.startsWith('Holders') ? 'Holders' : l), bg: (tab === l || (tab === 'Holders' && l.startsWith('Holders'))) ? '#8B5CF6' : 'transparent',
       fg: (tab === l || (tab === 'Holders' && l.startsWith('Holders'))) ? '#FFFFFF' : '#ECEAF4' })),
     cols: cols.map(([label, align]) => ({ label, align })), rows, tableState,
-    tagline: serviceLabel(t.name, t.service),
+    // Info panel caption: "<service> · <description>" (token description, else the service description).
+    tagline: briefOf(t) ? `${t.service?.name ?? t.name} · ${briefOf(t)}` : serviceLabel(t.name, t.service),
     // Info panel: the 512 px image (contain) over a blurred, darkened copy; striped placeholder without one.
     heroSrc: heroFailed ? null : tokenImageSrc(t, 512), heroAlt: `${t.symbol} token image`, onHeroError: () => setHeroFailed(true),
     avatarNode: <TokenAvatar token={t} initial={t.symbol.charAt(0)} background={avatarFor(t.asset)} size={32} radius={9} fontSize={14} style={{ alignSelf: 'center' }} />,

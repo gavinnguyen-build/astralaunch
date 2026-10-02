@@ -2,6 +2,7 @@
  * Display formatting only. Amounts arrive from the API as exact decimal strings (computed with
  * bigint on the server); converting to Number here is for rendering, never for money math.
  */
+import { tokenBrief } from '@astralaunch/shared';
 export const shortAddr = (a?: string | null) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—');
 
 /** 1234 → "1.2K", 150600 → "150.6K", 2_500_000 → "2.5M". */
@@ -130,6 +131,11 @@ export function sparkPoints(series: number[]): string {
 }
 
 /** "nullsight · Ranked X-style signals…": service name if it differs from the token, else its description. */
+/** Brief description shown for a token: the server's `brief`, else the same fallback (token's, then service's). */
+export function briefOf(t: { brief?: string | null; description: string | null; service?: { description: string | null } | null }): string | null {
+  return t.brief ?? tokenBrief(t.description, t.service?.description);
+}
+
 export function serviceLabel(tokenName: string, svc: { name: string; description: string | null } | null | undefined): string {
   if (!svc) return tokenName;
   const extra = svc.name && svc.name.toLowerCase() !== tokenName.toLowerCase() ? svc.name : svc.description;

@@ -18,6 +18,8 @@ import { PRIVY_ENABLED, useConnectedWallet } from '../components/Site.js';
 import { AddrLink, TxLink } from '../components/Explorer.js';
 import { A } from '../components/A.js';
 import { shortAddr } from '../lib/format.js';
+import { cleanTokenDescription } from '@astralaunch/shared';
+import { BriefDescriptionField } from '../components/BriefDescription.js';
 import { ServiceLinkForm, checkSummary, emptyServiceLink, serviceLinkErrors, toServiceLink, type ServiceLinkValue } from '../components/ServiceLinkForm.js';
 
 /** Public base of agent links (the API origin; same origin in local dev). */
@@ -54,6 +56,7 @@ export default function Launch() {
     name: useField(), symbol: useField(), xHandle: useField(), website: useField(),
   };
   const [svcLink, setSvcLink] = useState<ServiceLinkValue>(emptyServiceLink());
+  const [brief, setBrief] = useState('');
   const status = useQuery({
     queryKey: ['feeStatus', wallet?.address], enabled: !!wallet && !!config.data,
     queryFn: () => feeStatus({ apiBase: API_BASE, account: wallet!.address as Address } as Ctx),
@@ -113,6 +116,8 @@ export default function Launch() {
       name: f.name.value.trim(), symbol, pairing: pair,
       imageHash: img.hash ?? undefined, xHandle: f.xHandle.value ? f.xHandle.value.replace(/^@/, '') : undefined,
       website: f.website.value || undefined,
+      // Cleaned before signing, so what is signed is what the server stores and shows.
+      description: cleanTokenDescription(brief) || undefined,
       service: service === 'api' ? { slug, name: f.name.value.trim(), ...toServiceLink(svcLink) } : undefined,
     };
   }
@@ -195,6 +200,7 @@ export default function Launch() {
   const connected = !!wallet;
   const v = {
     f,
+    briefField: <BriefDescriptionField value={brief} onChange={setBrief} />,
     image: { preview: img.preview, busy: img.busy, error: img.error, onPick: onPickImage, onRemove: removeImage },
     pairings: group<Pair | 'fx' | 'st'>([{ id: 'usdc', label: 'USDC' }, { id: 'mon', label: 'MON' }, { id: 'fx', label: 'Forex', soon: true }, { id: 'st', label: 'Stocks', soon: true }], pair, (x) => setPair(x as Pair)),
     pairHint: pair === 'mon'
@@ -227,6 +233,7 @@ function Confirm({ plan, input, onCancel, onConfirm }: { plan: LaunchPlan; input
     <div>
       <h2 style={{ margin: '0 0 6px', fontSize: '20px' }}>Confirm launch</h2>
       <R k="Token">{input.name} ({input.symbol})</R>
+      {input.description ? <R k="Description"><span style={{ fontFamily: 'inherit', display: 'inline-block', maxWidth: '440px', textAlign: 'right', overflowWrap: 'anywhere' }}>{input.description}</span></R> : null}
       <R k="Pairing">{plan.numeraireSymbol}</R>
       <R k="Your wallet"><AddrLink a={plan.creator} /></R>
       <R k="Supply">1,000,000,000 · 85% pool · 15% vested</R>

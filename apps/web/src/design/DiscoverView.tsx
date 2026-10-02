@@ -29,7 +29,7 @@ export function DiscoverView({ v }: { v: any }) {
 {(v.rows ?? []).map((t: any, tI: number) => (<Fragment key={tI}>
 <A href={t.href} style={{ display: 'grid', gridTemplateColumns: '40px 220px repeat(6, minmax(0,1fr)) 120px', gap: '16px', alignItems: 'center', padding: '10px 8px', borderBottom: '1px solid #1E1B2E', borderRadius: '8px', color: '#ECEAF4', textDecoration: 'none', fontSize: '13px', fontFamily: 'Inter, system-ui, sans-serif', fontVariantNumeric: 'tabular-nums' }}>
 <span style={{ fontWeight: '500', color: '#8F8AA8' }}>{t.rank}</span>
-<span style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '0' }}>{t.avatarNode}<span style={{ minWidth: '0' }}><span style={{ display: 'block', fontWeight: '600', fontSize: '14px' }}>{t.sym}</span><span style={{ display: 'block', fontSize: '12px', fontWeight: '500', color: '#8F8AA8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</span></span></span>
+<span style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '0' }}>{t.avatarNode}<span style={{ minWidth: '0' }}><span style={{ display: 'block', fontWeight: '600', fontSize: '14px' }}>{t.sym}</span><span title={t.brief ? `${t.name} · ${t.brief}` : undefined} style={{ display: 'block', fontSize: '12px', fontWeight: '500', color: '#8F8AA8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}{t.brief ? <span style={{ fontWeight: '400', color: '#6F6A88' }}> · {t.brief}</span> : null}</span></span></span>
 <span style={{ textAlign: 'right', fontWeight: '600' }}>{t.price}</span>
 <span style={{ textAlign: 'right', fontWeight: '600', color: t.chgColor }}>{t.chg}</span>
 <span style={{ textAlign: 'right', fontWeight: '600' }}>{t.mcap}</span>

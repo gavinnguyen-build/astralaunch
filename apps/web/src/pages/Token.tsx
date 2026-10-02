@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { TokenView } from '../design/TokenView.js';
 import { api, type TokenDetail } from '../lib/api.js';
-import { ago, avatarFor, compact, daysUntil, fmtDate, fmtTime, fmtUsd, fmtUsdc, schemaShape, fmtPrice } from '../lib/format.js';
+import { ago, avatarFor, compact, daysUntil, fmtDate, fmtTime, fmtUsd, fmtUsdc, schemaShape, fmtPrice, briefOf } from '../lib/format.js';
 import { Empty, ErrorBox, Loading, UsdOr } from '../components/State.js';
 import { SiteFooter, SiteHeader } from '../components/Site.js';
 import { AddrLink, TokenLink, TxLink } from '../components/Explorer.js';
@@ -69,7 +69,8 @@ export default function Token() {
     sym: `$${t.symbol}`, name: t.name,
     infoHref: `/token/${t.asset}`, chartHref: `/token/${t.asset}/chart`,
     title: svc?.name ?? t.name, verified: t.verified,
-    desc: svc?.description ?? t.description ?? 'This token has no service description yet.',
+    // Header subtitle: the token's brief description, else the service description (server: brief).
+    desc: briefOf(t) ?? 'This token has no description yet.',
     creatorLabel: <AddrLink a={t.creator} />, xHandle: t.xHandle ? `@${t.xHandle}` : null, xHref: t.xHandle ? `https://x.com/${t.xHandle}` : '#',
     website: t.website, websiteLabel: t.website?.replace(/^https?:\/\//, '').replace(/\/$/, ''),
     launched: `${fmtDate(t.launchedAt)} · ${ago(t.launchedAt)} ago`,
