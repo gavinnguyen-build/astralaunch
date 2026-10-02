@@ -13,7 +13,7 @@ export function CreatorView({ v }: { v: any }) {
 <nav aria-label="Your tokens" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
 <h1 style={{ margin: '0 0 6px', fontSize: '30px', fontWeight: '800', letterSpacing: '-0.02em' }}>Creator</h1>
 <p style={{ margin: '0 0 10px', fontSize: '13px', color: '#8C87A3' }}>{v.wallet}</p>
-{(v.tokens ?? []).map((t: any, tI: number) => (<Fragment key={tI}><A href={t.href} onClick={t.pick} aria-current={t.on ? 'page' : undefined} style={t.on ? { display: 'flex', alignItems: 'center', gap: '12px', padding: '14px', borderRadius: '14px', border: '1px solid #8B5CF6', background: '#1B1530', color: '#ECEAF4', textDecoration: 'none' } : { display: 'flex', alignItems: 'center', gap: '12px', padding: '14px', borderRadius: '14px', border: '1px solid #25213A', background: '#13111C', color: '#ECEAF4', textDecoration: 'none' }}><span style={{ width: '36px', height: '36px', borderRadius: '10px', background: t.avatar, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800' }}>{t.initial}</span><span><span style={{ display: 'block', fontWeight: '700' }}>{t.sym}</span><span style={{ display: 'block', fontSize: '12px', color: '#A7A2BD' }}>{t.sub}</span></span></A></Fragment>))}
+{(v.tokens ?? []).map((t: any, tI: number) => (<Fragment key={tI}><A href={t.href} onClick={t.pick} aria-current={t.on ? 'page' : undefined} style={t.on ? { display: 'flex', alignItems: 'center', gap: '12px', padding: '14px', borderRadius: '14px', border: '1px solid #8B5CF6', background: '#1B1530', color: '#ECEAF4', textDecoration: 'none' } : { display: 'flex', alignItems: 'center', gap: '12px', padding: '14px', borderRadius: '14px', border: '1px solid #25213A', background: '#13111C', color: '#ECEAF4', textDecoration: 'none' }}>{t.avatarNode}<span><span style={{ display: 'block', fontWeight: '700' }}>{t.sym}</span><span style={{ display: 'block', fontSize: '12px', color: '#A7A2BD' }}>{t.sub}</span></span></A></Fragment>))}
 <A href={route('Launch')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '48px', borderRadius: '14px', border: '1px dashed #5B5475', color: '#C9C5DA', textDecoration: 'none', fontSize: '14px', fontWeight: '600' }}>Launch another token</A>
 </nav>
 <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
@@ -43,6 +43,7 @@ export function CreatorView({ v }: { v: any }) {
 </Fragment>))}
 </div>
 </section>
+{v.imageCard}
 {v.protectCard}
 </div>
 </main>

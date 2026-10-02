@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CreatorView } from '../design/CreatorView.js';
 import { CreatorEmptyView } from '../design/CreatorEmptyView.js';
 import { api, type CreatorDash } from '../lib/api.js';
+import { TokenAvatar } from '../components/TokenAvatar.js';
 import { avatarFor, compact, fmtDate, fmtTime, fmtUsdc } from '../lib/format.js';
 import { ErrorBox, Loading } from '../components/State.js';
 import { PRIVY_ENABLED, useConnectedWallet } from '../components/Site.js';
@@ -18,6 +19,7 @@ import type { ChainConfig } from '../lib/launch.js';
 import { loadServiceSettings, prepareCollectFees, prepareEscrowClaim, prepareRelease, saveService, type PreparedTx, type ServiceSettings } from '../lib/claims.js';
 import { ServiceLinkForm, emptyServiceLink, serviceLinkErrors, toServiceLink, type ServiceLinkValue } from '../components/ServiceLinkForm.js';
 import { ProtectApiCard } from '../components/ProtectApiCard.js';
+import { TokenImageSetting } from '../components/TokenImageSetting.js';
 import { ResponseSchemaField, SchemaMismatchNotice, compactSchema, prettySchema, responseSchemaError } from '../components/ResponseSchema.js';
 import { errMsg, walletClients } from '../lib/wallet.js';
 import { API_BASE } from '../env.js';
@@ -157,7 +159,7 @@ export default function Creator() {
     wallet: <AddrLink a={wallet} label={`${wallet.slice(0, 10)}…${wallet.slice(-6)}`} />,
     tokens: d.tokens.map((t, i) => ({
       on: t.asset === tok.asset, pick: (e: React.MouseEvent) => { e.preventDefault(); setSel(i); }, href: `/token/${t.asset}`,
-      initial: t.symbol.charAt(0), avatar: avatarFor(t.asset), sym: `$${t.symbol}`, sub: `${t.name} · ${fmtUsdc(rev30(t.asset))} USDC 30d`,
+      avatarNode: <TokenAvatar token={t} initial={t.symbol.charAt(0)} background={avatarFor(t.asset)} size={36} radius={10} fontSize={15} />, sym: `$${t.symbol}`, sub: `${t.name} · ${fmtUsdc(rev30(t.asset))} USDC 30d`,
     })),
     claims: [
       { title: 'Trading fees', sub: '', big: tok.tradingFees ? `${compact(tok.tradingFees.numeraire)} ${tok.numeraireSymbol === 'MON' ? 'WMON' : 'USDC'}` : '—', color: '#ECEAF4',
@@ -200,6 +202,10 @@ export default function Creator() {
           advancedExtra={svc ? <ResponseSchemaField value={schemaText} onChange={setSchemaText} settings={settings} disabled={!isOwner} /> : null} />
       </div>
     ),
+    imageCard: tok ? (
+      <TokenImageSetting token={tok} avatar={avatarFor(tok.asset)} wallet={walletObj} config={cfg.data}
+        canEdit={isOwner} editTitle={ownerTitle || undefined} onSaved={() => { void dash.refetch(); }} />
+    ) : null,
     protectCard: svc ? (
       <ProtectApiCard settings={settings} onReveal={onReveal} canReveal={isOwner} revealTitle={ownerTitle || undefined} busy={revealing} />
     ) : null,

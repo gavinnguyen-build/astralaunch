@@ -10,6 +10,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { createPublicClient, createWalletClient, custom, defineChain, getAddress, http, type Address } from 'viem';
 import { LaunchView } from '../design/LaunchView.js';
+import { uploadTokenImage } from '../lib/tokenImage.js';
 import { API_BASE, RPC_URL } from '../env.js';
 import { get } from '../lib/api.js';
 import { executeLaunch, feeStatus, fmtMon, LaunchError, planLaunch, type ChainConfig, type Ctx, type LaunchInput, type LaunchPlan, type LaunchResult, type StepKey } from '../lib/launch.js';
@@ -50,7 +51,7 @@ export default function Launch() {
   const [pair, setPair] = useState<Pair>('usdc');
   const [service, setService] = useState<'api' | 'later'>('api');
   const f = {
-    name: useField(), symbol: useField(), imageUrl: useField(), xHandle: useField(), website: useField(),
+    name: useField(), symbol: useField(), xHandle: useField(), website: useField(),
   };
   const [svcLink, setSvcLink] = useState<ServiceLinkValue>(emptyServiceLink());
   const status = useQuery({
@@ -64,16 +65,34 @@ export default function Launch() {
   const [steps, setSteps] = useState<Record<string, { state: string; tx?: string; note?: string }>>({});
   const [result, setResult] = useState<LaunchResult | null>(null);
 
+  // Token image: uploaded as soon as it is picked (before the details signature); the hash goes into the signed details.
+  const [img, setImg] = useState<{ hash: string | null; preview: string | null; busy: boolean; error: string | null }>({ hash: null, preview: null, busy: false, error: null });
+  async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (img.preview) URL.revokeObjectURL(img.preview);
+    const preview = URL.createObjectURL(file);
+    setImg({ hash: null, preview, busy: true, error: null });
+    try {
+      const hash = await uploadTokenImage(file);
+      setImg({ hash, preview, busy: false, error: null });
+    } catch (err) {
+      URL.revokeObjectURL(preview);
+      setImg({ hash: null, preview: null, busy: false, error: (err as Error).message });
+    }
+  }
+  const removeImage = () => { if (img.preview) URL.revokeObjectURL(img.preview); setImg({ hash: null, preview: null, busy: false, error: null }); };
+
   const errors = useMemo(() => {
     const e: string[] = [];
     if (!f.name.value.trim()) e.push('Token name is required.');
     if (!/^[A-Z0-9]{2,10}$/.test(f.symbol.value.trim().toUpperCase())) e.push('Ticker: 2–10 letters or digits.');
-    if (f.imageUrl.value && !/^https:\/\/\S+$/.test(f.imageUrl.value)) e.push('Image must be an https URL.');
     if (f.xHandle.value && !/^@?[A-Za-z0-9_]{1,15}$/.test(f.xHandle.value)) e.push('X account must be a handle like @name.');
     if (f.website.value && !/^https?:\/\/\S+$/.test(f.website.value)) e.push('Website must be a URL.');
     if (service === 'api') e.push(...serviceLinkErrors(svcLink));
     return e;
-  }, [f.name.value, f.symbol.value, f.imageUrl.value, f.xHandle.value, f.website.value, svcLink, service]);
+  }, [f.name.value, f.symbol.value, f.xHandle.value, f.website.value, svcLink, service]);
 
   async function clients(cfg: ChainConfig): Promise<Ctx> {
     const chain = defineChain({ id: cfg.chainId, name: 'Monad', nativeCurrency: { name: 'MON', symbol: 'MON', decimals: 18 }, rpcUrls: { default: { http: [RPC_URL] } } });
@@ -92,7 +111,7 @@ export default function Launch() {
     const slug = symbol.toLowerCase().length >= 3 ? symbol.toLowerCase() : `${symbol.toLowerCase()}-api`;
     return {
       name: f.name.value.trim(), symbol, pairing: pair,
-      imageUrl: f.imageUrl.value || undefined, xHandle: f.xHandle.value ? f.xHandle.value.replace(/^@/, '') : undefined,
+      imageHash: img.hash ?? undefined, xHandle: f.xHandle.value ? f.xHandle.value.replace(/^@/, '') : undefined,
       website: f.website.value || undefined,
       service: service === 'api' ? { slug, name: f.name.value.trim(), ...toServiceLink(svcLink) } : undefined,
     };
@@ -176,6 +195,7 @@ export default function Launch() {
   const connected = !!wallet;
   const v = {
     f,
+    image: { preview: img.preview, busy: img.busy, error: img.error, onPick: onPickImage, onRemove: removeImage },
     pairings: group<Pair | 'fx' | 'st'>([{ id: 'usdc', label: 'USDC' }, { id: 'mon', label: 'MON' }, { id: 'fx', label: 'Forex', soon: true }, { id: 'st', label: 'Stocks', soon: true }], pair, (x) => setPair(x as Pair)),
     pairHint: pair === 'mon'
       ? 'Trades settle in MON. Services are still paid in USDC, so each usage buyback swaps USDC to MON, then MON to your token.'
@@ -190,7 +210,7 @@ export default function Launch() {
     })(),
     feeNote: !connected ? '' : st?.unusedReceipts.length ? 'Already paid: your unused fee will be used' : limitHit ? 'Limit reached: 3 launches per 24h' : '',
     onLaunch, onCancel: () => setPhase('form'),
-    launchDisabled: !connected || !config.data || errors.length > 0 || !!limitHit || phase !== 'form',
+    launchDisabled: !connected || !config.data || errors.length > 0 || !!limitHit || phase !== 'form' || img.busy,
     launchTitle: !PRIVY_ENABLED ? 'Set VITE_PRIVY_APP_ID to connect a wallet' : !connected ? 'Connect a wallet first' : limitHit ? `Limit reached. Next slot ${st?.nextSlotAt ? new Date(st.nextSlotAt * 1000).toLocaleString() : ''}` : errors[0] ?? 'Launch',
     launchLabel: !connected ? 'Connect a wallet to launch' : 'Launch',
     formErrors: connected && errors.length && (f.name.value || f.symbol.value) ? (

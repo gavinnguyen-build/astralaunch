@@ -45,6 +45,8 @@ export interface LaunchInput {
   symbol: string;
   pairing: 'usdc' | 'mon';
   imageUrl?: string;
+  /** Uploaded image (POST /api/uploads/token-image) by content hash; signed with the token details. */
+  imageHash?: string;
   xHandle?: string;
   website?: string;
   description?: string;
@@ -273,7 +275,7 @@ export async function launchCreateParams(ctx: Ctx, input: LaunchInput, startTime
   return { createParams: encodeCreateParams(ctx, p.params), creator: p.creator, numeraire: p.numeraire };
 }
 
-const hasMetadata = (i: LaunchInput) => !!(i.imageUrl || i.xHandle || i.website || i.description);
+const hasMetadata = (i: LaunchInput) => !!(i.imageUrl || i.imageHash || i.xHandle || i.website || i.description);
 const wantsSignature = (i: LaunchInput) => hasMetadata(i) || !!i.service;
 
 /** Rate limit + fee receipt check, then preview simulations for the confirmation dialog. */
@@ -425,7 +427,8 @@ export async function executeLaunch(ctx: Ctx, input: LaunchInput, plan: LaunchPl
   // ── 5. signed metadata + service (the connected wallet is the on-chain creator) ──
   const meta = {
     asset, issuedAt: Math.floor(Date.now() / 1000),
-    ...(input.imageUrl ? { imageUrl: input.imageUrl } : {}), ...(input.xHandle ? { xHandle: input.xHandle } : {}),
+    ...(input.imageUrl ? { imageUrl: input.imageUrl } : {}), ...(input.imageHash ? { imageHash: input.imageHash } : {}),
+    ...(input.xHandle ? { xHandle: input.xHandle } : {}),
     ...(input.website ? { website: input.website } : {}), ...(input.description ? { description: input.description } : {}),
   };
   const hasMeta = Object.keys(meta).length > 2;
@@ -509,7 +512,8 @@ async function executeHelperLaunch(ctx: Ctx, input: LaunchInput, plan: LaunchPla
   // ── 3. one signature for metadata + service (the connected wallet is the on-chain creator) ──
   const details = {
     asset, issuedAt: Math.floor(Date.now() / 1000),
-    ...(input.imageUrl ? { imageUrl: input.imageUrl } : {}), ...(input.xHandle ? { xHandle: input.xHandle } : {}),
+    ...(input.imageUrl ? { imageUrl: input.imageUrl } : {}), ...(input.imageHash ? { imageHash: input.imageHash } : {}),
+    ...(input.xHandle ? { xHandle: input.xHandle } : {}),
     ...(input.website ? { website: input.website } : {}), ...(input.description ? { description: input.description } : {}),
     ...(input.service ? { service: serviceFields(input.service) } : {}),
   };
