@@ -218,25 +218,70 @@ export const linkCheckSchema = z.object({
 /** Max clock skew / age for a signed metadata update, in seconds (same window as services). */
 export const TOKEN_METADATA_MAX_AGE_S = 600;
 
+/** Brief token description ("What does your agent do?"), plain text, at most this many characters after cleaning. */
+export const TOKEN_DESCRIPTION_MAX = 200;
+
+/**
+ * Plain text for a brief description: HTML tags and control characters removed, whitespace collapsed, trimmed.
+ * The server stores this form; clients should send it already cleaned so that what is signed is what is shown.
+ */
+export function cleanTokenDescription(s: string): string {
+  return s
+    .replace(/<!--[\s\S]*?-->/g, ' ')           // HTML comments
+    // Block tags separate words; inline tags (<b>, <i>, <a>…) are removed in place ("<i>call</i>." → "call.").
+    .replace(/<\/?(?:br|p|div|li|ul|ol|h[1-6]|tr|td|th|table|section|article|header|footer|blockquote|pre|hr)\b[^>]*>/gi, ' ')
+    .replace(/<\/?[a-zA-Z!?][^>]*>/g, '')       // any other tag (a lone "<" as in "< $1" is kept: it is shown as text)
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')   // control characters (newlines included: one line of text)
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Raw description field: the CLEANED text must fit TOKEN_DESCRIPTION_MAX ("" clears it). */
+const tokenDescriptionSchema = z.string().max(2_000).refine(
+  (s) => cleanTokenDescription(s).length <= TOKEN_DESCRIPTION_MAX,
+  `Brief description: at most ${TOKEN_DESCRIPTION_MAX} characters`,
+);
+
+/** What lists and pages show for a token: its brief description, else its service's description, else null. */
+export function tokenBrief(tokenDescription: string | null | undefined, serviceDescription: string | null | undefined): string | null {
+  const own = tokenDescription ? cleanTokenDescription(tokenDescription) : '';
+  if (own) return own;
+  const svc = serviceDescription?.trim();
+  return svc ? svc : null;
+}
+
+// ── Token images (POST /api/uploads/token-image, GET /img/<hash>-<size>.webp) ──
+/** Content hash of an uploaded token image (first 40 hex chars of its SHA-256). */
+export const IMAGE_HASH_RE = /^[0-9a-f]{40}$/;
+/** Square WebP renditions served for every token image. */
+export const TOKEN_IMAGE_SIZES = [64, 256, 512] as const;
+export type TokenImageSize = typeof TOKEN_IMAGE_SIZES[number];
+/** Path of one rendition, relative to the API origin. */
+export const tokenImagePath = (hash: string, size: TokenImageSize) => `/img/${hash}-${size}.webp`;
+const imageHashSchema = z.string().regex(IMAGE_HASH_RE, 'image hash: 40 lowercase hex characters');
+
 export const tokenMetadataSchema = z.object({
   asset:       addressSchema,
   imageUrl:    z.string().url().max(500).optional(),
+  /** Uploaded token image, by content hash (set or change it; signed like every other field). */
+  imageHash:   imageHashSchema.optional(),
   /** X (Twitter) handle, with or without leading @. */
   xHandle:     z.string().regex(/^@?[A-Za-z0-9_]{1,15}$/, 'Invalid X handle').optional(),
   website:     z.string().url().max(500).optional(),
-  description: z.string().max(500).optional(),
+  description: tokenDescriptionSchema.optional(),
   /** Unix seconds when signed; must be recent and newer than the last accepted update. */
   issuedAt:    z.number().int().positive(),
   /** personal_sign by the token creator over tokenMetadataMessage(...). */
   signature:   z.string().regex(/^0x[0-9a-fA-F]+$/, 'hex signature'),
 }).refine(
-  d => d.imageUrl !== undefined || d.xHandle !== undefined || d.website !== undefined || d.description !== undefined,
+  d => d.imageUrl !== undefined || d.imageHash !== undefined || d.xHandle !== undefined || d.website !== undefined || d.description !== undefined,
   'at least one metadata field required',
 );
 
 export type TokenMetadataInput = z.infer<typeof tokenMetadataSchema>;
 
-const TOKEN_METADATA_KEYS = ['asset', 'imageUrl', 'xHandle', 'website', 'description', 'issuedAt'] as const;
+// imageHash was added later; canonical() drops unset fields, so messages without it are unchanged.
+const TOKEN_METADATA_KEYS = ['asset', 'imageUrl', 'imageHash', 'xHandle', 'website', 'description', 'issuedAt'] as const;
 
 /** Message the token creator signs: header + canonical JSON of every provided field and issuedAt. */
 export function tokenMetadataMessage(m: Omit<TokenMetadataInput, 'signature'>): string {
@@ -257,21 +302,22 @@ const launchServiceSchema = serviceRefinements(z.object(serviceFields));
 export const launchDetailsSchema = z.object({
   asset:       addressSchema,
   imageUrl:    z.string().url().max(500).optional(),
+  imageHash:   imageHashSchema.optional(),
   xHandle:     z.string().regex(/^@?[A-Za-z0-9_]{1,15}$/, 'Invalid X handle').optional(),
   website:     z.string().url().max(500).optional(),
-  description: z.string().max(500).optional(),
+  description: tokenDescriptionSchema.optional(),
   /** Optional service to register for the token (same fields as POST /api/services). */
   service:     launchServiceSchema.optional(),
   ...signedFields,
 }).refine(
-  d => d.service !== undefined || d.imageUrl !== undefined || d.xHandle !== undefined
+  d => d.service !== undefined || d.imageUrl !== undefined || d.imageHash !== undefined || d.xHandle !== undefined
     || d.website !== undefined || d.description !== undefined,
   'metadata or service required',
 );
 
 export type LaunchDetailsInput = z.infer<typeof launchDetailsSchema>;
 
-const LAUNCH_DETAILS_KEYS = ['asset', 'imageUrl', 'xHandle', 'website', 'description', 'service', 'issuedAt'] as const;
+const LAUNCH_DETAILS_KEYS = ['asset', 'imageUrl', 'imageHash', 'xHandle', 'website', 'description', 'service', 'issuedAt'] as const;
 const LAUNCH_SERVICE_KEYS = ['slug', 'name', 'upstreamUrl', 'priceUsdc', 'requestSchema',
   'responseSchema', 'timeoutSeconds', 'description', 'examplePath', 'apiLink', 'wholeDomain', 'apiKeyHeader', 'apiKeyValue', 'sampleMethod', 'sampleBody'] as const;
 
@@ -287,6 +333,6 @@ export function launchDetailsMessage(m: Omit<LaunchDetailsInput, 'signature'>): 
 }
 
 /** True if the launch-details request carries any display metadata. */
-export function hasLaunchMetadata(m: Pick<LaunchDetailsInput, 'imageUrl' | 'xHandle' | 'website' | 'description'>): boolean {
-  return m.imageUrl !== undefined || m.xHandle !== undefined || m.website !== undefined || m.description !== undefined;
+export function hasLaunchMetadata(m: Pick<LaunchDetailsInput, 'imageUrl' | 'imageHash' | 'xHandle' | 'website' | 'description'>): boolean {
+  return m.imageUrl !== undefined || m.imageHash !== undefined || m.xHandle !== undefined || m.website !== undefined || m.description !== undefined;
 }

@@ -5,7 +5,7 @@
  */
 import { and, eq, isNull, lt, or } from 'drizzle-orm';
 import {
-  hasLaunchMetadata, launchDetailsMessage,
+  cleanTokenDescription, hasLaunchMetadata, launchDetailsMessage,
   type CreateServiceInput, type LaunchDetailsInput, type TokenMetadataInput,
 } from '@astralaunch/shared';
 import { services, tokens, type Service, type Token } from '../db/schema.js';
@@ -69,7 +69,8 @@ export async function applyTokenMetadata(tx: Db, asset: string, m: MetadataField
     ...(m.imageUrl    !== undefined && { imageUrl:    m.imageUrl }),
     ...(m.xHandle     !== undefined && { xHandle:     m.xHandle.replace(/^@/, '') }),
     ...(m.website     !== undefined && { website:     m.website }),
-    ...(m.description !== undefined && { description: m.description }),
+    // Plain text, ≤ 200 chars (checked by the schema); "" (or only tags/whitespace) clears it.
+    ...(m.description !== undefined && { description: cleanTokenDescription(m.description) || null }),
     metadataSignedAt: BigInt(issuedAt),
   })
     .where(and(eq(tokens.asset, asset),

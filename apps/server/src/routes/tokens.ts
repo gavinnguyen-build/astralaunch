@@ -25,7 +25,7 @@ import {
   idxRegistrations, idxDistributions, idxBuybacks, idxEscrowClaims,
   idxEscrowForfeits, idxUsdcTransfers, idxCheckpoints,
 } from '../db/schema.js';
-import { launchDetailsSchema, tokenMetadataSchema, tokenMetadataMessage, WMON } from '@astralaunch/shared';
+import { launchDetailsSchema, tokenBrief, tokenMetadataSchema, tokenMetadataMessage, WMON } from '@astralaunch/shared';
 import { authorizeTokenCreator, consumeSignedMessage, ServiceAuthError } from '../services/serviceAuth.js';
 import { applyLaunchDetails, applyTokenMetadata, LaunchDetailsInputError } from '../services/creatorWrites.js';
 import { listTokens, tokenListQuerySchema } from '../services/tokenList.js';
@@ -226,6 +226,8 @@ app.get('/', zValidator('query', tokenListQuerySchema), async (c) => {
       holders:       await holderCount(db, t.asset),
       xHandle:       t.xHandle,
       description:   t.description,
+      // Shown on cards and rows: the token's brief description, else its service's description.
+      brief:         tokenBrief(t.description, svc?.description),
     };
   }));
 
@@ -345,6 +347,7 @@ app.get('/:asset', async (c) => {
     router:     token.router,
     imageUrl:   token.imageUrl,
     description:token.description,
+    brief:      tokenBrief(token.description, svc?.description),   // token description, else the service's
     website:    token.website,
     twitter:    token.twitter,
     xHandle:    token.xHandle,
