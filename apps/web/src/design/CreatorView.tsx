@@ -42,6 +42,7 @@ export function CreatorView({ v }: { v: any }) {
 <div style={{ display: 'grid', gridTemplateColumns: '110px 80px 110px 120px minmax(0,1fr)', gap: '12px', padding: '11px 0', borderBottom: '1px solid #1E1B2E', fontSize: '13px', alignItems: 'center' }}><span style={{ fontFamily: "'JetBrains Mono', monospace", color: '#8C87A3' }}>{l.t}</span><span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: '700', color: l.color }}>{l.s}</span><span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono', monospace" }}>{l.lat}</span><span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{l.ch}</span><span style={{ color: '#A7A2BD' }}>{l.note}</span></div>
 </Fragment>))}
 </div>
+{v.revealLink}
 </section>
 {v.protectCard}
 </div>

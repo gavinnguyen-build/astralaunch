@@ -185,22 +185,21 @@ export default function Creator() {
     svcColor: !svc || !svc.active ? '#8C87A3' : '#34D399',
     serviceForm: (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {svc && !settings ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '13px', color: '#A7A2BD' }}>
-            Your current link is private.
-            <button type="button" onClick={onReveal} disabled={!isOwner || revealing} title={ownerTitle || 'Sign (free) to show your link and settings'}
-              style={{ height: '32px', padding: '0 14px', borderRadius: '999px', border: '1px solid #3A3456', background: 'transparent', color: '#ECEAF4', fontFamily: 'inherit', fontSize: '12px', cursor: 'pointer' }}>
-              {revealing ? 'Waiting for your signature…' : 'Show my settings'}
-            </button>
-            <span style={{ color: '#8C87A3' }}>or paste a new link below to replace it. Signing also shows responses that failed your schema.</span>
-          </div>
-        ) : null}
         <SchemaMismatchNotice settings={settings} />
         <ServiceLinkForm value={svcLink} onChange={setSvcLink} slug={svc?.slug ?? slugFor(tok.symbol)} agentBase={API_BASE || window.location.origin}
           keySet={settings?.apiKey ?? null} disabled={!isOwner}
           advancedExtra={svc ? <ResponseSchemaField value={schemaText} onChange={setSchemaText} settings={settings} disabled={!isOwner} /> : null} />
       </div>
     ),
+    // Existing service: the link field starts empty (a pasted link replaces the current one; empty keeps it).
+    // Seeing the current link and API protection takes the same free signature as before.
+    revealLink: svc && !settings ? (
+      <button type="button" onClick={onReveal} disabled={!isOwner || revealing} title={ownerTitle || 'Sign (free) to view'}
+        style={{ alignSelf: 'flex-start', marginTop: '12px', padding: 0, border: 0, background: 'transparent', color: isOwner ? '#C4B5FD' : '#5F5A78',
+          fontFamily: 'inherit', fontSize: '13px', textDecoration: 'underline', textUnderlineOffset: '3px', cursor: isOwner && !revealing ? 'pointer' : 'default' }}>
+        {revealing ? 'Waiting for your signature…' : 'View current link and API protection'}
+      </button>
+    ) : null,
     protectCard: svc ? (
       <ProtectApiCard settings={settings} onReveal={onReveal} canReveal={isOwner} revealTitle={ownerTitle || undefined} busy={revealing} />
     ) : null,
