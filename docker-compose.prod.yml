@@ -71,6 +71,11 @@ services:
       # Not read by the server yet (see docs/DEPLOY-COOLIFY.md, "Code changes needed").
       CORS_ORIGINS: ${CORS_ORIGINS:-https://astralaunch.xyz,https://www.astralaunch.xyz}
       IMAGE_STORE_DIR: /data/images
+      # Rate-limit client IP (lib/rateLimit.ts): Coolify's Traefik is the one trusted proxy; the client is the
+      # rightmost X-Forwarded-For entry it appends, honoured only from a Docker-network peer. CF-Connecting-IP /
+      # X-Real-IP are never read (no Cloudflare in front).
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
     entrypoint: ['/bin/sh', '-c', ': "$${POSTGRES_PASSWORD:?FATAL: POSTGRES_PASSWORD is not set}" "$${GATEWAY_HMAC_MASTER_KEY:?FATAL: GATEWAY_HMAC_MASTER_KEY is not set}"; exec "$$@"', 'require-secrets']
     command: ['sh', '-c', 'node_modules/.bin/tsx src/db/migrate.ts && exec node_modules/.bin/tsx src/index.ts']   # = image CMD
     expose: ['3001']

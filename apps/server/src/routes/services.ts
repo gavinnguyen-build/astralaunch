@@ -9,6 +9,7 @@ import {
 } from '@astralaunch/shared';
 import { MONAD_NETWORK } from '@astralaunch/shared';
 import { assertSafeUpstream, SsrfError } from '../lib/ssrf.js';
+import { clientIp, fixedWindowLimiter } from '../lib/rateLimit.js';
 import { upstreamBaseError } from '../lib/upstream.js';
 import { gatewayLimits, paymentWindowS } from '../lib/proxy.js';
 import { authorizeTokenCreator, consumeSignedMessage, ServiceAuthError } from '../services/serviceAuth.js';
@@ -75,17 +76,10 @@ app.post('/', zValidator('json', createServiceSchema), async (c) => {
 
 // POST /api/services/check — call a pasted link once and report what it returns (used before launching / attaching).
 // Public (no token exists yet before a launch), so it is rate-limited per client address.
-const checkHits = new Map<string, { n: number; resetAt: number }>();
+// Client IP only from our trusted proxy (lib/rateLimit.ts clientIp), never from client-set headers.
 const CHECKS_PER_MINUTE = 10;
-function allowCheck(c: Context): boolean {
-  const ip = c.req.header('cf-connecting-ip') ?? c.req.header('x-real-ip') ?? c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? 'local';
-  const now = Date.now();
-  const hit = checkHits.get(ip);
-  if (!hit || hit.resetAt < now) { checkHits.set(ip, { n: 1, resetAt: now + 60_000 }); return true; }
-  hit.n += 1;
-  if (checkHits.size > 10_000) checkHits.clear();
-  return hit.n <= CHECKS_PER_MINUTE;
-}
+const checkLimiter = fixedWindowLimiter({ max: CHECKS_PER_MINUTE, windowMs: 60_000 });
+const allowCheck = (c: Context): boolean => checkLimiter(clientIp(c));
 
 app.post('/check', zValidator('json', linkCheckSchema), async (c) => {
   if (!allowCheck(c)) return c.json({ ok: false, error: 'Too many checks. Try again in a minute.' }, 429);
