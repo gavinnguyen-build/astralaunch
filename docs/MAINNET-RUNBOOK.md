@@ -349,6 +349,21 @@ SLUG=my-svc SERVICE_PATH=/json SERVER_URL=http://localhost:3001 \
 `PRICE_USDC` is human USDC (0.01), not raw units; above 100 USDC it needs `ALLOW_HIGH_PRICE=1`.
 The pay script refuses when `payTo` is not `registry.routers(asset)` on chain, or the wallet lacks USDC.
 
+### Token image and description: set once at launch (2026-10-02)
+
+The token image and brief description are signed only in the launch-details message, the one signature right
+after the launch transaction. It is accepted within 1 hour of the launch and only while neither is set yet. After
+that they are final: `POST /api/tokens` refuses them with 400 "Image and description can only be set at launch.",
+and existing values stay as they are. Uploads that no token references within 24 h are deleted.
+
+Only the X account and website can be changed later, signed by the on-chain creator:
+
+```bash
+cd astralaunch-anvil
+ASSET=0x… WEBSITE=https://example.com X_HANDLE=@name SERVER_URL=https://api.astralaunch.xyz \
+  CREATOR_KEYSTORE=astralaunch-deployer npx tsx src/mainnet-token-details.ts
+```
+
 ### Demo loop: SIGHT → /sight/signals, FEED → /feed/digest (2026-09-25; re-pointed 2026-09-26)
 
 Prerequisites: SIGHT and FEED listed (legacy listing script above); `apps/server/.env.mainnet` contains
