@@ -56,7 +56,7 @@ export async function creatorDashboard(db: Db, chain: CreatorChain, walletRaw: s
     const numFees = fees ? ((assetIs0 ? fees.fees1 : fees.fees0) * share) / WAD : null;
     const assetFees = fees ? ((assetIs0 ? fees.fees0 : fees.fees1) * share) / WAD : null;
     return {
-      asset: t.asset, name: t.name, symbol: t.symbol, imageUrl: t.imageUrl, description: t.description, router: t.router, poolId: t.poolId,
+      asset: t.asset, name: t.name, symbol: t.symbol, imageUrl: t.imageUrl, imageHash: t.imageHash, description: t.description, router: t.router, poolId: t.poolId,
       numeraire: t.numeraire, numeraireSymbol: numeraireSymbol(t.numeraire), launchedAt: t.launchedAt,
       tradingFees: fees === null ? null : {
         estimated: true, shareWad: share.toString(),

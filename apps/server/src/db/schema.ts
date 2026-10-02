@@ -8,6 +8,7 @@ export const tokens = pgTable('tokens', {
   creator:     text('creator').notNull(),            // wallet that launched
   router:      text('router').notNull(),             // RevenueRouter address
   imageUrl:    text('image_url'),
+  imageHash:   text('image_hash'),   // uploaded image by content hash (0015); /img/<hash>-<size>.webp
   description: text('description'),
   website:     text('website'),
   twitter:     text('twitter'),                      // legacy (pre-0006) URL field
@@ -380,4 +381,13 @@ export const hiddenTokens = pgTable('hidden_tokens', {
   asset:    text('asset').primaryKey(),
   reason:   text('reason').notNull(),
   hiddenAt: timestamp('hidden_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ── Uploaded token images (0015) ────────────────────────────────────────────────
+// One row per stored upload (content hash). Rows not referenced by any token after 24 h are deleted
+// together with their files (services/tokenImages.ts cleanupUnreferencedImages).
+export const tokenImages = pgTable('token_images', {
+  hash:      text('hash').primaryKey(),
+  bytes:     integer('bytes').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

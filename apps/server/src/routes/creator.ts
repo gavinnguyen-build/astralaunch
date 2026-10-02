@@ -136,6 +136,7 @@ app.get('/me', async (c) => {
       symbol:      t.symbol,
       router:      t.router,
       imageUrl:    t.imageUrl,
+      imageHash:   t.imageHash,
       launchedAt:  t.launchedAt,
       service: svc ? {
         id:          svc.id,

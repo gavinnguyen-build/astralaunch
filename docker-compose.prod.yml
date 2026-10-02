@@ -70,9 +70,12 @@ services:
       LAUNCH_HELPER_ADDRESS: ${LAUNCH_HELPER_ADDRESS:-}
       # Not read by the server yet (see docs/DEPLOY-COOLIFY.md, "Code changes needed").
       CORS_ORIGINS: ${CORS_ORIGINS:-https://astralaunch.xyz,https://www.astralaunch.xyz}
+      IMAGE_STORE_DIR: /data/images
     entrypoint: ['/bin/sh', '-c', ': "$${POSTGRES_PASSWORD:?FATAL: POSTGRES_PASSWORD is not set}" "$${GATEWAY_HMAC_MASTER_KEY:?FATAL: GATEWAY_HMAC_MASTER_KEY is not set}"; exec "$$@"', 'require-secrets']
     command: ['sh', '-c', 'node_modules/.bin/tsx src/db/migrate.ts && exec node_modules/.bin/tsx src/index.ts']   # = image CMD
     expose: ['3001']
+    volumes:
+      - token_images:/data/images   # uploaded token images (IMAGE_STORE_DIR), content-addressed
     networks: [internal, egress]
     depends_on:
       postgres: { condition: service_healthy }
@@ -182,4 +185,5 @@ networks:
 
 volumes:
   postgres_data:
+  token_images:
   demo_feed_cache:

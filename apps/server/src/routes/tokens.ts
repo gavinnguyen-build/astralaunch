@@ -205,6 +205,7 @@ app.get('/', zValidator('query', tokenListQuerySchema), async (c) => {
       creator:       t.creator,
       router:        t.router,
       imageUrl:      t.imageUrl,
+      imageHash:     t.imageHash,
       launchedAt:    t.launchedAt,
       service: svc ? {
         slug:        svc.slug,
@@ -346,6 +347,7 @@ app.get('/:asset', async (c) => {
     creator:    token.creator,
     router:     token.router,
     imageUrl:   token.imageUrl,
+    imageHash:  token.imageHash,
     description:token.description,
     brief:      tokenBrief(token.description, svc?.description),   // token description, else the service's
     website:    token.website,

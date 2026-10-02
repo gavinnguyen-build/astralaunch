@@ -14,6 +14,8 @@
  *   GET  /api/creator/:wallet                 — creator dashboard (claims, vesting, services)
  *   GET  /api/tokens/:asset/candles|trades|holders — market data
  *   ALL  /s/:slug/*                           — x402 gateway
+ *   POST /api/uploads/token-image             — token image upload (PNG/JPEG/WebP ≤ 2 MB → 64/256/512 WebP)
+ *   GET  /img/<hash>-<size>.webp              — stored token image renditions
  *
  * CORS: /api/* and /s/* allow only the origins in CORS_ORIGINS (lib/cors.ts).
  */
@@ -57,6 +59,10 @@ import adminRouter from './routes/admin.js';
 import leaderboardRouter from './routes/leaderboard.js';
 import statsRouter from './routes/stats.js';
 import configRouter from './routes/config.js';
+import uploadsRouter from './routes/uploads.js';
+import imgRouter from './routes/img.js';
+import { cleanupUnreferencedImages } from './services/tokenImages.js';
+import { db } from './db/client.js';
 import { startProbeWorker } from './lib/probes.js';
 
 const app = new Hono();
@@ -79,8 +85,18 @@ app.route('/api/leaderboard', leaderboardRouter);
 app.route('/api/stats', statsRouter);
 app.route('/api/config', configRouter);
 app.route('/s', gateway);
+app.route('/api/uploads', uploadsRouter);
+app.route('/img', imgRouter);
 
 startProbeWorker();
+
+// Uploaded token images that no token references after 24 h are deleted (rows and files), hourly.
+setInterval(() => {
+  cleanupUnreferencedImages(db).then(
+    (h) => { if (h.length) console.log(`[images] deleted ${h.length} unreferenced upload(s)`); },
+    (e) => console.error('[images] cleanup failed', e),
+  );
+}, 60 * 60_000).unref();
 
 app.notFound((c) => c.json({ error: 'Not found' }, 404));
 app.onError((err, c) => {

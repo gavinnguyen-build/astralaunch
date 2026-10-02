@@ -13,12 +13,13 @@ import { assertSafeUpstream } from '../lib/ssrf.js';
 import { upstreamBaseError } from '../lib/upstream.js';
 import { compileResponseSchema } from '../lib/responseSchema.js';
 import { generateSecret } from '../lib/hmac.js';
+import { tokenImageExists } from './tokenImages.js';
 import { authorizeTokenCreator, consumeSignedMessage, ServiceAuthError } from './serviceAuth.js';
 import type { Db } from './launchFee.js';
 import { newProtectSecret, prepareServiceLink, type PreparedLink } from './serviceLinks.js';
 
 export type ServiceFields = Omit<CreateServiceInput, 'asset' | 'issuedAt' | 'signature'>;
-export type MetadataFields = Pick<TokenMetadataInput, 'imageUrl' | 'xHandle' | 'website' | 'description'>;
+export type MetadataFields = Pick<TokenMetadataInput, 'imageUrl' | 'xHandle' | 'website' | 'description' | 'imageHash'>;
 
 /** Static checks on a service definition (no network): legacy upstream base URL and response schema. */
 export function serviceInputError(s: Pick<ServiceFields, 'upstreamUrl' | 'responseSchema'>): string | null {
@@ -65,8 +66,13 @@ export async function insertService(tx: Db, token: Token, s: ServiceFields, issu
 
 /** Update display metadata; monotonic in issuedAt (a concurrent older signed update loses with 409). */
 export async function applyTokenMetadata(tx: Db, asset: string, m: MetadataFields, issuedAt: number): Promise<void> {
+  // An image is referenced by the hash of a stored upload (POST /api/uploads/token-image).
+  if (m.imageHash !== undefined && !(await tokenImageExists(tx, m.imageHash))) {
+    throw new ServiceAuthError(400, 'Unknown image: upload it first (POST /api/uploads/token-image)');
+  }
   const [row] = await tx.update(tokens).set({
     ...(m.imageUrl    !== undefined && { imageUrl:    m.imageUrl }),
+    ...(m.imageHash   !== undefined && { imageHash:   m.imageHash }),
     ...(m.xHandle     !== undefined && { xHandle:     m.xHandle.replace(/^@/, '') }),
     ...(m.website     !== undefined && { website:     m.website }),
     // Plain text, ≤ 200 chars (checked by the schema); "" (or only tags/whitespace) clears it.

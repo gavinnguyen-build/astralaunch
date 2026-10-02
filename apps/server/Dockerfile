@@ -18,7 +18,10 @@ RUN pnpm -F @astralaunch/shared build
 
 FROM base AS runtime
 ENV NODE_ENV=production PORT=3001 \
-    CONTRACTS_JSON_PATH=/repo/packages/contracts/deployments/monad-mainnet.json
+    CONTRACTS_JSON_PATH=/repo/packages/contracts/deployments/monad-mainnet.json \
+    IMAGE_STORE_DIR=/data/images
+# Token images volume: owned by node so a fresh named volume (copied from this dir) is writable.
+RUN mkdir -p /data/images && chown node:node /data/images
 COPY --from=build --chown=node:node /repo /repo
 COPY --chown=node:node packages/contracts/deployments/monad-mainnet.json packages/contracts/deployments/
 USER node

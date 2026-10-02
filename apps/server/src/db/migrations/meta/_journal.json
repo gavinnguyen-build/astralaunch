@@ -99,6 +99,13 @@
       "when": 1728172800000,
       "tag": "0014_schema_mismatches",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1728259200000,
+      "tag": "0015_token_images",
+      "breakpoints": true
     }
   ]
 }

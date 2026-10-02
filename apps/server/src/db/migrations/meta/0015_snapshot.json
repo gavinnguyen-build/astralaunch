@@ -1,0 +1,15 @@
+{
+  "id": "0015_token_images",
+  "prevId": "0014_schema_mismatches",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {},
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
