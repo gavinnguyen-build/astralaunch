@@ -34,16 +34,22 @@ flowchart LR
 
 Astralaunch v2 (deploy outputs in [`packages/contracts/deployments/`](packages/contracts/deployments/)):
 
-| Contract | Address |
-|---|---|
-| AstralaunchRegistry | [`0x6B3A79C723AB69f8938C87209E1D9730c739e00c`](https://monadscan.com/address/0x6B3A79C723AB69f8938C87209E1D9730c739e00c) |
-| FeeEscrow | [`0xA070ad1387d525E4A180Bdb09B65FD4086858F15`](https://monadscan.com/address/0xA070ad1387d525E4A180Bdb09B65FD4086858F15) |
-| BuybackVault | [`0x394F1dcA6011C16BC6e70CA13F6F29767D92171E`](https://monadscan.com/address/0x394F1dcA6011C16BC6e70CA13F6F29767D92171E) |
-| PlatformFeeReceiver | [`0x2eFE45394d7578dC39c75d06Fe88722118F5Ec76`](https://monadscan.com/address/0x2eFE45394d7578dC39c75d06Fe88722118F5Ec76) |
-| RevenueRouter (implementation) | [`0x8530406130Bc3AF2C63Ee6616966913a4B92108F`](https://monadscan.com/address/0x8530406130Bc3AF2C63Ee6616966913a4B92108F) |
-| InitializerV1Adapter | [`0xe3C62514d9AE240A000e031FA67E64fCcd6Ac582`](https://monadscan.com/address/0xe3C62514d9AE240A000e031FA67E64fCcd6Ac582) |
-| LaunchHelper | [`0xc8D11D55cC5Bee0e01652A6812Fd727501018676`](https://monadscan.com/address/0xc8D11D55cC5Bee0e01652A6812Fd727501018676) |
-| Treasury (launch fee recipient) | [`0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C`](https://monadscan.com/address/0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C) |
+| Contract | Address | Source |
+|---|---|---|
+| AstralaunchRegistry | [`0x6B3A79C723AB69f8938C87209E1D9730c739e00c`](https://monadscan.com/address/0x6B3A79C723AB69f8938C87209E1D9730c739e00c) | verified |
+| FeeEscrow | [`0xA070ad1387d525E4A180Bdb09B65FD4086858F15`](https://monadscan.com/address/0xA070ad1387d525E4A180Bdb09B65FD4086858F15) | verified |
+| BuybackVault | [`0x394F1dcA6011C16BC6e70CA13F6F29767D92171E`](https://monadscan.com/address/0x394F1dcA6011C16BC6e70CA13F6F29767D92171E) | verified |
+| PlatformFeeReceiver | [`0x2eFE45394d7578dC39c75d06Fe88722118F5Ec76`](https://monadscan.com/address/0x2eFE45394d7578dC39c75d06Fe88722118F5Ec76) | verified |
+| RevenueRouter (implementation) | [`0x8530406130Bc3AF2C63Ee6616966913a4B92108F`](https://monadscan.com/address/0x8530406130Bc3AF2C63Ee6616966913a4B92108F) | verified |
+| InitializerV1Adapter | [`0xe3C62514d9AE240A000e031FA67E64fCcd6Ac582`](https://monadscan.com/address/0xe3C62514d9AE240A000e031FA67E64fCcd6Ac582) | verified |
+| LaunchHelper | [`0xc8D11D55cC5Bee0e01652A6812Fd727501018676`](https://monadscan.com/address/0xc8D11D55cC5Bee0e01652A6812Fd727501018676) | verified |
+| Treasury (launch fee recipient) | [`0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C`](https://monadscan.com/address/0x888F0BDd45e460B4Af4A4a58D183Ea86CE9A351C) | — |
+
+All 7 Astralaunch contracts above are verified on Monadscan. Each token's revenue router (e.g. SIGHT
+[`0x10bC…f240`](https://monadscan.com/address/0x10bC2220716738E8Aef57b9CC72101c190acf240), FEED
+[`0xdBa0…fd3a`](https://monadscan.com/address/0xdBa0705cE9217B9E3dB296AF6a1810eB0467fd3a)) is a minimal Solady clone
+(`LibClone.clone`, 44 bytes of bytecode) of the verified RevenueRouter implementation: every call is delegated to it,
+so its logic is that contract's source.
 
 External contracts used (sources in [`packages/shared/src/addresses.ts`](packages/shared/src/addresses.ts)): Doppler Airlock `0x660eAaEdEBc968f8f3694354FA8EC0b4c5Ba8D12`, Doppler V4 scheduled multicurve initializer `0xCe3099B2F07029b086E5e92a1573C5f5A3071783`, Uniswap v4 PoolManager `0x188d586Ddcf52439676Ca21A244753fA19F9Ea8e`, Universal Router `0x0D97Dc33264bfC1c226207428A79b26757fb9dc3`, Permit2 `0x000000000022D473030F116dDEE9F6B43aC78BA3`, USDC `0x754704Bc059F8C67012fEd69BC8A327a5aafb603`, WMON `0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A`, Chainlink MON/USD `0xBcD78f76005B7515837af6b50c7C52BCf73822fb`.
 
