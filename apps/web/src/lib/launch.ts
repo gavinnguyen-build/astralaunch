@@ -21,7 +21,7 @@ import { DopplerSDK, getAirlockOwner, sortBeneficiaries } from '@whetstone-resea
 import { formatEther, getAddress, parseEther, parseEventLogs, type Address, type Hex, type PublicClient, type WalletClient } from 'viem';
 import {
   INITIAL_MCAP_USD, MAX_ORACLE_STALENESS_S, POOL_FEE, POOL_TOKENS, TICK_SPACING, TOTAL_SUPPLY, VESTED_TOKENS, WAD,
-  VESTING_CLIFF_S, VESTING_DURATION_S, launchDetailsMessage, serviceCreateMessage, tokenMetadataMessage, withBuffer,
+  VESTING_CLIFF_S, VESTING_DURATION_S, launchDetailsMessage, serviceCreateMessage, withBuffer,
 } from '@astralaunch/shared';
 
 const SHARES = {
@@ -425,6 +425,7 @@ export async function executeLaunch(ctx: Ctx, input: LaunchInput, plan: LaunchPl
   progress('listing', 'done');
 
   // ── 5. signed metadata + service (the connected wallet is the on-chain creator) ──
+  // Metadata goes through the launch-details message: image and description are accepted only there, at launch.
   const meta = {
     asset, issuedAt: Math.floor(Date.now() / 1000),
     ...(input.imageUrl ? { imageUrl: input.imageUrl } : {}), ...(input.imageHash ? { imageHash: input.imageHash } : {}),
@@ -435,8 +436,8 @@ export async function executeLaunch(ctx: Ctx, input: LaunchInput, plan: LaunchPl
   if (!hasMeta) progress('metadata', 'skipped');
   else {
     progress('metadata', 'running', { note: 'sign in your wallet' });
-    const signature = await ctx.walletClient.signMessage({ account: ctx.account, message: tokenMetadataMessage(meta) });
-    const r = await api<{ error?: string }>(ctx, '/api/tokens', { method: 'POST', body: JSON.stringify({ ...meta, signature }) });
+    const signature = await ctx.walletClient.signMessage({ account: ctx.account, message: launchDetailsMessage(meta) });
+    const r = await api<{ error?: string }>(ctx, '/api/tokens/launch-details', { method: 'POST', body: JSON.stringify({ ...meta, signature }) });
     if (r.status !== 200) throw new LaunchError(`Metadata was not saved: ${r.body.error ?? r.status}`, 'metadata_failed', { asset });
     progress('metadata', 'done');
   }

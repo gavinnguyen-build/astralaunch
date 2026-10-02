@@ -43,8 +43,6 @@ export function CreatorView({ v }: { v: any }) {
 </Fragment>))}
 </div>
 </section>
-{v.imageCard}
-{v.descriptionCard}
 {v.protectCard}
 </div>
 </main>

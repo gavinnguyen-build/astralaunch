@@ -19,8 +19,6 @@ import type { ChainConfig } from '../lib/launch.js';
 import { loadServiceSettings, prepareCollectFees, prepareEscrowClaim, prepareRelease, saveService, type PreparedTx, type ServiceSettings } from '../lib/claims.js';
 import { ServiceLinkForm, emptyServiceLink, serviceLinkErrors, toServiceLink, type ServiceLinkValue } from '../components/ServiceLinkForm.js';
 import { ProtectApiCard } from '../components/ProtectApiCard.js';
-import { TokenImageSetting } from '../components/TokenImageSetting.js';
-import { TokenDescriptionSetting } from '../components/TokenDescriptionSetting.js';
 import { ResponseSchemaField, SchemaMismatchNotice, compactSchema, prettySchema, responseSchemaError } from '../components/ResponseSchema.js';
 import { errMsg, walletClients } from '../lib/wallet.js';
 import { API_BASE } from '../env.js';
@@ -203,14 +201,6 @@ export default function Creator() {
           advancedExtra={svc ? <ResponseSchemaField value={schemaText} onChange={setSchemaText} settings={settings} disabled={!isOwner} /> : null} />
       </div>
     ),
-    imageCard: tok ? (
-      <TokenImageSetting token={tok} avatar={avatarFor(tok.asset)} wallet={walletObj} config={cfg.data}
-        canEdit={isOwner} editTitle={ownerTitle || undefined} onSaved={() => { void dash.refetch(); }} />
-    ) : null,
-    descriptionCard: tok ? (
-      <TokenDescriptionSetting token={tok} wallet={walletObj} config={cfg.data}
-        canEdit={isOwner} editTitle={ownerTitle || undefined} onSaved={() => { void dash.refetch(); }} />
-    ) : null,
     protectCard: svc ? (
       <ProtectApiCard settings={settings} onReveal={onReveal} canReveal={isOwner} revealTitle={ownerTitle || undefined} busy={revealing} />
     ) : null,
