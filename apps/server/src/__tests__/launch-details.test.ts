@@ -109,7 +109,8 @@ describe('POST /api/tokens/launch-details', () => {
   it('a taken slug rolls back the metadata too (all-or-nothing)', async () => {
     const first = await signed(creator, details({ xHandle: 'first', issuedAt: now() - 5 }));
     expect((await post('/api/tokens/launch-details', first)).status).toBe(201);
-    const second = await signed(creator, details({ xHandle: 'second' }));
+    // (no description: it is final once set by the first launch-details)
+    const second = await signed(creator, details({ xHandle: 'second', description: undefined }));
     expect((await post('/api/tokens/launch-details', second)).status).toBe(409);
     const [tok] = await db.select().from(tokens).where(eq(tokens.asset, LISTED));
     expect(tok!.xHandle).toBe('first');
@@ -135,7 +136,7 @@ describe('POST /api/tokens/launch-details', () => {
   });
 
   it('old single-purpose endpoints still accept their own messages', async () => {
-    const meta = { asset: LISTED, description: 'Old flow', issuedAt: now() };
+    const meta = { asset: LISTED, website: 'https://old-flow.example', issuedAt: now() };
     const r1 = await post('/api/tokens', { ...meta, signature: await creator.signMessage({ message: tokenMetadataMessage(meta) }) });
     expect(r1.status).toBe(200);
     const sm = { asset: LISTED, ...svc, slug: 'old-flow', issuedAt: now() };

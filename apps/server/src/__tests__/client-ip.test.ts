@@ -51,11 +51,12 @@ describe('upload rate limit buckets (max 2 per window)', () => {
   it('forged CF-Connecting-IP / X-Real-IP / X-Forwarded-For prefixes stay in the real client bucket', async () => {
     const real = '203.0.113.7';
     const statuses = [];
-    for (const forged of [
+    const forgedSets: Record<string, string>[] = [
       { 'x-forwarded-for': real },
       { 'x-forwarded-for': `1.1.1.1, ${real}`, 'cf-connecting-ip': '5.5.5.5' },
       { 'x-forwarded-for': `2.2.2.2, 3.3.3.3, ${real}`, 'x-real-ip': '6.6.6.6', 'true-client-ip': '7.7.7.7' },
-    ]) statuses.push((await via('10.0.1.2', forged)).status);
+    ];
+    for (const forged of forgedSets) statuses.push((await via('10.0.1.2', forged)).status);
     expect(statuses).toEqual([415, 415, 429]);   // 2 allowed (rejected as SVG), the 3rd is limited
     // a different real client still has its own bucket
     expect((await via('10.0.1.2', { 'x-forwarded-for': '1.1.1.1, 198.51.100.20' })).status).toBe(415);

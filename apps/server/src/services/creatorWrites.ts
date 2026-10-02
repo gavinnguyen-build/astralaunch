@@ -87,6 +87,16 @@ export async function applyTokenMetadata(tx: Db, asset: string, m: MetadataField
 
 export class LaunchDetailsInputError extends Error {}
 
+/**
+ * Token image and brief description are final once the token is launched: they are accepted only in the
+ * launch-details message (the one signature right after the launch transaction), only while neither is set
+ * yet, and only within LAUNCH_DETAILS_WINDOW_S of the launch. Later metadata updates may not carry them.
+ */
+export const LAUNCH_ONLY_ERROR = 'Image and description can only be set at launch.';
+export const LAUNCH_DETAILS_WINDOW_S = 60 * 60;
+export const setsLaunchOnlyFields = (m: { imageHash?: unknown; imageUrl?: unknown; description?: unknown }) =>
+  m.imageHash !== undefined || m.imageUrl !== undefined || m.description !== undefined;
+
 export interface LaunchDetailsResult {
   asset: string;
   metadataUpdated: boolean;
@@ -110,12 +120,20 @@ export async function applyLaunchDetails(db: Db, body: LaunchDetailsInput, nowS:
     if (bad) throw new LaunchDetailsInputError(bad);
   }
 
-  const [existing] = await db.select({ metadataSignedAt: tokens.metadataSignedAt }).from(tokens).where(eq(tokens.asset, asset)).limit(1);
+  const [existing] = await db.select({
+    metadataSignedAt: tokens.metadataSignedAt, launchedAt: tokens.launchedAt,
+    imageHash: tokens.imageHash, imageUrl: tokens.imageUrl, description: tokens.description,
+  }).from(tokens).where(eq(tokens.asset, asset)).limit(1);
   const token = await authorizeTokenCreator(db, {
     asset, message, signature, issuedAt: body.issuedAt, nowS,
     lastIssuedAt: withMetadata ? existing?.metadataSignedAt ?? null : null,
     requireListed: body.service !== undefined,
   });
+  if (setsLaunchOnlyFields(body) && existing) {
+    const alreadySet = existing.imageHash != null || existing.imageUrl != null || existing.description != null;
+    const late = nowS - Math.floor(existing.launchedAt.getTime() / 1000) > LAUNCH_DETAILS_WINDOW_S;
+    if (alreadySet || late) throw new LaunchDetailsInputError(LAUNCH_ONLY_ERROR);
+  }
   // New model: call the pasted link once (must answer 2xx) before anything is written. Legacy: SSRF check only.
   const s = body.service;
   const link = s?.apiLink ? await prepareServiceLink({

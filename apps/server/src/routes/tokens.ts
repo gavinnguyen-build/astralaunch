@@ -27,7 +27,7 @@ import {
 } from '../db/schema.js';
 import { launchDetailsSchema, tokenBrief, tokenMetadataSchema, tokenMetadataMessage, WMON } from '@astralaunch/shared';
 import { authorizeTokenCreator, consumeSignedMessage, ServiceAuthError } from '../services/serviceAuth.js';
-import { applyLaunchDetails, applyTokenMetadata, LaunchDetailsInputError } from '../services/creatorWrites.js';
+import { applyLaunchDetails, applyTokenMetadata, LaunchDetailsInputError, LAUNCH_ONLY_ERROR, setsLaunchOnlyFields } from '../services/creatorWrites.js';
 import { listTokens, tokenListQuerySchema } from '../services/tokenList.js';
 import { publicSample, ServiceLinkError } from '../services/serviceLinks.js';
 import { SsrfError } from '../lib/ssrf.js';
@@ -246,6 +246,8 @@ app.get('/', zValidator('query', tokenListQuerySchema), async (c) => {
 // event (D-TK1); this cannot create a token that is not registered on-chain.
 app.post('/', zValidator('json', tokenMetadataSchema), async (c) => {
   const body = c.req.valid('json');
+  // Image and description are set once, in the launch-details message (services/creatorWrites.ts).
+  if (setsLaunchOnlyFields(body)) return c.json({ error: LAUNCH_ONLY_ERROR }, 400);
   const asset = body.asset.toLowerCase();
 
   const { signature, ...signed } = body;

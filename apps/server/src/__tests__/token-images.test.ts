@@ -132,23 +132,31 @@ describe('upload, serve, reference, cleanup', () => {
     expect(await db.select().from(tokenImages)).toHaveLength(0);
   });
 
-  it('only the on-chain creator can set or change the image; unknown hashes refused', async () => {
+  it('image is set once at launch (launch-details, creator only, known hash); later updates are refused', async () => {
     const { hash } = await (await upload(await png())).json() as { hash: string };
-    const send = async (signer: typeof creator, imageHash: string, issuedAt: number) => {
+    const atLaunch = async (signer: typeof creator, imageHash: string, issuedAt: number) => {
+      const m = { asset: ASSET, imageHash, issuedAt };
+      return app.request('/api/tokens/launch-details', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...m, signature: await signer.signMessage({ message: launchDetailsMessage(m as never) }) }) });
+    };
+    const later = async (imageHash: string, issuedAt: number) => {
       const m = { asset: ASSET, imageHash, issuedAt };
       return app.request('/api/tokens', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...m, signature: await signer.signMessage({ message: tokenMetadataMessage(m) }) }) });
+        body: JSON.stringify({ ...m, signature: await creator.signMessage({ message: tokenMetadataMessage(m) }) }) });
     };
     const t = now();
-    expect((await send(attacker, hash, t)).status).toBe(403);
-    expect((await send(creator, 'f'.repeat(40), t + 1)).status).toBe(400);
-    expect((await send(creator, hash, t + 2)).status).toBe(200);
-    const [row] = await db.select({ imageHash: tokens.imageHash }).from(tokens).where(eq(tokens.asset, ASSET));
-    expect(row!.imageHash).toBe(hash);
-    // change it
+    expect((await atLaunch(attacker, hash, t)).status).toBe(403);
+    expect((await atLaunch(creator, 'f'.repeat(40), t + 1)).status).toBe(400);   // unknown upload
+    expect((await atLaunch(creator, hash, t + 2)).status).toBe(200);
+    const current = async () => (await db.select({ imageHash: tokens.imageHash }).from(tokens).where(eq(tokens.asset, ASSET)))[0]!.imageHash;
+    expect(await current()).toBe(hash);
+    // final: neither a later metadata update nor a second launch-details can change it
     const { hash: h2 } = await (await upload(await webp())).json() as { hash: string };
-    expect((await send(creator, h2, t + 3)).status).toBe(200);
-    expect((await db.select({ imageHash: tokens.imageHash }).from(tokens).where(eq(tokens.asset, ASSET)))[0]!.imageHash).toBe(h2);
+    const r1 = await later(h2, t + 3);
+    expect(r1.status).toBe(400);
+    expect(await r1.json()).toEqual({ error: 'Image and description can only be set at launch.' });
+    expect((await atLaunch(creator, h2, t + 4)).status).toBe(400);
+    expect(await current()).toBe(hash);
   }, 60_000);
 
   it('launch-details carries imageHash; messages without it are unchanged', () => {
