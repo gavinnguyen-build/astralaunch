@@ -8,3 +8,13 @@ broadcast
 dist
 broadcast-mainnet
 .turbo
+
+# Keys and keystores never belong in the repo (Foundry keystores live in ~/.foundry/keystores)
+keystores/
+*.keystore
+UTC--*
+*.pem
+*.key
+*.p12
+*keys.env
+*.env.v*.bak
