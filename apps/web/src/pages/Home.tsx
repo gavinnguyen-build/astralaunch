@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { HomeView } from '../design/HomeView.js';
 import { api, TOKEN_FILTERS, type TokenFilter } from '../lib/api.js';
+import { tokenImageSrc } from '../lib/tokenImage.js';
 import { avatarFor, fmtUsd, fmtUsdc } from '../lib/format.js';
 import { ErrorBox, Loading, Empty } from '../components/State.js';
 
@@ -41,7 +42,7 @@ export default function Home() {
     const name = t.service?.name ?? t.name;
     return {
       href: `/token/${t.asset}`, asset: t.asset, name, ticker: `$${t.symbol}`,
-      imageUrl: t.imageUrl, initial: name.charAt(0).toUpperCase(),
+      imageUrl: tokenImageSrc(t, 256), initial: name.charAt(0).toUpperCase(),
       // solid tile: the first colour of the token's avatar gradient
       tile: avatarFor(t.asset).match(/#[0-9A-Fa-f]{6}/)?.[0] ?? '#8B5CF6',
       desc: t.service?.description ?? t.description ?? 'No description yet.',

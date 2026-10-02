@@ -7,6 +7,7 @@ import { ago, avatarFor, compact, daysUntil, fmtDate, fmtTime, fmtUsd, fmtUsdc, 
 import { Empty, ErrorBox, Loading, UsdOr } from '../components/State.js';
 import { SiteFooter, SiteHeader } from '../components/Site.js';
 import { AddrLink, TokenLink, TxLink } from '../components/Explorer.js';
+import { TokenAvatar } from '../components/TokenAvatar.js';
 import { SampleCall, agentLink, priceLabel } from '../components/SampleCall.js';
 import { PRIVY_ENABLED, useConnectedWallet, useLogin } from '../components/Site.js';
 import { get } from '../lib/api.js';
@@ -64,7 +65,8 @@ export default function Token() {
   const examplePart = (svc?.sample?.path ?? svc?.examplePath ?? '').replace(/^\//, '');
 
   const v = {
-    initial: t.symbol.charAt(0), avatar: avatarFor(t.asset), sym: `$${t.symbol}`, name: t.name,
+    avatarNode: <TokenAvatar token={t} initial={t.symbol.charAt(0)} background={avatarFor(t.asset)} size={42} radius={11} fontSize={18} />,
+    sym: `$${t.symbol}`, name: t.name,
     infoHref: `/token/${t.asset}`, chartHref: `/token/${t.asset}/chart`,
     title: svc?.name ?? t.name, verified: t.verified,
     desc: svc?.description ?? t.description ?? 'This token has no service description yet.',

@@ -123,7 +123,7 @@ export function TokenChartView({ v }: { v: any }) {
 <aside style={{ flex: '1 1 320px', maxWidth: '100%', display: 'flex', flexDirection: 'column', gap: '9px' }}>
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', padding: '9px 0' }}>
 <div style={{ display: 'flex', alignItems: 'baseline', gap: '9px' }}>
-<span style={{ fontFamily: 'Inter,system-ui,sans-serif', fontWeight: '700', letterSpacing: '-0.01em', fontSize: '26px', color: '#A78BFA' }}>{v.symPlain}</span>
+{v.avatarNode}<span style={{ fontFamily: 'Inter,system-ui,sans-serif', fontWeight: '700', letterSpacing: '-0.01em', fontSize: '26px', color: '#A78BFA' }}>{v.symPlain}</span>
 <span style={{ fontFamily: 'Inter,system-ui,sans-serif', fontWeight: '700', letterSpacing: '-0.01em', fontSize: '26px' }}>/ {v.numSym}</span>
 <span style={{ background: '#2E2152', color: '#C4B5FD', fontSize: '11px', fontWeight: '700', padding: '3px 10px', borderRadius: '999px' }}>#{v.rank}</span>
 </div>
@@ -132,9 +132,9 @@ export function TokenChartView({ v }: { v: any }) {
 <span style={{ background: '#1C1A29', fontSize: '11px', padding: '2px 8px', borderRadius: '999px' }}>2% fee</span>
 </div>
 </div>
-<div style={{ height: '150px', borderRadius: '28px', background: 'repeating-linear-gradient(135deg,#14121E 0 10px,#1C1A29 10px 20px)', border: '1px solid #2A2640', display: 'grid', placeItems: 'center' }}>
+{v.heroSrc ? (<><div style={{ position: 'relative', height: '150px', borderRadius: '28px', overflow: 'hidden', border: '1px solid #2A2640', background: '#0B0A12' }}><img src={v.heroSrc} alt="" aria-hidden="true" style={{ position: 'absolute', inset: '-24px', width: 'calc(100% + 48px)', height: 'calc(100% + 48px)', objectFit: 'cover', filter: 'blur(22px) brightness(0.45)', transform: 'scale(1.05)' }} /><img src={v.heroSrc} alt={v.heroAlt} onError={v.onHeroError} style={{ position: 'absolute', inset: '0', width: '100%', height: '100%', objectFit: 'contain' }} /><span style={{ position: 'absolute', left: '50%', bottom: '10px', transform: 'translateX(-50%)', maxWidth: 'calc(100% - 24px)', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'Inter,system-ui,sans-serif', fontSize: '12px', fontWeight: '500', color: '#C9C5DA', background: 'rgba(11,10,18,0.72)', padding: '4px 12px', borderRadius: '999px', whiteSpace: 'nowrap' }}>{v.tagline}</span></div></>) : (<><div style={{ height: '150px', borderRadius: '28px', background: 'repeating-linear-gradient(135deg,#14121E 0 10px,#1C1A29 10px 20px)', border: '1px solid #2A2640', display: 'grid', placeItems: 'center' }}>
 <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '12px', color: '#8C87A3', background: '#0B0A12', padding: '4px 12px', borderRadius: '999px', whiteSpace: 'nowrap' }}>{v.tagline}</span>
-</div>
+</div></>)}
 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: '9px' }}>
 <div style={{ background: '#14121E', border: '1px solid #2E2A45', borderRadius: '24px', padding: '13px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
 <span style={{ fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'JetBrains Mono',monospace", color: '#8C87A3' }}>Price USD</span>

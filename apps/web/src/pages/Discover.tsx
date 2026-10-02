@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DiscoverView } from '../design/DiscoverView.js';
 import { api, TOKEN_FILTERS, type TokenFilter, type TokenSort } from '../lib/api.js';
+import { TokenAvatar } from '../components/TokenAvatar.js';
 import { avatarFor, compact, fmtBps, fmtPrice, fmtUsdc, isDown, sparkPoints } from '../lib/format.js';
 import { Empty, ErrorBox, Loading, UsdOr } from '../components/State.js';
 import { chipLabel, ucrBits } from './Home.js';
@@ -84,7 +85,8 @@ export default function Discover() {
     const chg = t.market?.change24hBps ?? null;
     const sym = t.market?.numeraireSymbol ?? 'USDC';
     return {
-      rank: String(offset + i + 1), initial: t.symbol.charAt(0), avatar: avatarFor(t.asset), sym: `$${t.symbol}`,
+      rank: String(offset + i + 1), sym: `$${t.symbol}`,
+      avatarNode: <TokenAvatar token={t} initial={t.symbol.charAt(0)} background={avatarFor(t.asset)} size={32} radius={9} fontSize={13} />,
       name: t.name,   // token name only (no service description)
       price: <UsdOr usd={t.market?.priceUsd} alt={t.market?.price ? fmtPrice(t.market.price, '') : null} symbol={sym} price />,
       chg: fmtBps(chg), chgColor: isDown(chg) ? RED : GREEN,

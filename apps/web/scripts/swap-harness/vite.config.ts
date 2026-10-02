@@ -19,6 +19,7 @@ export default defineConfig({
     proxy: {
       '/api': { target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:3101', changeOrigin: true },
       '^/s/': { target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:3101', changeOrigin: true },
+      '^/img/': { target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:3101', changeOrigin: true },
     },
   },
 });

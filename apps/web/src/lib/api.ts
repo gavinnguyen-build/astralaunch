@@ -21,7 +21,7 @@ export interface Usage {
   volume: string; volumeUsd: string | null; ucr: string | null;
 }
 export interface TokenListItem {
-  asset: string; name: string; symbol: string; creator: string; router: string; imageUrl: string | null;
+  asset: string; name: string; symbol: string; creator: string; router: string; imageUrl: string | null; imageHash: string | null;
   launchedAt: string; xHandle: string | null; description: string | null; verified: boolean; holders: number;
   service: { slug: string; name: string; description: string | null; priceUsdc: string; endpoint: string; examplePath: string | null; sample: { method: 'GET' | 'POST'; path: string; body: string | null } | null } | null;
   market: Market | null; usage30d: Usage | null;
@@ -59,7 +59,7 @@ export interface LeaderCreator {
 export interface CreatorDash {
   wallet: string;
   tokens: {
-    asset: string; name: string; symbol: string; imageUrl: string | null; numeraireSymbol: string; launchedAt: string; poolId: string;
+    asset: string; name: string; symbol: string; imageUrl: string | null; imageHash: string | null; numeraireSymbol: string; launchedAt: string; poolId: string;
     tradingFees: { estimated: boolean; numeraire: string; asset: string } | null;
     escrow: { claimable: string | null; claimableSymbol: string; usdcAccrued: string; usdcClaimed: string; recordedRevenue: string; forfeitAt: number; forfeited: boolean } | null;
     vesting: { total: string; released: string; releasable: string; locked: string; start: number; cliffEnd: number; end: number } | null;

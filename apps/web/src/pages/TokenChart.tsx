@@ -10,8 +10,10 @@ import {
   type IChartApi, type ISeriesApi, type UTCTimestamp,
 } from 'lightweight-charts';
 import { TokenChartView } from '../design/TokenChartView.js';
+import { TokenAvatar } from '../components/TokenAvatar.js';
+import { tokenImageSrc } from '../lib/tokenImage.js';
 import { api, type Candle, type Trade } from '../lib/api.js';
-import { ago, compact, fmtUsd, serviceLabel, fmtPrice } from '../lib/format.js';
+import { ago, compact, fmtUsd, serviceLabel, fmtPrice, avatarFor } from '../lib/format.js';
 import { Empty, ErrorBox, Loading } from '../components/State.js';
 import { PageShell } from './Token.js';
 import { AddrLink, TxLink } from '../components/Explorer.js';
@@ -56,6 +58,7 @@ export default function TokenChart() {
   // After a swap: optimistic "confirming" rows + fast refresh (lib/optimisticTrade.ts).
   const [pending, setPending] = useState<ShownTrade[]>([]);
   const [burstUntil, setBurstUntil] = useState(0);
+  const [heroFailed, setHeroFailed] = useState(false);
   const every = (normal: number | false) => () => burstInterval(burstUntil, normal);
   const login = useLogin();
   const cfg = useQuery({ queryKey: ['config'], queryFn: () => get<ChainConfig>('/api/config') });
@@ -238,6 +241,9 @@ export default function TokenChart() {
       fg: (tab === l || (tab === 'Holders' && l.startsWith('Holders'))) ? '#FFFFFF' : '#ECEAF4' })),
     cols: cols.map(([label, align]) => ({ label, align })), rows, tableState,
     tagline: serviceLabel(t.name, t.service),
+    // Info panel: the 512 px image (contain) over a blurred, darkened copy; striped placeholder without one.
+    heroSrc: heroFailed ? null : tokenImageSrc(t, 512), heroAlt: `${t.symbol} token image`, onHeroError: () => setHeroFailed(true),
+    avatarNode: <TokenAvatar token={t} initial={t.symbol.charAt(0)} background={avatarFor(t.asset)} size={32} radius={9} fontSize={14} style={{ alignSelf: 'center' }} />,
     priceUsd: m?.priceUsd != null ? fmtPrice(m.priceUsd) : <span>—<span style={{ display: 'block', fontSize: 10, color: '#8C87A3', fontWeight: 400 }}>USD price unavailable</span></span>,
     priceNum: m?.price ? `${fmtPrice(m.price, '')} ${numSym}` : '—',
     keyStats: [
