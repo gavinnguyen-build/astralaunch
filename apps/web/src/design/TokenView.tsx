@@ -47,7 +47,7 @@ export function TokenView({ v }: { v: any }) {
 </div>
 <section aria-labelledby="ucr" className="tv-ucr" style={{ border: '1px solid #2A2640', borderRadius: '20px', padding: '28px', background: 'radial-gradient(700px 300px at 85% 90%, rgba(168,85,247,0.25), transparent 60%), #110F1A', display: 'flex', flexDirection: 'column', gap: '22px' }}>
 <div className="tv-ucr-top" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '24px' }}>
-<div><h2 id="ucr" style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', letterSpacing: '0.16em', fontWeight: '500', color: '#B9A8E8' }}>USAGE COVERAGE · 30 DAYS</h2><div style={{ marginTop: '8px', fontSize: '64px', lineHeight: '1', fontWeight: '800', letterSpacing: '-0.03em', background: 'linear-gradient(90deg,#6EE7B7,#34D399)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>{v.ucrBig}</div></div>
+<div><h2 id="ucr" style={{ margin: '0', fontFamily: 'Satoshi, Inter, system-ui, sans-serif', fontSize: '16px', fontWeight: '700', color: '#C4B5FD' }}>Usage coverage <span style={{ fontFamily: 'Inter, system-ui, sans-serif', fontSize: '13px', fontWeight: '500', color: '#8F8AA8' }}>· 30 days</span></h2><div style={{ marginTop: '8px', fontSize: '64px', lineHeight: '1', fontWeight: '800', letterSpacing: '-0.03em', background: 'linear-gradient(90deg,#6EE7B7,#34D399)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>{v.ucrBig}</div></div>
 <p style={{ margin: '0', maxWidth: '380px', fontSize: '14px', lineHeight: '1.55', color: '#A7A2BD' }}>{v.ucrText}</p>
 </div>
 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -56,7 +56,7 @@ export function TokenView({ v }: { v: any }) {
 </div>
 <dl className="tv-ucr-stats" style={{ margin: '0', display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', borderTop: '1px solid #25213A', paddingTop: '20px', gap: '16px' }}>
 {(v.stats ?? []).map((s: any, sI: number) => (<Fragment key={sI}>
-<div><dt style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', letterSpacing: '0.14em', color: '#8C87A3' }}>{s.label}</dt><dd style={{ margin: '8px 0 0', fontSize: '22px', fontWeight: '700' }}>{s.value}</dd><dd style={{ margin: '4px 0 0', fontSize: '12px', color: '#8C87A3' }}>{s.note}</dd></div>
+<div><dt style={{ fontSize: '13px', fontWeight: '500', color: '#8F8AA8' }}>{s.label}</dt><dd style={{ margin: '8px 0 0', fontSize: '22px', fontWeight: '700' }}>{s.value}</dd><dd style={{ margin: '4px 0 0', fontSize: '12px', color: '#8C87A3' }}>{s.note}</dd></div>
 </Fragment>))}
 </dl>
 </section>

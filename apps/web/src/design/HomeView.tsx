@@ -85,9 +85,9 @@ export function HomeView({ v }: { v: any }) {
 </div>
 </div>
 <div className="home-stats">
-<div className="home-stat"><div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', letterSpacing: '0.14em', color: '#8C87A3' }}>SERVICES LIVE</div><div style={{ marginTop: '10px', fontSize: '26px', fontWeight: '700' }}>{v.stats.servicesLive}</div></div>
-<div className="home-stat"><div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', letterSpacing: '0.14em', color: '#8C87A3' }}>PAID CALLS</div><div style={{ marginTop: '10px', fontSize: '26px', fontWeight: '700' }}>{v.stats.paidCalls}</div></div>
-<div className="home-stat"><div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', letterSpacing: '0.14em', color: '#8C87A3' }}>PAID TO PROVIDERS</div><div style={{ marginTop: '10px', fontSize: '26px', fontWeight: '700' }}>{v.stats.paidToProviders} <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '12px', color: '#A78BFA' }}>USDC</span></div></div>
+<div className="home-stat"><div style={{ fontSize: '13px', fontWeight: '500', color: '#8F8AA8' }}>Services live</div><div style={{ marginTop: '10px', fontSize: '26px', fontWeight: '700' }}>{v.stats.servicesLive}</div></div>
+<div className="home-stat"><div style={{ fontSize: '13px', fontWeight: '500', color: '#8F8AA8' }}>Paid calls</div><div style={{ marginTop: '10px', fontSize: '26px', fontWeight: '700' }}>{v.stats.paidCalls}</div></div>
+<div className="home-stat"><div style={{ fontSize: '13px', fontWeight: '500', color: '#8F8AA8' }}>Paid to providers</div><div style={{ marginTop: '10px', fontSize: '26px', fontWeight: '700' }}>{v.stats.paidToProviders} <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '12px', color: '#A78BFA' }}>USDC</span></div></div>
 </div>
 </section>
 <section className="home-services">
@@ -130,7 +130,7 @@ export function HomeView({ v }: { v: any }) {
 </div>
 </section>
 <section className="home-how" style={{ marginTop: '20px', border: '1px solid #3B2A63', borderRadius: '24px', background: 'radial-gradient(800px 360px at 90% 100%, rgba(168,85,247,0.30), transparent 60%), linear-gradient(180deg,#221442,#170F2C)' }}>
-<div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', letterSpacing: '0.18em', color: '#B9A8E8' }}>HOW IT WORKS</div>
+<div style={{ fontSize: '14px', fontWeight: '600', color: '#C4B5FD' }}>How it works</div>
 <h2 className="home-how-title">From API to token before the first call settles.</h2>
 <div className="home-how-grid">
 {(v.steps ?? []).map((s: any, sI: number) => (<Fragment key={sI}>

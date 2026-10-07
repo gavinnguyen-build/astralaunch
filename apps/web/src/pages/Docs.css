@@ -1,0 +1,54 @@
+/* /docs — readable long-form page: sticky section list on desktop, single column on phones. */
+.docs { display: grid; grid-template-columns: 220px minmax(0, 760px); gap: 48px; align-items: start; }
+.docs-toc { position: sticky; top: 88px; display: flex; flex-direction: column; gap: 2px; }
+.docs-toc-title { font-size: 12px; font-weight: 600; color: #8F8AA8; padding: 0 10px 8px; }
+.docs-toc a { padding: 7px 10px; border-radius: 8px; font-size: 14px; color: #A7A2BD; text-decoration: none; }
+.docs-toc a:hover { background: #15131F; color: #ECEAF4; }
+.docs-body { min-width: 0; font-size: 15px; line-height: 1.7; color: #C9C5DA; }
+.docs-body h1 { margin: 0; font-family: Satoshi, Inter, system-ui, sans-serif; font-size: 36px; line-height: 1.1; letter-spacing: -0.02em; color: #FFFFFF; }
+.docs-lead { margin: 12px 0 0; font-size: 17px; line-height: 1.6; color: #A7A2BD; }
+.docs-body section { padding-top: 36px; margin-top: 36px; border-top: 1px solid #1E1B2E; scroll-margin-top: 80px; }
+.docs-body h2 { margin: 0 0 12px; font-family: Satoshi, Inter, system-ui, sans-serif; font-size: 24px; line-height: 1.2; color: #FFFFFF; }
+.docs-body h3 { margin: 22px 0 10px; font-size: 15px; font-weight: 600; color: #ECEAF4; }
+.docs-body p { margin: 0 0 12px; }
+.docs-body strong { color: #ECEAF4; font-weight: 600; }
+.docs-body ol, .docs-body ul { margin: 0 0 14px; padding-left: 22px; }
+.docs-body li { margin: 6px 0; }
+.docs-body code { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; padding: 2px 6px; border-radius: 6px; background: #15131F; border: 1px solid #25213A; color: #DDD6FE; overflow-wrap: anywhere; }
+.docs-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 18px 0; }
+.docs-facts > div { padding: 14px 16px; border: 1px solid #25213A; border-radius: 12px; background: #13111C; display: flex; flex-direction: column; gap: 4px; }
+.docs-facts span { font-size: 13px; color: #8F8AA8; }
+.docs-facts strong { font-size: 15px; line-height: 1.4; }
+.docs-split { display: flex; gap: 6px; margin: 4px 0 6px; }
+.docs-split > div { min-width: 0; padding: 14px; border-radius: 12px; display: flex; flex-direction: column; gap: 4px; }
+.docs-split strong { font-size: 22px; line-height: 1.1; }
+.docs-split span { font-size: 13px; line-height: 1.35; }
+.docs-split .s-provider { background: #0F221D; border: 1px solid #1F6B52; }
+.docs-split .s-provider strong { color: #34D399; }
+.docs-split .s-buyback { background: #1B1530; border: 1px solid #3B2A63; }
+.docs-split .s-buyback strong { color: #C4B5FD; }
+.docs-split .s-platform { background: #13111C; border: 1px solid #25213A; }
+.docs-list { list-style: none; padding-left: 0 !important; }
+.docs-list li { display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid #1A1826; margin: 0; }
+.docs-list li strong { min-width: 52px; }
+.docs-contracts { margin: 14px 0 0; display: flex; flex-direction: column; }
+.docs-contracts > div { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid #1A1826; }
+.docs-contracts dt { color: #A7A2BD; }
+.docs-contracts dd { margin: 0; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; }
+.docs-body details { border: 1px solid #25213A; border-radius: 12px; background: #13111C; padding: 12px 16px; margin: 0 0 8px; }
+.docs-body summary { cursor: pointer; font-weight: 600; color: #ECEAF4; }
+.docs-body details p { margin: 10px 0 0; }
+.docs-cta { margin-top: 36px !important; padding-top: 24px; border-top: 1px solid #1E1B2E; }
+@media (max-width: 1100px) {
+  .docs { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .docs-toc { display: none; }
+}
+@media (max-width: 760px) {
+  .docs-body { font-size: 15px; }
+  .docs-body h1 { font-size: 30px; }
+  .docs-body h2 { font-size: 21px; }
+  .docs-body section { padding-top: 28px; margin-top: 28px; }
+  .docs-facts { grid-template-columns: minmax(0, 1fr); }
+  .docs-split { flex-direction: column; }
+  .docs-split > div { flex-basis: auto !important; flex-direction: row; align-items: baseline; gap: 10px; }
+}

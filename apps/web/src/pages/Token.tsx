@@ -86,10 +86,10 @@ export default function Token() {
       : `Paying agents funded ${ucr.toFixed(2)} times ${ucr >= 1 ? 'more' : 'as much'} buyback than trading did. Above 1.0, the token is backed by usage more than by volume.`,
     bbUsage: fmtUsd(bbRev), bbTrading: fmtUsd(bbTrd), bbUsageW: pct(bbRev, bbMax), bbTradingW: pct(bbTrd, bbMax),
     stats: [
-      { label: 'CLEAN REVENUE', value: `${fmtUsdc(t.usageAll?.cleanRevenueUsdc ?? '0')} USDC`, note: `raw ${fmtUsdc(t.usageAll?.rawRevenueUsdc ?? '0')} USDC` },
-      { label: 'PAID CALLS', value: compact(t.usageAll?.paidCalls ?? 0), note: 'charged on success only' },
-      { label: 'BURNED', value: `${compact(1e9 - Number(m?.supply ?? 1e9))} ${t.symbol}`, note: 'by buyback' },
-      { label: 'CLEAN PAYERS', value: String(t.usageAll?.cleanPayers ?? 0), note: 'distinct wallets, all time' },
+      { label: 'Clean revenue', value: `${fmtUsdc(t.usageAll?.cleanRevenueUsdc ?? '0')} USDC`, note: `raw ${fmtUsdc(t.usageAll?.rawRevenueUsdc ?? '0')} USDC` },
+      { label: 'Paid calls', value: compact(t.usageAll?.paidCalls ?? 0), note: 'charged on success only' },
+      { label: 'Burned', value: `${compact(1e9 - Number(m?.supply ?? 1e9))} ${t.symbol}`, note: 'by buyback' },
+      { label: 'Clean payers', value: String(t.usageAll?.cleanPayers ?? 0), note: 'distinct wallets, all time' },
     ],
     svcStatus: !svc ? 'No service' : health?.uptime7d == null ? 'Live' : health.uptime7d >= 0.95 ? 'Live' : 'Degraded',
     // Always the gateway link (VITE_API_BASE), never the creator's upstream URL.

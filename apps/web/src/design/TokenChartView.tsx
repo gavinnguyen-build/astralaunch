@@ -97,7 +97,7 @@ export function TokenChartView({ v }: { v: any }) {
 <thead>
 <tr>
 {(v.cols ?? []).map((h: any, hI: number) => (<Fragment key={hI}>
-<th style={{ textAlign: h.align, fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'JetBrains Mono',monospace", color: '#8C87A3', fontWeight: '600', padding: '10px 12px', borderBottom: '1px solid #2A2640', whiteSpace: 'nowrap' }}>{h.label}</th>
+<th style={{ textAlign: h.align, fontSize: '12px', color: '#8F8AA8', fontWeight: '500', padding: '10px 12px', borderBottom: '1px solid #2A2640', whiteSpace: 'nowrap' }}>{h.label}</th>
 </Fragment>))}
 </tr>
 </thead>
@@ -137,18 +137,18 @@ export function TokenChartView({ v }: { v: any }) {
 </div></>)}
 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: '9px' }}>
 <div style={{ background: '#14121E', border: '1px solid #2E2A45', borderRadius: '24px', padding: '13px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-<span style={{ fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'JetBrains Mono',monospace", color: '#8C87A3' }}>Price USD</span>
+<span style={{ fontSize: '12px', fontWeight: '500', color: '#8F8AA8' }}>Price USD</span>
 <span style={{ fontFamily: 'Inter,system-ui,sans-serif', fontWeight: '700', letterSpacing: '-0.01em', fontSize: '21px' }}>{v.priceUsd}</span>
 </div>
 <div style={{ background: '#14121E', border: '1px solid #2E2A45', borderRadius: '24px', padding: '13px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-<span style={{ fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'JetBrains Mono',monospace", color: '#8C87A3' }}>Price</span>
+<span style={{ fontSize: '12px', fontWeight: '500', color: '#8F8AA8' }}>Price</span>
 <span style={{ fontFamily: 'Inter,system-ui,sans-serif', fontWeight: '700', letterSpacing: '-0.01em', fontSize: '17px', whiteSpace: 'nowrap' }}>{v.priceNum}</span>
 </div>
 </div>
 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: '9px' }}>
 {(v.keyStats ?? []).map((s: any, sI: number) => (<Fragment key={sI}>
 <div style={{ background: '#14121E', border: '1px solid #2E2A45', borderRadius: '24px', padding: '13px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-<span style={{ fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'JetBrains Mono',monospace", color: '#8C87A3' }}>{s.label}</span>
+<span style={{ fontSize: '12px', fontWeight: '500', color: '#8F8AA8' }}>{s.label}</span>
 <span style={{ fontFamily: 'Inter,system-ui,sans-serif', fontWeight: '700', letterSpacing: '-0.01em', fontSize: '21px' }}>{s.value}</span>
 </div>
 </Fragment>))}
@@ -165,13 +165,13 @@ export function TokenChartView({ v }: { v: any }) {
 {(v.flows ?? []).map((f: any, fI: number) => (<Fragment key={fI}>
 <div style={{ display: 'grid', gridTemplateColumns: '84px minmax(0,1fr)', gap: '13px', alignItems: 'end', padding: '0 9px' }}>
 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-<span style={{ fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'JetBrains Mono',monospace", color: '#8C87A3' }}>{f.label}</span>
+<span style={{ fontSize: '12px', fontWeight: '500', color: '#8F8AA8' }}>{f.label}</span>
 <span style={{ fontFamily: 'Inter,system-ui,sans-serif', fontWeight: '700', letterSpacing: '-0.01em', fontSize: '20px', lineHeight: '1.1' }}>{f.total}</span>
 </div>
 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '9px', fontSize: '12px', whiteSpace: 'nowrap' }}>
-<span style={{ color: '#8C87A3', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{f.aLabel}</span>
-<span style={{ color: '#8C87A3', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{f.bLabel}</span>
+<span style={{ color: '#8F8AA8' }}>{f.aLabel}</span>
+<span style={{ color: '#8F8AA8' }}>{f.bLabel}</span>
 </div>
 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '9px', fontSize: '15px', fontWeight: '700', whiteSpace: 'nowrap', fontFamily: "'JetBrains Mono',monospace", fontVariantNumeric: 'tabular-nums' }}>
 <span style={{ color: '#6EE7B7' }}>{f.aVal}</span>
