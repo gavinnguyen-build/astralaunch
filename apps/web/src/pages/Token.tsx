@@ -23,9 +23,9 @@ const TAGS = {
 
 export function PageShell({ children, active = '' }: { children: React.ReactNode; active?: string }) {
   return (
-    <div style={{ width: '1440px', minHeight: '900px', background: '#0B0A12', color: '#ECEAF4', display: 'flex', flexDirection: 'column' }}>
+    <div className="al-root" style={{ background: '#0B0A12', color: '#ECEAF4', display: 'flex', flexDirection: 'column' }}>
       <SiteHeader active={active} />
-      <main style={{ padding: '40px 124px' }}>{children}</main>
+      <main style={{ padding: '40px var(--gutter)' }}>{children}</main>
       <SiteFooter />
     </div>
   );

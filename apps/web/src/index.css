@@ -1,10 +1,63 @@
 /* Astralaunch web — base from docs/design/*.dc.html (Inter + JetBrains Mono, #0B0A12 ground). */
 *, *::before, *::after { box-sizing: border-box; }
-body { margin: 0; background: #0B0A12; font-family: Inter, system-ui, sans-serif; color: #ECEAF4; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: #0B0A12; font-family: Inter, system-ui, sans-serif; color: #ECEAF4; overflow-x: hidden; }
 a { color: #C4B5FD; }
 a:hover { color: #DDD6FE; }
+img, svg { max-width: 100%; }
 button:disabled { cursor: not-allowed !important; opacity: 0.55; }
-/* Pages are designed at 1440px; center them on wider screens. */
-#root > div { margin: 0 auto; }
 .al-skeleton { background: linear-gradient(90deg, #1C1A29 0%, #25213A 50%, #1C1A29 100%); background-size: 200% 100%; animation: alShimmer 1.4s linear infinite; border-radius: 8px; }
 @keyframes alShimmer { to { background-position: -200% 0; } }
+
+/* ── Layout ─────────────────────────────────────────────────────────────────────────────────────────
+   Pages were drawn at 1440px with 124px side margins. --gutter keeps that on desktop (1192px content)
+   and shrinks to 16px on phones; the generated views use it in their paddings. */
+:root { --gutter: max(24px, calc((100% - 1192px) / 2)); }
+@media (max-width: 640px) { :root { --gutter: 16px; } }
+
+.al-root { width: 100%; max-width: 100%; min-height: 100vh; display: flex; flex-direction: column; }
+.al-root > main { flex: 1 0 auto; width: 100%; min-width: 0; }
+
+/* Header */
+.al-header { position: sticky; top: 0; z-index: 50; height: 64px; padding: 0 var(--gutter); display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  border-bottom: 1px solid #1E1B2E; background: rgba(11, 10, 18, 0.86); backdrop-filter: saturate(140%) blur(12px); -webkit-backdrop-filter: saturate(140%) blur(12px); }
+.al-header-left { display: flex; align-items: center; gap: 24px; min-width: 0; }
+.al-nav { display: flex; gap: 4px; font-size: 14px; }
+.al-nav a { padding: 8px 14px; border-radius: 8px; color: #9A95B0; text-decoration: none; transition: color .15s, background .15s; }
+.al-nav a:hover { color: #ECEAF4; background: #15131F; }
+.al-nav a[aria-current='page'] { background: #1C1A29; color: #ECEAF4; }
+.al-menu-btn { display: none; width: 40px; height: 40px; border-radius: 10px; border: 1px solid #2A2640; background: #13111C; color: #ECEAF4; align-items: center; justify-content: center; cursor: pointer; }
+.al-mobile-nav { display: none; }
+@media (max-width: 760px) {
+  .al-header { height: 56px; }
+  .al-nav { display: none; }
+  .al-menu-btn { display: inline-flex; }
+  .al-mobile-nav { display: flex; flex-direction: column; position: fixed; top: 56px; left: 0; right: 0; z-index: 49; padding: 8px var(--gutter) 16px;
+    background: #0B0A12; border-bottom: 1px solid #1E1B2E; box-shadow: 0 16px 40px rgba(0,0,0,.5); }
+  .al-mobile-nav[hidden] { display: none; }
+  .al-mobile-nav a { padding: 14px 4px; font-size: 16px; color: #C9C5DA; text-decoration: none; border-bottom: 1px solid #1A1826; }
+  .al-mobile-nav a[aria-current='page'] { color: #FFFFFF; font-weight: 600; }
+  .al-mobile-nav a:last-child { border-bottom: 0; }
+}
+.al-footer { margin-top: auto; padding: 22px var(--gutter); border-top: 1px solid #1E1B2E; display: flex; align-items: center; justify-content: center; text-align: center; }
+
+/* Responsive helpers for the generated views (inline styles set the desktop layout; these override below a width). */
+.al-scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.al-scroll-x > * { min-width: var(--al-min, 720px); }
+@media (max-width: 1100px) {
+  .al-cols-2-md { grid-template-columns: minmax(0, 1fr) !important; }
+  .al-stack-md { flex-direction: column !important; align-items: stretch !important; }
+  .al-grid-2-md { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .al-full-md { width: 100% !important; max-width: 100% !important; }
+}
+@media (max-width: 760px) {
+  .al-cols-1-sm { grid-template-columns: minmax(0, 1fr) !important; }
+  .al-grid-2-sm { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .al-stack-sm { flex-direction: column !important; align-items: stretch !important; }
+  .al-wrap-sm { flex-wrap: wrap !important; }
+  .al-full-sm { width: 100% !important; max-width: 100% !important; }
+  .al-hide-sm { display: none !important; }
+  .al-h1-sm { font-size: 30px !important; line-height: 1.15 !important; }
+  .al-pad-sm { padding: 18px !important; }
+}
+@media (min-width: 761px) { .al-only-sm { display: none !important; } }

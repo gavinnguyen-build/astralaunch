@@ -7,12 +7,12 @@ import './LaunchView.css';
 
 export function LaunchView({ v }: { v: any }) {
   return (
-<div style={{ width: '1440px', minHeight: '1960px', boxSizing: 'border-box', background: '#0B0A12', color: '#ECEAF4', fontFamily: 'Inter, system-ui, sans-serif', fontVariantNumeric: 'tabular-nums', display: 'flex', flexDirection: 'column' }}>
+<div className="al-root" style={{ boxSizing: 'border-box', background: '#0B0A12', color: '#ECEAF4', fontFamily: 'Inter, system-ui, sans-serif', fontVariantNumeric: 'tabular-nums', display: 'flex', flexDirection: 'column' }}>
 <SiteHeader active='' />
-<main style={{ padding: '36px 124px 44px', display: 'flex', justifyContent: 'center' }}>
-<form style={{ width: '760px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+<main style={{ padding: '36px var(--gutter) 44px', display: 'flex', justifyContent: 'center' }}>
+<form style={{ width: '100%', maxWidth: '760px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 <div>
-<h1 style={{ margin: '0', fontSize: '40px', fontWeight: '800', letterSpacing: '-0.02em' }}>Launch your token</h1>
+<h1 className="al-h1-sm" style={{ margin: '0', fontSize: '40px', fontWeight: '800', letterSpacing: '-0.02em' }}>Launch your token</h1>
 <p style={{ margin: '10px 0 0', maxWidth: '600px', fontSize: '16px', lineHeight: '1.6', color: '#A7A2BD' }}>One transaction creates the token and its pool on Monad. Attach an API now or later: every paid call buys back your token.</p>
 </div>
 <section style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -26,7 +26,7 @@ export function LaunchView({ v }: { v: any }) {
 </section>
 <section style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 <h2 style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', letterSpacing: '0.16em', fontWeight: '500', color: '#B9A8E8' }}>MARKET</h2>
-<div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}><span style={{ fontSize: '14px', fontWeight: '600' }}>Pool pairing</span><div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: '10px' }}>
+<div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}><span style={{ fontSize: '14px', fontWeight: '600' }}>Pool pairing</span><div className="al-grid-2-sm" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: '10px' }}>
 {(v.pairings ?? []).map((o: any, oI: number) => (<Fragment key={oI}>
 <button type="button" aria-pressed={o.on} onClick={o.pick} aria-disabled={o.ariaDis} style={{ height: '48px', borderRadius: '10px', border: o.border, background: o.bg, color: o.fg, fontFamily: 'inherit', fontSize: '14px', fontWeight: '600', cursor: o.cursor, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>{o.label}{o.soon ? (<><span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', padding: '2px 6px', borderRadius: '999px', border: '1px solid #3A3456', color: '#8C87A3' }}>SOON</span></>) : null}</button>
 </Fragment>))}

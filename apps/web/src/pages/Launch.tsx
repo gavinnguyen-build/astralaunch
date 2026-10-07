@@ -42,7 +42,7 @@ function useField(init = '') {
   return { value, set, onChange: (e: React.ChangeEvent<HTMLInputElement>) => set(e.target.value) };
 }
 
-const card = { border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '24px', width: '720px', maxHeight: '86vh', overflowY: 'auto' as const, color: '#ECEAF4' };
+const card = { border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '24px', width: 'min(720px, calc(100vw - 32px))', maxHeight: '86vh', overflowY: 'auto' as const, color: '#ECEAF4' };
 const row = { display: 'flex', justifyContent: 'space-between', gap: '16px', fontSize: '13px', padding: '5px 0', borderBottom: '1px solid #1E1B2E' };
 const mono = { fontFamily: "'JetBrains Mono', monospace", textAlign: 'right' as const };
 const btn = (primary: boolean) => ({ height: '44px', padding: '0 22px', borderRadius: '999px', border: primary ? '0' : '1px solid #3A3456', background: primary ? '#8B5CF6' : 'transparent', color: '#FFFFFF', fontFamily: 'inherit', fontSize: '14px', fontWeight: 700, cursor: 'pointer' });
@@ -158,7 +158,7 @@ export default function Launch() {
   });
 
   const overlay = phase === 'form' ? null : (
-    <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(5,4,10,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+    <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(5,4,10,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '16px' }}>
       <div style={card}>
         {phase === 'planning' && <p style={{ margin: 0 }}>Simulating the launch…</p>}
         {phase === 'confirm' && plan && input && <Confirm plan={plan} input={input} onCancel={() => setPhase('form')} onConfirm={onConfirm} />}
@@ -220,7 +220,7 @@ export default function Launch() {
     launchTitle: !PRIVY_ENABLED ? 'Set VITE_PRIVY_APP_ID to connect a wallet' : !connected ? 'Connect a wallet first' : limitHit ? `Limit reached. Next slot ${st?.nextSlotAt ? new Date(st.nextSlotAt * 1000).toLocaleString() : ''}` : errors[0] ?? 'Launch',
     launchLabel: !connected ? 'Connect a wallet to launch' : 'Launch',
     formErrors: connected && errors.length && (f.name.value || f.symbol.value) ? (
-      <div style={{ width: '720px', margin: '-24px auto 24px', fontSize: '13px', color: '#FCA5A5' }}>{errors.map((e) => <div key={e}>{e}</div>)}</div>
+      <div style={{ width: '100%', maxWidth: '760px', margin: '-24px auto 24px', padding: '0 var(--gutter)', fontSize: '13px', color: '#FCA5A5' }}>{errors.map((e) => <div key={e}>{e}</div>)}</div>
     ) : null,
     overlay,
   };

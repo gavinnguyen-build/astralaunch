@@ -12,9 +12,9 @@ export function Row({ k, children }: { k: string; children: ReactNode }) {
 export function Modal({ title, onClose, children, width = 560 }: { title: string; onClose: () => void; children: ReactNode; width?: number }) {
   return (
     <div role="dialog" aria-modal="true" aria-label={title} onClick={onClose}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(5,4,10,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+      style={{ position: 'fixed', inset: 0, background: 'rgba(5,4,10,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '16px' }}>
       <div onClick={(e) => e.stopPropagation()}
-        style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '24px', width: `${width}px`, maxWidth: 'calc(100vw - 32px)', boxSizing: 'border-box', maxHeight: '86vh', overflowY: 'auto', color: '#ECEAF4', fontFamily: 'Inter, system-ui, sans-serif' }}>
+        style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: 'clamp(18px, 4vw, 24px)', width: `${width}px`, maxWidth: '100%', boxSizing: 'border-box', maxHeight: '86vh', overflowY: 'auto', color: '#ECEAF4', fontFamily: 'Inter, system-ui, sans-serif' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
           <h2 style={{ margin: 0, fontSize: '19px' }}>{title}</h2>
           <button type="button" aria-label="Close" onClick={onClose} style={{ border: 0, background: 'transparent', color: '#8C87A3', fontSize: '20px', cursor: 'pointer' }}>×</button>

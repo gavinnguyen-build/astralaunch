@@ -8,21 +8,21 @@ import './HomeView.css';
 
 export function HomeView({ v }: { v: any }) {
   return (
-<div style={{ width: '1440px', minHeight: '2160px', boxSizing: 'border-box', background: '#0B0A12', color: '#ECEAF4', fontFamily: 'Inter, system-ui, sans-serif', display: 'flex', flexDirection: 'column' }}>
+<div className="al-root" style={{ boxSizing: 'border-box', background: '#0B0A12', color: '#ECEAF4', fontFamily: 'Inter, system-ui, sans-serif', display: 'flex', flexDirection: 'column' }}>
 <SiteHeader active='discover' />
-<main style={{ padding: '26px 124px 0', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-<section style={{ border: '1px solid #2A2640', borderRadius: '24px', overflow: 'hidden', background: 'radial-gradient(900px 420px at 80% 70%, rgba(168,85,247,0.28), transparent 60%), radial-gradient(700px 380px at 95% 10%, rgba(99,102,241,0.18), transparent 60%), #110F1A' }}>
-<div style={{ height: '532px', boxSizing: 'border-box', padding: '70px 40px 0', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 460px', gap: '40px' }}>
+<main style={{ padding: '26px var(--gutter) 40px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+<section className="home-hero" style={{ border: '1px solid #2A2640', borderRadius: '24px', overflow: 'hidden', background: 'radial-gradient(900px 420px at 80% 70%, rgba(168,85,247,0.28), transparent 60%), radial-gradient(700px 380px at 95% 10%, rgba(99,102,241,0.18), transparent 60%), #110F1A' }}>
+<div className="home-hero-grid">
 <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
 <span style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 12px 4px 4px', border: '1px solid #3A3456', borderRadius: '999px', fontSize: '13px', color: '#D4D0E4' }}><span style={{ padding: '2px 8px', borderRadius: '999px', background: '#6D4AE0', color: '#FFFFFF', fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', fontWeight: '600' }}>LIVE</span>Now on Monad mainnet</span>
-<h1 style={{ margin: '0', fontSize: '48px', lineHeight: '1.08', letterSpacing: '-0.02em', fontWeight: '800' }}>Onchain Rails for <span style={{ background: 'linear-gradient(90deg,#A78BFA,#E879F9)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', WebkitBoxDecorationBreak: 'clone', boxDecorationBreak: 'clone', whiteSpace: 'nowrap' }}>Agent Commerce</span></h1>
+<h1 className="home-hero-title">Onchain Rails for <span style={{ background: 'linear-gradient(90deg,#A78BFA,#E879F9)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', WebkitBoxDecorationBreak: 'clone', boxDecorationBreak: 'clone', whiteSpace: 'nowrap' }}>Agent Commerce</span></h1>
 <p style={{ margin: '0', maxWidth: '520px', fontSize: '16px', lineHeight: '1.6', color: '#A7A2BD' }}>Astralaunch is where builders launch services Agents pay for, earn per call, and give every service a token to rally around. Build for Agents by Builder.</p>
-<div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+<div className="home-hero-cta">
 <A href={route('Launch')} style={{ height: '48px', boxSizing: 'border-box', padding: '0 24px', borderRadius: '999px', background: '#8B5CF6', color: '#FFFFFF', fontSize: '15px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 15c-1 1-1.5 3.5-1.5 5.5 2 0 4.5-.5 5.5-1.5M14 4c3 0 6 3 6 6l-7 7-6-6 7-7zM9 11l-3 1-2 3 3 1M13 15l-1 3-3 2-1-3"></path></svg>Launch Now</A>
 <A href={route('Discover')} style={{ height: '48px', padding: '0 22px', borderRadius: '999px', border: '1px solid #3A3456', background: 'transparent', color: '#ECEAF4', textDecoration: 'none', boxSizing: 'border-box', fontSize: '15px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>Explore <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ECEAF4" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></A>
 </div>
 </div>
-<div role="img" aria-label="Pixel-art robots at desks, server racks and a wall screen showing a live x402 payment" style={{ position: 'relative', height: '462px' }} className="px-stage">
+<div role="img" aria-label="Pixel-art robots at desks, server racks and a wall screen showing a live x402 payment" className="px-stage home-stage">
 <div style={{ position: 'absolute', left: '-73px', top: '-38px', width: '610px', height: '507px' }}>
 <div style={{ position: 'absolute', left: '15.8px', top: '19.8px', width: '209.1px', height: '196.3px', zIndex: '1', backgroundImage: 'url(/robots-atlas.png)', backgroundRepeat: 'no-repeat', backgroundSize: '460.0px 439.1px', backgroundPosition: '-0.0px -0.0px' }} className="px-piece px-breathe"></div>
 <div style={{ position: 'absolute', left: '287.6px', top: '27.9px', width: '163.6px', height: '194.4px', zIndex: '1', backgroundImage: 'url(/robots-atlas.png)', backgroundRepeat: 'no-repeat', backgroundSize: '460.0px 439.1px', backgroundPosition: '-209.8px -0.0px' }} className="px-piece px-breathe px-d2"></div>
@@ -84,20 +84,25 @@ export function HomeView({ v }: { v: any }) {
 </div>
 </div>
 </div>
-<div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', borderTop: '1px solid #25213A' }}>
-<div style={{ padding: '22px 40px', borderRight: '1px solid #25213A' }}><div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', letterSpacing: '0.14em', color: '#8C87A3' }}>SERVICES LIVE</div><div style={{ marginTop: '10px', fontSize: '26px', fontWeight: '700' }}>{v.stats.servicesLive}</div></div>
-<div style={{ padding: '22px 40px', borderRight: '1px solid #25213A' }}><div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', letterSpacing: '0.14em', color: '#8C87A3' }}>PAID CALLS</div><div style={{ marginTop: '10px', fontSize: '26px', fontWeight: '700' }}>{v.stats.paidCalls}</div></div>
-<div style={{ padding: '22px 40px' }}><div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', letterSpacing: '0.14em', color: '#8C87A3' }}>PAID TO PROVIDERS</div><div style={{ marginTop: '10px', fontSize: '26px', fontWeight: '700' }}>{v.stats.paidToProviders} <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '12px', color: '#A78BFA' }}>USDC</span></div></div>
+<div className="home-stats">
+<div className="home-stat"><div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', letterSpacing: '0.14em', color: '#8C87A3' }}>SERVICES LIVE</div><div style={{ marginTop: '10px', fontSize: '26px', fontWeight: '700' }}>{v.stats.servicesLive}</div></div>
+<div className="home-stat"><div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', letterSpacing: '0.14em', color: '#8C87A3' }}>PAID CALLS</div><div style={{ marginTop: '10px', fontSize: '26px', fontWeight: '700' }}>{v.stats.paidCalls}</div></div>
+<div className="home-stat"><div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', letterSpacing: '0.14em', color: '#8C87A3' }}>PAID TO PROVIDERS</div><div style={{ marginTop: '10px', fontSize: '26px', fontWeight: '700' }}>{v.stats.paidToProviders} <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '12px', color: '#A78BFA' }}>USDC</span></div></div>
 </div>
 </section>
-<section style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 300px', gap: '20px', marginTop: '18px' }}>
-<div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+<section className="home-services">
+<div className="home-services-head">
 <div><h2 style={{ margin: '0', fontSize: '20px', fontWeight: '700' }}>Services on Astralaunch</h2><p style={{ margin: '6px 0 0', fontSize: '13px', color: '#8C87A3' }}>Ranked by clean revenue, last 30 days.</p></div>
+<form role="search" onSubmit={v.onSearch} className="home-search-form">
+<label className="home-search">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8C87A3" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<input type="search" value={v.query} onChange={v.onQuery} placeholder="Ticker, service or creator" aria-label="Search services (opens Discover)" style={{ border: '0', outline: 'none', background: 'transparent', color: '#ECEAF4', fontFamily: 'inherit', fontSize: '13px', width: '100%' }} />
+</label>
+</form>
 </div>
-<div style={{ display: 'flex', gap: '8px' }}>
+<div className="home-filters">
 {(v.filters ?? []).map((f: any, fI: number) => (<Fragment key={fI}>
-<button type="button" aria-pressed={f.pressed} onClick={f.pick} style={{ height: '34px', padding: '0 14px', borderRadius: '999px', border: f.border, background: f.bg, color: f.fg, fontFamily: 'inherit', fontSize: '13px', cursor: 'pointer' }}>{f.label}</button>
+<button type="button" aria-pressed={f.pressed} onClick={f.pick} style={{ height: '34px', padding: '0 14px', borderRadius: '999px', border: f.border, background: f.bg, color: f.fg, fontFamily: 'inherit', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap', flex: 'none' }}>{f.label}</button>
 </Fragment>))}
 </div>
 {v.cardsState}
@@ -120,21 +125,14 @@ export function HomeView({ v }: { v: any }) {
 </A>
 </Fragment>))}
 </div>
-<div style={{ display: 'flex', justifyContent: 'center', width: '1199px', marginTop: '6px' }}>
+<div style={{ display: 'flex', justifyContent: 'center', marginTop: '6px' }}>
 <A href={v.moreHref} style={{ height: '44px', padding: '0 22px', borderRadius: '999px', border: '1px solid #3A3456', background: 'transparent', color: '#ECEAF4', textDecoration: 'none', boxSizing: 'border-box', fontSize: '14px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '10px' }}>Check out more <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ECEAF4" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></A>
 </div>
-</div>
-<form role="search" onSubmit={v.onSearch} style={{ margin: '0' }}>
-<label style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '284px', height: '40px', boxSizing: 'border-box', padding: '0 14px', border: '1px solid #2A2640', borderRadius: '999px' }}>
-<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8C87A3" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
-<input type="search" value={v.query} onChange={v.onQuery} placeholder="Ticker, service or creator" aria-label="Search services (opens Discover)" style={{ border: '0', outline: 'none', background: 'transparent', color: '#ECEAF4', fontFamily: 'inherit', fontSize: '13px', width: '100%' }} />
-</label>
-</form>
 </section>
-<section style={{ marginTop: '20px', border: '1px solid #3B2A63', borderRadius: '24px', padding: '44px 40px', background: 'radial-gradient(800px 360px at 90% 100%, rgba(168,85,247,0.30), transparent 60%), linear-gradient(180deg,#221442,#170F2C)' }}>
+<section className="home-how" style={{ marginTop: '20px', border: '1px solid #3B2A63', borderRadius: '24px', background: 'radial-gradient(800px 360px at 90% 100%, rgba(168,85,247,0.30), transparent 60%), linear-gradient(180deg,#221442,#170F2C)' }}>
 <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', letterSpacing: '0.18em', color: '#B9A8E8' }}>HOW IT WORKS</div>
-<h2 style={{ margin: '12px 0 0', maxWidth: '560px', fontSize: '32px', lineHeight: '1.2', fontWeight: '800' }}>From API to token before the first call settles.</h2>
-<div style={{ marginTop: '34px', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: '14px' }}>
+<h2 className="home-how-title">From API to token before the first call settles.</h2>
+<div className="home-how-grid">
 {(v.steps ?? []).map((s: any, sI: number) => (<Fragment key={sI}>
 <div style={{ border: '1px solid #3B2A63', borderRadius: '16px', background: 'rgba(11,10,18,0.35)', padding: '22px', minHeight: '184px', boxSizing: 'border-box' }}>
 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={{ width: '36px', height: '36px', borderRadius: '9px', background: '#2E2152', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'JetBrains Mono', monospace", fontSize: '13px', color: '#C4B5FD' }}>{s.icon}</span><span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '20px', color: '#4A3A77' }}>{s.n}</span></div>

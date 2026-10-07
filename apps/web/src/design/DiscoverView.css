@@ -1,2 +1,26 @@
 body{margin:0;background:#0B0A12;font-family:Inter,system-ui,sans-serif;color:#ECEAF4}
 a{color:#C4B5FD}a:hover{color:#DDD6FE}
+
+/* Discover: tablet tightens the table; phones show rank · token · price over 30D revenue (other columns hidden). */
+.disc-row{transition:background .12s}
+a.disc-row:hover{background:#17151F}
+@media (max-width:1100px){
+  .disc-toolbar{flex-direction:column;align-items:stretch !important}
+  .disc-tabs{flex-wrap:wrap}
+  .disc-search{width:100% !important}
+  .disc-row{grid-template-columns:32px minmax(160px,1.6fr) repeat(4,minmax(0,1fr)) 0 0 0 !important;gap:12px !important}
+  .disc-row>:nth-child(7),.disc-row>:nth-child(8),.disc-row>:nth-child(9){display:none !important}
+}
+@media (max-width:760px){
+  .disc-card{padding:14px 12px 4px !important;border-radius:14px !important}
+  .disc-tabs{flex-direction:column;align-items:flex-start !important;gap:10px !important}
+  .disc-chips{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none;padding-bottom:2px}
+  .disc-chips::-webkit-scrollbar{display:none}
+  .disc-row{grid-template-columns:20px minmax(0,1fr) auto !important;grid-template-areas:"rank token price" "rank token rev";column-gap:12px !important;row-gap:2px !important;padding-left:4px !important;padding-right:4px !important}
+  .disc-row>:nth-child(1){grid-area:rank;align-self:center}
+  .disc-row>:nth-child(2){grid-area:token}
+  .disc-row>:nth-child(3){grid-area:price}
+  .disc-row>:nth-child(6){grid-area:rev;font-size:12px}
+  .disc-row>:nth-child(4),.disc-row>:nth-child(5){display:none !important}
+  .disc-head>:nth-child(2){align-self:end}
+}

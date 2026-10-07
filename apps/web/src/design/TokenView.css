@@ -47,3 +47,40 @@ a{color:#C4B5FD}a:hover{color:#DDD6FE}
 .tv-bar{height:6px;border-radius:3px;background:rgba(255,255,255,0.06);overflow:hidden}
 .tv-bar>div{height:100%;border-radius:3px}
 .tv-rows--divided{padding-top:20px;border-top:1px solid rgba(120,100,255,0.10)}
+
+/* ── Responsive ── tablet: sidebar becomes a top bar; phone: stacked blocks, two-line payment rows */
+@media (max-width:1100px){
+  .tv-main{grid-template-columns:minmax(0,1fr) !important;gap:18px !important}
+  .tv-side{position:static !important;flex-direction:row !important;flex-wrap:wrap;align-items:center !important;gap:10px !important}
+  .tv-side > div:first-child{padding:8px 12px !important}
+  .tv-tabs{flex-direction:row !important;gap:6px !important}
+  .tv-tabs > a{height:38px !important}
+  .tv-back{margin-left:auto}
+  .tv-svc-tiles{grid-template-columns:repeat(3,minmax(0,1fr)) !important}
+  .tv-svc-split{grid-template-columns:minmax(0,1fr) !important}
+}
+@media (max-width:760px){
+  .tv-title{font-size:24px}
+  .tv-back{display:none}
+  .tv-card{padding:16px}
+  .tv-card-title{font-size:18px;margin-bottom:14px}
+  .tv-row dt{font-size:13px}
+  .tv-row dd{font-size:13px}
+  .tv-ucr{padding:18px !important;border-radius:16px !important;gap:18px !important}
+  .tv-ucr-top{flex-direction:column !important;align-items:flex-start !important;gap:10px !important}
+  .tv-ucr-top > div > div:nth-child(2){font-size:48px !important}
+  .tv-bb-row{grid-template-columns:minmax(0,1fr) auto !important;row-gap:6px !important}
+  .tv-bb-row > div{grid-column:1 / -1;grid-row:2}
+  .tv-ucr-stats{grid-template-columns:repeat(2,minmax(0,1fr)) !important;row-gap:18px !important}
+  .tv-svc{padding:16px !important}
+  .tv-svc-tiles{grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:8px !important}
+  .tv-svc-tiles > div:first-child{grid-column:1 / -1}
+  .tv-table-head{display:none}
+  .tv-table-row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"payer amt" "time tag";row-gap:4px;padding:10px 0;min-height:0}
+  .tv-table-row > :nth-child(1){grid-area:time;font-size:12px}
+  .tv-table-row > :nth-child(2){grid-area:payer}
+  .tv-table-row > :nth-child(3){grid-area:amt}
+  .tv-table-row > :nth-child(4){grid-area:tag;justify-self:end}
+  .tv-amt{padding-right:0}
+  .tv-payer .tv-dim{display:none}
+}

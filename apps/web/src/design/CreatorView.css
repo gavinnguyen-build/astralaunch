@@ -1,2 +1,5 @@
 body{margin:0;background:#0B0A12;font-family:Inter,system-ui,sans-serif;color:#ECEAF4}
 a{color:#C4B5FD}a:hover{color:#DDD6FE}
+
+@media (max-width:1100px){ .cr-nav{display:grid !important;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px !important} .cr-nav > h1,.cr-nav > p{grid-column:1 / -1} }
+@media (max-width:760px){ .cr-claims > section{min-height:0 !important} .cr-nav > h1{font-size:26px !important} }

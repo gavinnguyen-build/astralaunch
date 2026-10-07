@@ -7,7 +7,7 @@ import './TokenChartView.css';
 
 export function TokenChartView({ v }: { v: any }) {
   return (
-<div style={{ width: '1440px', minHeight: '1500px', boxSizing: 'border-box', background: '#0B0A12', color: '#ECEAF4', fontFamily: 'Inter, system-ui, sans-serif', fontVariantNumeric: 'tabular-nums', display: 'flex', flexDirection: 'column' }}>
+<div className="al-root" style={{ boxSizing: 'border-box', background: '#0B0A12', color: '#ECEAF4', fontFamily: 'Inter, system-ui, sans-serif', fontVariantNumeric: 'tabular-nums', display: 'flex', flexDirection: 'column' }}>
 <SiteHeader active='' />
 <div style={{ padding: '16px 13px 0', display: 'flex', alignItems: 'center', gap: '16px' }}>
 <A href={route('Discover')} style={{ fontSize: '13px', color: '#8C87A3', textDecoration: 'none' }}>← All tokens</A>

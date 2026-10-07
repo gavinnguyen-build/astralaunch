@@ -32,9 +32,9 @@ a{color:#C4B5FD}a:hover{color:#DDD6FE}
 @media (prefers-reduced-motion: reduce){.px-stage *{animation:none!important}.px-stage .tw{opacity:1}}
 
 /* Service cards (Home "Services on Astralaunch"): one link per card; Satoshi name, Inter text, tabular values */
-.svc-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;width:1199px}
-@media (max-width:1100px){.svc-grid{width:100%;grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:700px){.svc-grid{grid-template-columns:minmax(0,1fr)}}
+.svc-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;width:100%}
+@media (max-width:1100px){.svc-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:700px){.svc-grid{grid-template-columns:minmax(0,1fr);gap:14px}.svc-card{padding:20px;gap:16px}.svc-img{width:56px;height:56px;font-size:22px}.svc-name{font-size:19px}.svc-ticker{font-size:15px}.svc-desc{font-size:15px}}
 .svc-card{display:flex;flex-direction:column;gap:20px;min-width:0;box-sizing:border-box;padding:28px;border-radius:20px;
   border:1px solid #24222E;background:#13121A;color:#ECEAF4;text-decoration:none;transition:border-color .15s ease}
 .svc-card:hover{border-color:#3B3850;color:#ECEAF4}
@@ -58,3 +58,44 @@ a{color:#C4B5FD}a:hover{color:#DDD6FE}
 .svc-stat dt{font-family:Inter,system-ui,sans-serif;font-weight:500;font-size:14px;color:#8F8AA8}
 .svc-stat dd{margin:0;font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:18px;color:#FFFFFF;font-variant-numeric:tabular-nums}
 .svc-stat dd.svc-mcap{color:#4ADE80}
+
+/* Home layout (hero, stats, services header, how it works). Desktop matches the 1440px design; tablet/phone stack. */
+.home-hero-grid{min-height:532px;padding:70px 40px 0;display:grid;grid-template-columns:minmax(0,1fr) 460px;gap:40px}
+.home-hero-title{margin:0;font-size:48px;line-height:1.08;letter-spacing:-0.02em;font-weight:800}
+.home-hero-cta{display:flex;gap:12px;margin-top:8px;flex-wrap:wrap}
+.home-stage{position:relative;height:462px;width:460px}
+.home-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid #25213A}
+.home-stat{padding:22px 40px;border-right:1px solid #25213A}
+.home-stat:last-child{border-right:0}
+.home-services{display:flex;flex-direction:column;gap:16px;margin-top:18px}
+.home-services-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.home-search-form{margin:0}
+.home-search{display:flex;align-items:center;gap:10px;width:284px;height:40px;padding:0 14px;border:1px solid #2A2640;border-radius:999px;background:#0E0D16}
+.home-search:focus-within{border-color:#8B5CF6}
+.home-filters{display:flex;gap:8px;flex-wrap:wrap}
+.home-how{padding:44px 40px}
+.home-how-title{margin:12px 0 0;max-width:560px;font-size:32px;line-height:1.2;font-weight:800}
+.home-how-grid{margin-top:34px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+@media (max-width:1100px){
+  .home-hero-grid{grid-template-columns:minmax(0,1fr);min-height:0;padding:48px 32px 8px;gap:8px}
+  .home-stage{margin:0 auto;left:30px}
+}
+@media (max-width:760px){
+  .home-hero{border-radius:20px !important}
+  .home-hero-grid{padding:32px 20px 0}
+  .home-hero-title{font-size:34px;line-height:1.12}
+  .home-hero-cta > a{flex:1 1 auto;justify-content:center}
+  .home-stage{zoom:.7;left:36px}
+  .home-stats{grid-template-columns:minmax(0,1fr)}
+  .home-stat{padding:16px 20px;border-right:0;border-bottom:1px solid #25213A;display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+  .home-stat:last-child{border-bottom:0}
+  .home-stat > div:last-child{margin-top:0 !important;font-size:22px !important}
+  .home-search-form,.home-search{width:100%}
+  .home-filters{flex-wrap:nowrap;overflow-x:auto;margin:0 calc(-1 * var(--gutter));padding:0 var(--gutter) 4px;scrollbar-width:none}
+  .home-filters::-webkit-scrollbar{display:none}
+  .home-how{padding:28px 20px;border-radius:20px !important}
+  .home-how-title{font-size:24px}
+  .home-how-grid{grid-template-columns:minmax(0,1fr);margin-top:22px}
+  .home-how-grid > div{min-height:0 !important}
+}
+@media (max-width:400px){ .home-stage{zoom:.62} .home-hero-title{font-size:30px} }

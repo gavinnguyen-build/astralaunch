@@ -65,7 +65,7 @@ export function ServiceLinkForm({ value, onChange, check, keySet, disabled, adva
   const set = (patch: Partial<ServiceLinkValue>) => onChange({ ...value, ...patch });
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 180px', gap: '14px' }}>
+      <div className="al-cols-1-sm" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 180px', gap: '14px' }}>
         <label style={label}>Your API link
           <input type="url" value={value.apiLink} disabled={disabled} onChange={(e) => set({ apiLink: e.target.value })}
             placeholder="https://myagent.ai/v1/ask?q=hello" spellCheck={false} style={input} />
@@ -81,7 +81,7 @@ export function ServiceLinkForm({ value, onChange, check, keySet, disabled, adva
       <details style={{ border: '1px solid #25213A', borderRadius: '10px', padding: '10px 14px' }}>
         <summary style={{ cursor: 'pointer', fontSize: '14px', fontWeight: 600 }}>Advanced</summary>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '200px minmax(0,1fr)', gap: '14px' }}>
+          <div className="al-cols-1-sm" style={{ display: 'grid', gridTemplateColumns: '200px minmax(0,1fr)', gap: '14px' }}>
             <label style={label}>API key header
               <input type="text" value={value.keyHeader} disabled={disabled} onChange={(e) => set({ keyHeader: e.target.value })}
                 placeholder={keySet?.header ?? 'X-Api-Key'} spellCheck={false} style={mono} />

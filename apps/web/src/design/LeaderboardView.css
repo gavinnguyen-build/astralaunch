@@ -1,2 +1,12 @@
 body{margin:0;background:#0B0A12;font-family:Inter,system-ui,sans-serif;color:#ECEAF4}
 a{color:#C4B5FD}a:hover{color:#DDD6FE}
+
+.lb-sorts{flex-wrap:wrap}
+.lb-sorts button{white-space:nowrap}
+@media (max-width:760px){
+  .lb-controls > [role=tablist]{width:100%}
+  .lb-controls > [role=tablist] > button{flex:1 1 0;padding:0 8px !important}
+  .lb-sorts{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .lb-sorts::-webkit-scrollbar{display:none}
+  .lb-table{padding:8px 12px 10px !important}
+}

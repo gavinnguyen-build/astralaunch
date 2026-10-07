@@ -6,24 +6,24 @@ import './LeaderboardView.css';
 
 export function LeaderboardView({ v }: { v: any }) {
   return (
-<div style={{ width: '1440px', minHeight: '1120px', boxSizing: 'border-box', background: '#0B0A12', color: '#ECEAF4', fontFamily: 'Inter, system-ui, sans-serif', fontVariantNumeric: 'tabular-nums', display: 'flex', flexDirection: 'column' }}>
+<div className="al-root" style={{ boxSizing: 'border-box', background: '#0B0A12', color: '#ECEAF4', fontFamily: 'Inter, system-ui, sans-serif', fontVariantNumeric: 'tabular-nums', display: 'flex', flexDirection: 'column' }}>
 <SiteHeader active='leaderboard' />
-<main style={{ padding: '32px 124px 44px', display: 'flex', flexDirection: 'column', gap: '22px' }}>
-<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '20px' }}>
+<main style={{ padding: '32px var(--gutter) 44px', display: 'flex', flexDirection: 'column', gap: '22px' }}>
+<div className="al-stack-sm" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '20px' }}>
 <div><h1 style={{ margin: '0', fontFamily: 'Satoshi, Inter, system-ui, sans-serif', fontSize: '28px', fontWeight: '700', letterSpacing: '-0.02em' }}>Leaderboard</h1><p style={{ margin: '6px 0 0', fontSize: '14px', color: '#A7A2BD' }}>{v.subtitle}</p></div>
 <div role="group" aria-label="Period" style={{ display: 'flex', gap: '4px', padding: '4px', borderRadius: '999px', background: '#13111C', border: '1px solid #25213A' }}>
 {(v.periods ?? []).map((p: any, pI: number) => (<Fragment key={pI}><button type="button" aria-pressed={p.on} onClick={p.pick} style={{ height: '34px', padding: '0 16px', borderRadius: '999px', border: '0', background: p.bg, color: p.fg, fontFamily: 'Inter, system-ui, sans-serif', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>{p.label}</button></Fragment>))}
 </div>
 </div>
-<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
+<div className="al-stack-md lb-controls" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
 <div role="tablist" aria-label="Leaderboard group" style={{ display: 'flex', gap: '4px', padding: '4px', borderRadius: '14px', background: '#13111C', border: '1px solid #25213A' }}>
 {(v.groups ?? []).map((g: any, gI: number) => (<Fragment key={gI}><button type="button" role="tab" aria-selected={g.on} onClick={g.pick} style={{ height: '44px', padding: '0 22px', borderRadius: '10px', border: '0', background: g.bg, color: g.fg, fontFamily: 'inherit', fontSize: '15px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}>{g.label}<span style={{ fontFamily: 'Inter, system-ui, sans-serif', fontWeight: '600', fontVariantNumeric: 'tabular-nums', fontSize: '11px', padding: '2px 8px', borderRadius: '999px', background: g.countBg, color: g.countFg }}>{g.count}</span></button></Fragment>))}
 </div>
-<div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ fontSize: '13px', color: '#8C87A3' }}>Rank by</span>
+<div className="lb-sorts" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ fontSize: '13px', color: '#8C87A3', flex: 'none' }}>Rank by</span>
 {(v.sorts ?? []).map((s: any, sI: number) => (<Fragment key={sI}><button type="button" aria-pressed={s.on} onClick={s.pick} style={{ height: '34px', padding: '0 14px', borderRadius: '999px', border: s.border, background: s.bg, color: s.fg, fontFamily: 'inherit', fontSize: '13px', cursor: 'pointer' }}>{s.label}</button></Fragment>))}
 </div>
 </div>
-<div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: '16px' }}>
+<div className="al-cols-1-sm" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: '16px' }}>
 {v.listState}
 {(v.podium ?? []).map((p: any, pI: number) => (<Fragment key={pI}>
 <div style={{ border: p.border, borderRadius: '20px', background: p.bg, padding: '22px', display: 'flex', flexDirection: 'column', gap: '16px', color: '#ECEAF4', textDecoration: 'none' }}>
@@ -38,7 +38,7 @@ export function LeaderboardView({ v }: { v: any }) {
 </div>
 </Fragment>))}
 </div>
-<section aria-label="Rankings" style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '8px 20px 12px' }}>
+<section aria-label="Rankings" className="al-scroll-x lb-table" style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '8px 20px 12px', ['--al-min' as string]: '720px' }}>
 <div style={{ display: 'grid', gridTemplateColumns: v.cols, gap: '12px', padding: '12px 8px', borderBottom: '1px solid #25213A', fontFamily: 'Inter, system-ui, sans-serif', fontSize: '12px', fontWeight: '500', color: '#8F8AA8' }}>
 {(v.heads ?? []).map((h: any, hI: number) => (<Fragment key={hI}><span style={{ textAlign: h.align }}>{h.label}</span></Fragment>))}
 </div>

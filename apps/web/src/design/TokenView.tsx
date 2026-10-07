@@ -9,16 +9,16 @@ import './TokenView.css';
 
 export function TokenView({ v }: { v: any }) {
   return (
-<div style={{ width: '1440px', minHeight: '1880px', boxSizing: 'border-box', background: '#0B0A12', color: '#ECEAF4', fontFamily: 'Inter, system-ui, sans-serif', fontVariantNumeric: 'tabular-nums', display: 'flex', flexDirection: 'column' }}>
+<div className="al-root" style={{ boxSizing: 'border-box', background: '#0B0A12', color: '#ECEAF4', fontFamily: 'Inter, system-ui, sans-serif', fontVariantNumeric: 'tabular-nums', display: 'flex', flexDirection: 'column' }}>
 <SiteHeader active='' />
-<main style={{ padding: '28px 124px 40px', display: 'grid', gridTemplateColumns: '220px minmax(0,1fr)', gap: '28px', alignItems: 'start' }}>
-<nav aria-label="Token sections" style={{ position: 'sticky', top: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+<main className="tv-main" style={{ padding: '28px var(--gutter) 40px', display: 'grid', gridTemplateColumns: '220px minmax(0,1fr)', gap: '28px', alignItems: 'start' }}>
+<nav aria-label="Token sections" className="tv-side" style={{ position: 'sticky', top: '88px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px', border: '1px solid #25213A', borderRadius: '14px', background: '#13111C' }}>{v.avatarNode}<span><span style={{ display: 'block', fontWeight: '800' }}>{v.sym}</span><span style={{ display: 'block', fontSize: '12px', color: '#A7A2BD' }}>{v.name}</span></span></div>
-<div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+<div className="tv-tabs" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
 <A href={v.infoHref} aria-current="page" style={{ height: '44px', boxSizing: 'border-box', padding: '0 12px', borderRadius: '10px', background: '#1B1530', border: '1px solid #8B5CF6', color: '#ECEAF4', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', fontWeight: '600', textDecoration: 'none' }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg>Info</A>
 <A href={v.chartHref} style={{ height: '44px', boxSizing: 'border-box', padding: '0 12px', borderRadius: '10px', background: 'transparent', border: '1px solid transparent', color: '#A7A2BD', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', fontWeight: '600', textDecoration: 'none' }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M7 4v16M7 8h-2v6h2M17 3v18M17 7h2v8h-2M12 6v12M12 10h-2v4h2"></path></svg>{v.sym}</A>
 </div>
-<A href={route('Discover')} style={{ fontSize: '13px', color: '#8C87A3', textDecoration: 'none', padding: '0 12px' }}>← All tokens</A>
+<A href={route('Discover')} className="tv-back" style={{ fontSize: '13px', color: '#8C87A3', textDecoration: 'none', padding: '0 12px' }}>← All tokens</A>
 </nav>
 <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '20px' }}>
@@ -45,33 +45,33 @@ export function TokenView({ v }: { v: any }) {
 <div className="tv-row"><dt>Pool</dt><dd>{v.poolLabel}</dd></div>
 </dl></section>
 </div>
-<section aria-labelledby="ucr" style={{ border: '1px solid #2A2640', borderRadius: '20px', padding: '28px', background: 'radial-gradient(700px 300px at 85% 90%, rgba(168,85,247,0.25), transparent 60%), #110F1A', display: 'flex', flexDirection: 'column', gap: '22px' }}>
-<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '24px' }}>
+<section aria-labelledby="ucr" className="tv-ucr" style={{ border: '1px solid #2A2640', borderRadius: '20px', padding: '28px', background: 'radial-gradient(700px 300px at 85% 90%, rgba(168,85,247,0.25), transparent 60%), #110F1A', display: 'flex', flexDirection: 'column', gap: '22px' }}>
+<div className="tv-ucr-top" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '24px' }}>
 <div><h2 id="ucr" style={{ margin: '0', fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', letterSpacing: '0.16em', fontWeight: '500', color: '#B9A8E8' }}>USAGE COVERAGE · 30 DAYS</h2><div style={{ marginTop: '8px', fontSize: '64px', lineHeight: '1', fontWeight: '800', letterSpacing: '-0.03em', background: 'linear-gradient(90deg,#6EE7B7,#34D399)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>{v.ucrBig}</div></div>
 <p style={{ margin: '0', maxWidth: '380px', fontSize: '14px', lineHeight: '1.55', color: '#A7A2BD' }}>{v.ucrText}</p>
 </div>
 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-<div style={{ display: 'grid', gridTemplateColumns: '190px minmax(0,1fr) 90px', gap: '14px', alignItems: 'center' }}><span style={{ fontSize: '14px' }}>Buyback from usage</span><div style={{ height: '10px', borderRadius: '5px', background: '#221F33' }}><div style={{ height: '10px', width: v.bbUsageW, borderRadius: '5px', background: 'linear-gradient(90deg,#34D399,#6EE7B7)' }}></div></div><span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono', monospace", fontSize: '13px', color: '#34D399' }}>{v.bbUsage}</span></div>
-<div style={{ display: 'grid', gridTemplateColumns: '190px minmax(0,1fr) 90px', gap: '14px', alignItems: 'center' }}><span style={{ fontSize: '14px' }}>Buyback from trading</span><div style={{ height: '10px', borderRadius: '5px', background: '#221F33' }}><div style={{ height: '10px', width: v.bbTradingW, borderRadius: '5px', background: 'linear-gradient(90deg,#8B5CF6,#C4B5FD)' }}></div></div><span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono', monospace", fontSize: '13px', color: '#C4B5FD' }}>{v.bbTrading}</span></div>
+<div className="tv-bb-row" style={{ display: 'grid', gridTemplateColumns: '190px minmax(0,1fr) 90px', gap: '14px', alignItems: 'center' }}><span style={{ fontSize: '14px' }}>Buyback from usage</span><div style={{ height: '10px', borderRadius: '5px', background: '#221F33' }}><div style={{ height: '10px', width: v.bbUsageW, borderRadius: '5px', background: 'linear-gradient(90deg,#34D399,#6EE7B7)' }}></div></div><span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono', monospace", fontSize: '13px', color: '#34D399' }}>{v.bbUsage}</span></div>
+<div className="tv-bb-row" style={{ display: 'grid', gridTemplateColumns: '190px minmax(0,1fr) 90px', gap: '14px', alignItems: 'center' }}><span style={{ fontSize: '14px' }}>Buyback from trading</span><div style={{ height: '10px', borderRadius: '5px', background: '#221F33' }}><div style={{ height: '10px', width: v.bbTradingW, borderRadius: '5px', background: 'linear-gradient(90deg,#8B5CF6,#C4B5FD)' }}></div></div><span style={{ textAlign: 'right', fontFamily: "'JetBrains Mono', monospace", fontSize: '13px', color: '#C4B5FD' }}>{v.bbTrading}</span></div>
 </div>
-<dl style={{ margin: '0', display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', borderTop: '1px solid #25213A', paddingTop: '20px', gap: '16px' }}>
+<dl className="tv-ucr-stats" style={{ margin: '0', display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', borderTop: '1px solid #25213A', paddingTop: '20px', gap: '16px' }}>
 {(v.stats ?? []).map((s: any, sI: number) => (<Fragment key={sI}>
 <div><dt style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', letterSpacing: '0.14em', color: '#8C87A3' }}>{s.label}</dt><dd style={{ margin: '8px 0 0', fontSize: '22px', fontWeight: '700' }}>{s.value}</dd><dd style={{ margin: '4px 0 0', fontSize: '12px', color: '#8C87A3' }}>{s.note}</dd></div>
 </Fragment>))}
 </dl>
 </section>
-<section id="service" aria-labelledby="svc" style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+<section id="service" aria-labelledby="svc" className="tv-svc" style={{ border: '1px solid #25213A', borderRadius: '16px', background: '#13111C', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h2 id="svc" style={{ margin: '0', fontSize: '18px', fontWeight: '700' }}>Service</h2><span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#34D399' }}><span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#34D399' }}></span>{v.svcStatus}</span></div>
 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><span style={{ fontSize: '14px', fontWeight: '700' }}>Agent link</span><span style={{ fontSize: '12px', fontWeight: '600', padding: '3px 10px', borderRadius: '999px', background: '#2E2152', color: '#C4B5FD' }}>x402 · pay per call built in</span></div>
 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', borderRadius: '10px', background: '#0E0D16', border: '1px solid #25213A', fontFamily: "'JetBrains Mono', monospace", fontSize: '13px' }}><span style={{ flexGrow: '1', minWidth: '0', color: '#C9C5DA', overflowWrap: 'anywhere' }}>{v.endpoint}</span>{v.agentLinkText ? <CopyButton text={v.agentLinkText} label="Copy agent link" /> : null}</div>
 </div>
-<div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: '12px' }}>
+<div className="tv-svc-tiles" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: '12px' }}>
 {(v.svc ?? []).map((m: any, mI: number) => (<Fragment key={mI}>
 <div style={{ padding: '14px', border: '1px solid #25213A', borderRadius: '12px', background: '#0E0D16' }}><div style={{ fontSize: '12px', color: '#8C87A3' }}>{m.label}</div><div title={m.muted ? m.value : undefined} style={m.muted ? { marginTop: '6px', height: '22px', lineHeight: '22px', fontSize: '13px', fontWeight: '500', color: '#8C87A3', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } : { marginTop: '6px', height: '22px', lineHeight: '22px', fontSize: '18px', fontWeight: '700' }}>{m.value}</div></div>
 </Fragment>))}
 </div>
-<div style={{ display: 'grid', gridTemplateColumns: v.tryShow ? 'minmax(0,1fr) 300px' : 'minmax(0,1fr)', gap: '16px', alignItems: 'start' }}>
+<div className="tv-svc-split" style={{ display: 'grid', gridTemplateColumns: v.tryShow ? 'minmax(0,1fr) 300px' : 'minmax(0,1fr)', gap: '16px', alignItems: 'start' }}>
 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '0' }}><span style={{ fontSize: '13px', fontWeight: '700' }}>Example response</span><ExampleResponse>{v.schema}</ExampleResponse></div>
 {v.tryShow ? (<><div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}><span style={{ fontSize: '13px', fontWeight: '700' }}>Try it yourself</span><div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '14px', borderRadius: '10px', background: '#0E0D16', border: '1px solid #25213A' }}><p style={{ margin: '0', fontSize: '13px', lineHeight: '1.55', color: '#C9C5DA' }}>Pay once from your wallet and see the real answer.</p><button type="button" onClick={v.onTry} disabled={v.tryDisabled} title={v.tryTitle} style={{ width: '100%', height: '44px', borderRadius: '999px', border: '0', background: '#8B5CF6', color: '#FFFFFF', fontFamily: 'inherit', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>{v.tryLabel}</button></div></div></>) : null}
 </div>
