@@ -596,3 +596,27 @@ value.
 - **Register script.** `RESPONSE_SCHEMA` on an existing service replaces the schema; `REMOVE_SCHEMA=1` removes it.
 - **Operator alert.** Not added. The Telegram path lives in the keeper, which does not read the server database.
   Possible follow-up: a keeper job over `schema_mismatches`.
+
+## Keeper: distribute below the router minimum (2026-10-11)
+
+**D-KP1. Keeper thresholds never sit below the contract's.** Incident: between 2026-10-06 and 2026-10-07 the
+mainnet keeper (`0x9e64…B854`) sent 472 `distribute()` calls and spent about 4.87 MON, until its balance reached the
+0.2 MON reserve and the spend guard blocked it. It called the SIGHT router (holding 0.25 USDC) and the FEED router
+(holding 0.10 USDC) every 10 minutes.
+- **Cause.** `RevenueRouter.distribute()` returns without doing anything below `MIN_DISTRIBUTE` = 0.5 USDC. The call
+  still succeeds and is still billed. The keeper's default threshold was 0.1 USDC, so it saw "revenue to distribute"
+  every tick, and the balance never changed. Checked on chain: nonces 1600–1605 are pairs of `distribute()` 1 s
+  apart every 10 minutes, each with status 1 and no logs.
+- **Why the daily cap did not stop it.** `MAX_MON_PER_DAY` was set to 5 MON in Coolify; the loop cost about 3 MON
+  per day.
+- **Fix.**
+  - `ROUTER_MIN_DISTRIBUTE_USDC` (0.5 USDC) mirrors the Solidity constant, and a test reads the value from
+    `AstralaunchConstants.sol`.
+  - The keeper default is 1 USDC (`KEEPER_MIN_DISTRIBUTE_USDC`), and a test asserts it is ≥ the router minimum.
+  - A `MIN_DISTRIBUTE_USDC` below the router minimum is clamped up, with a warning in the log.
+  - Defence in depth: a `distribute()` whose receipt has no log from the router is remembered, and that router is
+    skipped until its USDC balance changes. A Telegram alert is sent once.
+  - The default `MAX_MON_PER_DAY` is 1 MON (about 30 real transactions at about 0.03 MON). A test replays the
+    incident's rate and checks that the cap stops it.
+- **Production** (2026-10-11): `MIN_DISTRIBUTE_USDC=1`, `MAX_MON_PER_DAY=1`, wallet topped up with 5 MON. Watched on
+  chain for 2 ticks: no new transactions. The 0.25 and 0.10 USDC stay in the routers until each reaches 1 USDC.

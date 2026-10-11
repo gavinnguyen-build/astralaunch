@@ -30,6 +30,7 @@ import { collectValueGate, parseValueMultipleBps } from './value.js';
 import {
   KEEPER_MIN_COLLECT_USDC,
   KEEPER_MIN_DISTRIBUTE_USDC,
+  ROUTER_MIN_DISTRIBUTE_USDC,
   KEEPER_MIN_BUYBACK_USDC,
   MAX_BUYBACK_PER_CALL_USDC,
   FORFEIT_DELAY_S,
@@ -39,6 +40,7 @@ import {
   MAX_ORACLE_STALENESS_S,
 } from '@astralaunch/shared';
 import { SpendGuardError } from './spend.js';
+import { sendTelegramAlert, html } from './telegram.js';
 import type { KeeperTarget } from './targets.js';
 
 // ── Env-configurable thresholds ─────────────────────────────────────────────
@@ -50,7 +52,18 @@ function envUsdc(key: string, fallback: bigint): bigint {
 }
 
 const minCollectUsdc    = envUsdc('MIN_COLLECT_USDC',    KEEPER_MIN_COLLECT_USDC);
-const minDistributeUsdc = envUsdc('MIN_DISTRIBUTE_USDC', KEEPER_MIN_DISTRIBUTE_USDC);
+/**
+ * The distribute threshold may never sit below the router's own minimum: below it distribute() succeeds but does
+ * nothing, so the keeper would pay gas for it every tick (D-KP1). A lower MIN_DISTRIBUTE_USDC is clamped up.
+ */
+export function effectiveMinDistribute(configured: bigint): bigint {
+  return configured < ROUTER_MIN_DISTRIBUTE_USDC ? ROUTER_MIN_DISTRIBUTE_USDC : configured;
+}
+const configuredMinDistribute = envUsdc('MIN_DISTRIBUTE_USDC', KEEPER_MIN_DISTRIBUTE_USDC);
+const minDistributeUsdc = effectiveMinDistribute(configuredMinDistribute);
+if (minDistributeUsdc !== configuredMinDistribute) {
+  console.warn(`[keeper] MIN_DISTRIBUTE_USDC ${formatUnits(configuredMinDistribute, 6)} is below the router minimum; using ${formatUnits(minDistributeUsdc, 6)} USDC`);
+}
 const minBuybackUsdc    = envUsdc('MIN_BUYBACK_USDC',    KEEPER_MIN_BUYBACK_USDC);
 // `||`, not `??`: an empty COLLECT_INTERVAL_S (e.g. a blank compose var) must not become 0 = no cadence limit.
 const collectIntervalS  = Number(process.env.COLLECT_INTERVAL_S || DEFAULT_COLLECT_INTERVAL_S);
@@ -247,9 +260,16 @@ export function shouldCollect(
 
 // ── Job: distribute ─────────────────────────────────────────────────────────
 
+/**
+ * Routers whose last distribute() emitted nothing, with the USDC balance at that time. Such a router is skipped until
+ * its balance changes, so a call the contract ignores is never paid for twice (defence in depth for D-KP1).
+ */
+const noopDistribute = new Map<string, bigint>();
+
 /** Call distribute() on the RevenueRouter if it holds USDC above threshold. */
 export async function jobDistribute(router: Address): Promise<void> {
   const tag = `distribute:${router}`;
+  const key = router.toLowerCase();
   const balance = await publicClient.readContract({
     address: USDC, abi: erc20Abi, functionName: 'balanceOf', args: [router],
   });
@@ -257,11 +277,25 @@ export async function jobDistribute(router: Address): Promise<void> {
     console.log(`[${tag}] SKIP — ${formatUnits(balance, 6)} USDC < min ${formatUnits(minDistributeUsdc, 6)}`);
     return;
   }
+  if (noopDistribute.get(key) === balance) {
+    console.log(`[${tag}] SKIP — last distribute() did nothing at this balance (${formatUnits(balance, 6)} USDC)`);
+    return;
+  }
+  noopDistribute.delete(key);
   console.log(`[${tag}] SEND — ${formatUnits(balance, 6)} USDC`);
   try {
     const { hash } = await sendTx({ address: router, abi: routerAbi, functionName: 'distribute', args: [] });
     log(tag, `${formatUnits(balance, 6)} USDC`, hash);
-    if (!DRY_RUN) await publicClient.waitForTransactionReceipt({ hash });
+    if (!DRY_RUN) {
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      // A real distribute emits Distributed from the router itself. Nothing from the router = the call was ignored.
+      const routerEmitted = (receipt?.logs ?? []).some((l) => l.address?.toLowerCase() === key);
+      if (receipt?.status === 'success' && !routerEmitted) {
+        noopDistribute.set(key, balance);
+        console.warn(`[${tag}] distribute() succeeded but did nothing (${hash}); skipping this router until its balance changes`);
+        await sendTelegramAlert(html`⚠️ <b>Keeper: distribute did nothing</b>\nRouter ${router} holds ${formatUnits(balance, 6)} USDC; tx ${hash}. Skipping it until the balance changes.`);
+      }
+    }
   } catch (e) {
     if (e instanceof SpendGuardError) throw e;
     logError(tag, 'distribute', e);
@@ -537,6 +571,7 @@ export { pfrAbi, registryAdminAbi };
 
 export function _resetCadenceForTest(): void {
   lastCollectTime.clear();
+  noopDistribute.clear();
   metaCache.clear();
   verifiedTargets.clear();
 }

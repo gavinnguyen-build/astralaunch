@@ -64,13 +64,20 @@ export const BUYBACK_MIN_INTERVAL_S = 600; // 10 minutes
 // ── Keeper — economic thresholds (gas-saving, env-configurable) ──────────────
 // These are keeper-side thresholds to avoid sending txs for dust amounts.
 // On-chain contracts have their own minimums (RevenueRouter MIN_DISTRIBUTE = 0.5 USDC).
-// Keeper thresholds should be >= contract thresholds to avoid wasted gas.
+// Keeper thresholds MUST be >= contract thresholds: below them a call succeeds but does
+// nothing, and the keeper repeats it every tick (2026-10 incident: ~4.9 MON burned on
+// distribute() calls to routers holding 0.10 and 0.25 USDC; docs/decisions.md D-KP1).
 // Origin: chosen so gas cost (~0.1 MON ≈ $0.03 at 100 gwei) is a small fraction
 // of the USDC value being processed.  1 USDC ≈ 33× the gas cost.
 /** Skip collect if pending USDC for that beneficiary < this (6 dec, env: MIN_COLLECT_USDC). */
 export const KEEPER_MIN_COLLECT_USDC = 100_000n; // 0.1 USDC (MON gas ~$0.0003/tx → 333× cost)
-/** Skip distribute if router USDC balance < this (6 dec, env: MIN_DISTRIBUTE_USDC). */
-export const KEEPER_MIN_DISTRIBUTE_USDC = 100_000n; // 0.1 USDC
+/** RevenueRouter.distribute() does nothing below this (Solidity: AstralaunchConstants.MIN_DISTRIBUTE). */
+export const ROUTER_MIN_DISTRIBUTE_USDC = 500_000n; // 0.5 USDC
+/**
+ * Skip distribute if router USDC balance < this (6 dec, env: MIN_DISTRIBUTE_USDC).
+ * Never below ROUTER_MIN_DISTRIBUTE_USDC: the keeper clamps a lower env value up.
+ */
+export const KEEPER_MIN_DISTRIBUTE_USDC = 1_000_000n; // 1 USDC
 /** Skip buyback if vault USDC balance < this (6 dec, env: MIN_BUYBACK_USDC). */
 export const KEEPER_MIN_BUYBACK_USDC = 500_000n; // 0.5 USDC (two swaps for WMON pairs → more gas)
 
@@ -86,8 +93,8 @@ export const KEEPER_MIN_INTERVAL_S = 300; // 5 minutes
 
 // ── Keeper — spend guards ────────────────────────────────────────────────────
 const MON = 10n ** 18n;
-/** Maximum MON the keeper may spend in a rolling 24h window. */
-export const MAX_MON_PER_DAY_WEI  = (MON * 2n) / 10n; // 0.2 MON
+/** Maximum MON the keeper may spend in a rolling 24h window (~30 real txs at ~0.03 MON). */
+export const MAX_MON_PER_DAY_WEI  = MON; // 1 MON
 /** Minimum wallet balance before keeper refuses to send txs. */
 export const MIN_MON_BALANCE_WEI  = (MON * 2n) / 10n; // 0.2 MON
 /** Single tx cost above this triggers a Telegram warning. */

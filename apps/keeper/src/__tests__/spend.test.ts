@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { parseEther } from 'viem';
 import { canSpend, recordSpend, _resetForTest, _spendLogSize, SpendGuardError, alertIfExpensive } from '../spend.js';
+import { MAX_MON_PER_DAY_WEI } from '@astralaunch/shared';
 
 // Mock telegram to avoid side effects
 vi.mock('../telegram.js', () => ({
@@ -13,10 +14,11 @@ vi.stubEnv('MAX_MON_PER_DAY', undefined as any);
 vi.stubEnv('MIN_MON_BALANCE', undefined as any);
 vi.stubEnv('SINGLE_TX_ALERT', undefined as any);
 
-const MON_02 = parseEther('0.2');  // 0.2 MON = default MAX_MON_PER_DAY and MIN_MON_BALANCE
+const MON_02 = parseEther('0.2');  // 0.2 MON = default MIN_MON_BALANCE
 const MON_01 = parseEther('0.1');
 const MON_005 = parseEther('0.05');
 const MON_1 = parseEther('1');
+const MON_10 = parseEther('10');
 
 describe('spend guard', () => {
   beforeEach(() => {
@@ -38,25 +40,32 @@ describe('spend guard', () => {
     });
 
     it('rejects when 24h spend exceeds MAX_MON_PER_DAY', () => {
-      // Record 0.15 already spent
-      recordSpend(parseEther('0.15'));
-      // Try to spend 0.1 more → 0.15 + 0.1 = 0.25 > 0.2 MAX
-      const result = canSpend(MON_01, MON_1);
+      recordSpend(MAX_MON_PER_DAY_WEI - MON_005);
+      const result = canSpend(MON_01, MON_10);          // 0.05 MON left in the window, 0.1 asked
       expect(result.ok).toBe(false);
       expect(result.reason).toContain('24h spend');
     });
 
     it('allows spend when exactly at MAX_MON_PER_DAY', () => {
-      recordSpend(MON_01);
-      // 0.1 + 0.1 = 0.2 = MAX (not over)
-      const result = canSpend(MON_01, MON_1);
-      expect(result.ok).toBe(true);
+      recordSpend(MAX_MON_PER_DAY_WEI - MON_01);
+      expect(canSpend(MON_01, MON_10).ok).toBe(true);
     });
 
     it('rejects when spend would exceed MAX_MON_PER_DAY by 1 wei', () => {
-      recordSpend(MON_01);
-      const result = canSpend(MON_01 + 1n, MON_1);
-      expect(result.ok).toBe(false);
+      recordSpend(MAX_MON_PER_DAY_WEI - MON_01);
+      expect(canSpend(MON_01 + 1n, MON_10).ok).toBe(false);
+    });
+
+    it('the 2026-10 loop (2 calls per 10 min at 0.0103 MON) is stopped by the default daily cap (D-KP1)', () => {
+      const perTx = parseEther('0.01031373');
+      let sent = 0;
+      for (let i = 0; i < 288; i++) {                    // 24 h of the incident: 144 ticks x 2 calls
+        if (!canSpend(perTx, MON_10).ok) break;
+        recordSpend(perTx);
+        sent++;
+      }
+      expect(sent).toBeLessThan(288);
+      expect(BigInt(sent) * perTx <= MAX_MON_PER_DAY_WEI).toBe(true);
     });
   });
 

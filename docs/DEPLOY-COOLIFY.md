@@ -140,8 +140,8 @@ backfills from block `107840649`, and the healthcheck allows a 10-minute start p
 | `KEEPER_HEALTH_PORT` | public | fixed `8080`, internal only. `GET /health` returns the last successful tick, target count and wallet MON balance. |
 | `POLL_INTERVAL_S` | public | default `600` (shared `KEEPER_DEFAULT_INTERVAL_S`). Values below 300 (`KEEPER_MIN_INTERVAL_S`) are clamped to 300 on a non-local RPC. The `30` in `.env.mainnet.example` has no effect. |
 | `COLLECT_INTERVAL_S` | public | default `21600` (6 h, shared `COLLECT_INTERVAL_S`) |
-| `MIN_MON_BALANCE`, `MAX_MON_PER_DAY`, `SINGLE_TX_ALERT` | public, optional | in MON (e.g. `0.5`); code defaults in shared |
-| `MIN_COLLECT_USDC`, `MIN_DISTRIBUTE_USDC`, `MIN_BUYBACK_USDC` | public, optional | in USDC (e.g. `1.5`); code defaults in shared |
+| `MIN_MON_BALANCE`, `MAX_MON_PER_DAY`, `SINGLE_TX_ALERT` | public, optional | in MON (e.g. `0.5`); code defaults in shared: 0.2, 1, 0.05 (D-KP1) |
+| `MIN_COLLECT_USDC`, `MIN_DISTRIBUTE_USDC`, `MIN_BUYBACK_USDC` | public, optional | in USDC (e.g. `1.5`); code defaults in shared: 0.1, 1, 0.5. `MIN_DISTRIBUTE_USDC` is never below the router minimum (0.5 USDC); a lower value is raised to it (D-KP1) |
 | `DRY_RUN` | public | default `false`. `true` estimates gas without sending. Use it for the first deploy. |
 | `TELEGRAM_BOT_TOKEN` | **secret**, optional | Treasury proposal, admin transfer, low-balance and **tick-failure** alerts. Identical failures repeat at most hourly, and a recovery sends one alert. |
 | `TELEGRAM_CHAT_ID` | public, optional | |
