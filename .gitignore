@@ -18,3 +18,14 @@ UTC--*
 *.p12
 *keys.env
 *.env.v*.bak
+
+# Internal / agent files kept locally, not part of the public product repo
+CLAUDE.md
+SPEC.md
+.claude/
+astralaunch-anvil.zip
+/tasks.json
+/pnpm.json
+deployments/legacy-revpad/
+# Local uploads from the dev server (token image renditions)
+apps/server/data/

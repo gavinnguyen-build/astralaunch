@@ -133,7 +133,7 @@ Server tests run against an in-process Postgres (PGlite) with every migration ap
 - **Wallet safety.** Every transaction is simulated first and sent with explicit gas (estimate × 1.1); swaps show the minimum received and the 2% fee; the review says plainly when a long-lived Permit2 permission is granted ("Exact approvals only" keeps per-trade amounts).
 - **Wash resistance.** Contracts count all USDC inflows; wash filtering (creator / platform payers) is display-only, and the escrow unlock math keeps self-payment unprofitable.
 
-Design decisions and their reasons: [docs/decisions.md](docs/decisions.md). Operations: [docs/MAINNET-RUNBOOK.md](docs/MAINNET-RUNBOOK.md). Specification: [SPEC.md](SPEC.md).
+Design decisions and their reasons: [docs/decisions.md](docs/decisions.md). Operations: [docs/MAINNET-RUNBOOK.md](docs/MAINNET-RUNBOOK.md). How the product works for builders and agents: the in-app Docs page (`/docs`).
 
 ## License
 
